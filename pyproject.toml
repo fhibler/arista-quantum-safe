@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-m 'not containerlab'"
+markers = [
+    "containerlab: requires Containerlab CLI (devcontainer); run with pytest -m containerlab",
+]

@@ -1,0 +1,91 @@
+{
+    "name": "Ubuntu (Ansible, Claude, Docker)",
+    "image": "mcr.microsoft.com/devcontainers/base:noble",
+
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": true,
+            "installOhMyZsh": true,
+            "installOhMyZshConfig": true,
+            "upgradePackages": true,
+            "nonFreePackages": true,
+            "installSsl": true,
+            "username": "automatic",
+            "userUid": "automatic",
+            "userGid": "automatic"
+        },
+        "ghcr.io/stu-bell/devcontainer-features/claude-code:0": {},
+        "ghcr.io/devcontainers-extra/features/ansible:2": {
+            "version": "latest",
+            "injections": "requests"
+        },
+        "ghcr.io/hspaans/devcontainer-features/ansible-lint:2": {
+            "version": "latest"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+            "moby": false,
+            "version": "26.1.5",
+            "installDockerBuildx": true,
+            "installDockerComposeSwitch": false,
+            "dockerDashComposeVersion": "v2"
+        },
+        "ghcr.io/devcontainers/features/node:2.0.0": {}
+    },
+    // The magic fix: Run as root. Podman maps this safely back to your Mac user.
+    "remoteUser": "root",
+    "containerUser": "root",
+    
+    "containerEnv": {
+        "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg",
+        "ANTHROPIC_BASE_URL": "https://ai-proxy.infra.corp.arista.io/",
+        // "ANTHROPIC_DEFAULT_OPUS_MODEL": "${ANTHROPIC_DEFAULT_OPUS_MODEL:-claude-opus-4-6}",
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000"
+    },
+
+    // Updated target path for root's home directory
+    "mounts": [
+        "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind",
+        "source=${localEnv:HOME}/.ai-proxy-api-key,target=/root/.ai-proxy-api-key,type=bind"
+    ],
+    
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "anthropic.claude-code",
+                "redhat.ansible",
+                "ms-azuretools.vscode-docker",
+                "srl-labs.vscode-containerlab"
+            ],
+            "settings": {
+                "terminal.integrated.profiles.linux": {
+                    "zsh": { "path": "/usr/bin/zsh" }
+                },
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "claudeCode.environmentVariables": [
+                    {
+                        "name": "ANTHROPIC_BASE_URL",
+                        "value": "https://ai-proxy.infra.corp.arista.io/"
+                    },
+                    {
+                        "name": "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+                        "value": "1"
+                    },
+                    {
+                        "name": "CLAUDE_CODE_USE_VERTEX",
+                        "value": "0"
+                    },
+                    {
+                        "name": "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+                        "value": "200000"
+                    }
+                ],
+                "claudeCode.disableLoginPrompt": true
+            }
+        }
+    },
+    // Port Forwarding: Helps the browser "talk back" to Claude for auth redirects
+    "forwardPorts": [8080, 12345],
+
+    "postCreateCommand": "bash -c \"$(curl -sL https://get.containerlab.dev)\" && apt-get update && apt-get install -y iproute2 iputils-ping tcpdump && pip install -r requirements-dev.txt"
+}

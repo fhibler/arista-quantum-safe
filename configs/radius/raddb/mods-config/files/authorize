@@ -1,0 +1,2 @@
+# Lab: accept all Access-Requests for EOS connectivity testing (Scope B).
+DEFAULT Auth-Type := Accept

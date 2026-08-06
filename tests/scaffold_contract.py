@@ -1,0 +1,31 @@
+"""Shared paths and gitignore expectations for repository scaffold tests."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+REQUIRED_PATHS = [
+    ".gitignore",
+    ".env.example",
+    "ansible.cfg",
+    "Makefile",
+    "lab/qkd-macsec-radius.clab.yml",
+    "lab/logs/radius/.gitkeep",
+    "configs/ceos/ceos1.cfg",
+    "configs/ceos/ceos2.cfg",
+    "configs/radius/raddb/clients.conf",
+    "configs/radius/raddb/radiusd.conf",
+    "configs/radius/raddb/mods-config/files/authorize",
+    "docker/radius/Dockerfile",
+    "docs/verification.md",
+]
+
+GITIGNORE_PATTERNS = [
+    "tmp/**",
+    "clab-qkd-macsec-radius/",
+    "lab/.gen.*.clab.yml",
+    ".env",
+    "*.tar.xz",
+]

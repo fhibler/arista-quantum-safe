@@ -26,7 +26,8 @@ LINKS = [
     ("ceos2:eth2", "host2:eth1"),
 ]
 
-DEFAULT_CEOS_IMAGE = "ceos:4.36.2F"
+DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
+CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
 MGMT_SUBNET = "192.168.127.0/24"
 MGMT_VRF_ENV = "MGMT"
 RADIUS_SECRET = "testing123"
@@ -221,7 +222,8 @@ def validate_topology(
 
     topology = data.get("topology", {})
     kinds = topology.get("kinds", {}).get("arista_ceos", {})
-    if kinds.get("image") != expected_ceos_image:
+    actual_ceos_image = kinds.get("image")
+    if actual_ceos_image not in (expected_ceos_image, CEOS_IMAGE_PLACEHOLDER):
         errors.append(f"arista_ceos image must be {expected_ceos_image}")
     if kinds.get("env", {}).get("CLAB_MGMT_VRF") != MGMT_VRF_ENV:
         errors.append(f"CLAB_MGMT_VRF must be {MGMT_VRF_ENV}")

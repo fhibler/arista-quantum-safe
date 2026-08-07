@@ -28,4 +28,6 @@ GITIGNORE_PATTERNS = [
     "lab/.gen.*.clab.yml",
     ".env",
     "*.tar.xz",
+    "*.sha512sum",
+    "download/",
 ]

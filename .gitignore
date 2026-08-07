@@ -9,6 +9,8 @@ lab/logs/radius/*
 !lab/logs/radius/.gitkeep
 *.tar
 *.tar.xz
+*.sha512sum
+download/
 .env
 .env.*
 !.env.example

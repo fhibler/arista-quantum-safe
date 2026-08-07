@@ -31,7 +31,7 @@ Rebuild the devcontainer after pulling changes (Command Palette → *Dev Contain
 
 ## cEOS import (multi-arch)
 
-You need a local Docker image tagged `ceos:4.36.2F` matching your host architecture before `make deploy`.
+You need a local Docker image tagged `ceos:4.36.1F` matching your host architecture before `make deploy`.
 
 ### Optional (recommended): auto-download
 
@@ -44,7 +44,7 @@ make download-ceos            # reads .env automatically; picks cEOS64 or cEOSar
 make check-ceos-image
 ```
 
-`make download-ceos` uses [`eos-downloader`](https://pypi.org/project/eos-downloader/) (`ardl`). Downloaded `.tar.xz` files land in the current directory (gitignored). Override output with `ARISTA_GET_EOS_OUTPUT=lab/images`.
+`make download-ceos` uses [`eos-downloader`](https://pypi.org/project/eos-downloader/) (`ardl`). Downloaded `.tar.xz` files and `.sha512sum` checksums land in `download/` (gitignored).
 
 ### Manual import (no token)
 
@@ -55,16 +55,16 @@ make import-ceos-help
 **amd64:**
 
 ```bash
-docker import cEOS64-lab-4.36.2F.tar.xz ceos:4.36.2F
+docker import download/cEOS64-lab-4.36.1F.tar.xz ceos:4.36.1F
 ```
 
 **aarch64:**
 
 ```bash
-docker import cEOSarm-lab-4.36.2F.tar.xz ceos:4.36.2F
+docker import download/cEOSarm-lab-4.36.1F.tar.xz ceos:4.36.1F
 ```
 
-On arm64, Arista may ship an EFT suffix in the filename (e.g. `cEOSarm-lab-4.36.2F-EFT1.tar.xz`). Use the downloaded filename but tag as `ceos:4.36.2F`.
+On arm64, Arista may ship an EFT suffix in the filename (e.g. `download/cEOSarm-lab-4.36.1F-EFT1.tar.xz`). Use the downloaded filename but tag as `ceos:4.36.1F`.
 
 Verify:
 
@@ -75,7 +75,7 @@ make check-ceos-image
 Expected failure before import:
 
 ```
-cEOS image 'ceos:4.36.2F' not found locally.
+cEOS image 'ceos:4.36.1F' not found locally.
 # Manual import (no API token required):
 ...
 make download-ceos
@@ -175,8 +175,8 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 
 | Component | amd64 | arm64 (aarch64) |
 |-----------|-------|-----------------|
-| cEOS tarball | `cEOS64-lab-4.36.2F.tar.xz` | `cEOSarm-lab-4.36.2F.tar.xz` (EFT suffix OK) |
-| cEOS Docker tag | `ceos:4.36.2F` | `ceos:4.36.2F` |
+| cEOS tarball | `download/cEOS64-lab-4.36.1F.tar.xz` | `download/cEOSarm-lab-4.36.1F.tar.xz` (EFT suffix OK) |
+| cEOS Docker tag | `ceos:4.36.1F` | `ceos:4.36.1F` |
 | FreeRADIUS base | Official Hub image | Alpine 3.20 packages |
 | Devcontainer dind | Docker CE (latest) | Docker CE (latest) |
 

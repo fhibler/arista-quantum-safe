@@ -3,9 +3,10 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-CEOS_IMAGE ?= ceos:4.36.2F
+CEOS_IMAGE ?= ceos:4.36.1F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
+CEOS_DOWNLOAD_DIR := download
 CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
@@ -22,7 +23,7 @@ help: ## Show available targets
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 $(CLAB_TOPO_GEN): $(CLAB_TOPO_SRC)
-	sed 's|image: ceos:.*|image: $(CEOS_IMAGE)|' $< > $@
+	sed 's|image: $${CEOS_IMAGE}|image: $(CEOS_IMAGE)|' $< > $@
 
 gen-topo: validate-topo ## Generate topology YAML with CEOS_IMAGE override
 
@@ -52,8 +53,8 @@ check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
 		echo "  host:  $$host_arch"; \
 		echo ""; \
 		echo "Re-import the correct tarball for your platform:"; \
-		echo "  amd64  → cEOS64-lab-$(CEOS_VERSION).tar.xz"; \
-		echo "  arm64  → cEOSarm-lab-$(CEOS_VERSION).tar.xz (EFT suffix OK)"; \
+		echo "  amd64  → $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz"; \
+		echo "  arm64  → $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz (EFT suffix OK)"; \
 		echo ""; \
 		$(MAKE) --no-print-directory import-ceos-help; \
 		exit 1; \
@@ -64,10 +65,10 @@ import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
 	@echo "# Manual import (no API token required):"
 	@echo ""
 	@echo "# amd64:"
-	@echo "docker import cEOS64-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
+	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
 	@echo ""
 	@echo "# aarch64:"
-	@echo "docker import cEOSarm-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
+	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
 	@echo ""
 	@echo "# Optional auto-download (requires ARISTA_TOKEN — see make download-ceos-help):"
 	@echo "make download-ceos"
@@ -80,7 +81,8 @@ download-ceos-help: ## Print Arista token setup and ardl usage
 	@echo "#"
 	@echo "# Equivalent ardl one-liner (amd64 example):"
 	@echo "#   ARISTA_TOKEN=... ardl get eos --version $(CEOS_VERSION) --format cEOS64 \\"
-	@echo "#     --import-docker --docker-name $(CEOS_DOCKER_NAME) --docker-tag $(CEOS_VERSION)"
+	@echo "#     --output $(CEOS_DOWNLOAD_DIR) --import-docker \\"
+	@echo "#     --docker-name $(CEOS_DOCKER_NAME) --docker-tag $(CEOS_VERSION)"
 
 download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_TOKEN)
 	@set -euo pipefail; \
@@ -91,17 +93,20 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		echo "Manual fallback: make import-ceos-help"; \
 		exit 1; \
 	fi; \
-	if ! command -v ardl >/dev/null 2>&1; then \
-		pip install 'eos-downloader>=0.16.0'; \
+	if [ ! -x .venv/bin/python3 ]; then python3 -m venv .venv; fi; \
+	if [ ! -x .venv/bin/ardl ]; then \
+		.venv/bin/python3 -m pip install 'eos-downloader>=0.16.0'; \
 	fi; \
 	case "$$(uname -m)" in \
 		x86_64|amd64)  CEOS_FORMAT=cEOS64 ;; \
 		aarch64|arm64) CEOS_FORMAT=cEOSarm ;; \
 		*) echo "unsupported architecture: $$(uname -m)"; exit 1 ;; \
 	esac; \
-	ardl get eos \
+	mkdir -p "$(CEOS_DOWNLOAD_DIR)"; \
+	ARISTA_GET_EOS_OUTPUT="$(CEOS_DOWNLOAD_DIR)" .venv/bin/ardl get eos \
 		--version "$(CEOS_VERSION)" \
 		--format "$$CEOS_FORMAT" \
+		--output "$(CEOS_DOWNLOAD_DIR)" \
 		--import-docker \
 		--docker-name "$(CEOS_DOCKER_NAME)" \
 		--docker-tag "$(CEOS_VERSION)"

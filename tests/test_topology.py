@@ -4,6 +4,7 @@ import pytest
 
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
+    CEOS_IMAGE_PLACEHOLDER,
     DEFAULT_CEOS_IMAGE,
     HOST_DATA_PLANE,
     MGMT_IPS,
@@ -44,7 +45,7 @@ def test_validate_topology_accepts_ceos_image_override(topology: dict) -> None:
 
 def test_ceos_image_placeholder(topology: dict) -> None:
     image = topology["topology"]["kinds"]["arista_ceos"]["image"]
-    assert image == DEFAULT_CEOS_IMAGE
+    assert image == CEOS_IMAGE_PLACEHOLDER
 
 
 @pytest.mark.parametrize("node,expected_ip", MGMT_IPS.items())

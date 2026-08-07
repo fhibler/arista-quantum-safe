@@ -36,7 +36,9 @@ def _run_make(*targets: str, env: dict[str, str] | None = None, check: bool = Tr
 
 def _sed_gen_topo(src: Path, dst: Path, ceos_image: str) -> None:
     content = src.read_text(encoding="utf-8")
-    dst.write_text(re.sub(r"image: ceos:.*", f"image: {ceos_image}", content), encoding="utf-8")
+    content = re.sub(r"image: \$\{CEOS_IMAGE\}", f"image: {ceos_image}", content)
+    content = re.sub(r"image: ceos:.*", f"image: {ceos_image}", content)
+    dst.write_text(content, encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
@@ -97,11 +99,14 @@ def test_gen_topo_custom_ceos_image() -> None:
     assert errors == []
 
 
-def test_gen_topo_differs_only_by_image_when_default() -> None:
+def test_gen_topo_substitutes_ceos_image_placeholder() -> None:
     _run_make("gen-topo")
     src = TOPOLOGY_PATH.read_text(encoding="utf-8")
     gen = GEN_TOPOLOGY_PATH.read_text(encoding="utf-8")
-    assert src == gen
+    assert "${CEOS_IMAGE}" in src
+    assert "${CEOS_IMAGE}" not in gen
+    assert f"image: {DEFAULT_CEOS_IMAGE}" in gen
+    assert src.replace("${CEOS_IMAGE}", DEFAULT_CEOS_IMAGE) == gen
 
 
 def test_validate_topo_passes_via_make() -> None:
@@ -131,8 +136,8 @@ def test_sed_substitution_preserves_yaml_structure(tmp_path: Path) -> None:
 
 def test_import_ceos_help_output() -> None:
     result = _run_make("import-ceos-help")
-    assert "docker import cEOS64-lab-" in result.stdout
-    assert "docker import cEOSarm-lab-" in result.stdout
+    assert "docker import download/cEOS64-lab-" in result.stdout
+    assert "docker import download/cEOSarm-lab-" in result.stdout
     assert "make download-ceos" in result.stdout
 
 
@@ -144,10 +149,18 @@ def test_download_ceos_help_output() -> None:
 
 
 def test_download_ceos_fails_without_token() -> None:
+    dotenv = REPO_ROOT / ".env"
+    had_dotenv = dotenv.exists()
+    prior = dotenv.read_text(encoding="utf-8") if had_dotenv else None
+    dotenv.unlink(missing_ok=True)
     env = {k: v for k, v in os.environ.items() if k != "ARISTA_TOKEN"}
-    result = _run_make("download-ceos", env=env, check=False)
-    assert result.returncode != 0
-    assert "ARISTA_TOKEN not set" in result.stdout + result.stderr
+    try:
+        result = _run_make("download-ceos", env=env, check=False)
+        assert result.returncode != 0
+        assert "ARISTA_TOKEN not set" in result.stdout + result.stderr
+    finally:
+        if had_dotenv and prior is not None:
+            dotenv.write_text(prior, encoding="utf-8")
 
 
 def test_download_ceos_loads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,6 +186,12 @@ def test_download_ceos_recipe_sources_dotenv() -> None:
     assert "[ -f .env ] && . ./.env" in content
 
 
+def test_download_ceos_recipe_uses_download_dir() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "CEOS_DOWNLOAD_DIR := download" in content
+    assert '--output "$(CEOS_DOWNLOAD_DIR)"' in content
+
+
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
 def test_check_ceos_image_fails_when_missing() -> None:
     missing = "ceos:nonexistent-test-tag"
@@ -180,7 +199,7 @@ def test_check_ceos_image_fails_when_missing() -> None:
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "not found" in combined.lower()
-    assert "docker import cEOS64-lab-" in combined
+    assert "docker import download/cEOS64-lab-" in combined
 
 
 def test_make_test_recipe_runs_pytest() -> None:

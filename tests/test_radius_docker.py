@@ -1,4 +1,4 @@
-"""Optional Docker-based smoke tests for Session 2 artifacts."""
+"""Optional Docker-based smoke tests for RADIUS image artifacts."""
 
 import shutil
 import subprocess

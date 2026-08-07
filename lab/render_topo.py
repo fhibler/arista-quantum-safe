@@ -1,0 +1,125 @@
+"""Render topology and mgmt-dependent configs from templates."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+from lab.topology_contract import (
+    DEFAULT_CEOS_IMAGE,
+    DEFAULT_MGMT_SUBNET,
+    GEN_TOPOLOGY_PATH,
+    mgmt_gateway,
+    mgmt_ips_for_subnet,
+    mgmt_prefix_len,
+)
+
+TEMPLATE_PATHS = {
+    "ceos1.cfg": Path("configs/ceos/ceos1.cfg.in"),
+    "ceos2.cfg": Path("configs/ceos/ceos2.cfg.in"),
+    "clients.conf": Path("configs/radius/raddb/clients.conf.in"),
+}
+
+
+def build_substitutions(*, ceos_image: str, mgmt_subnet: str) -> dict[str, str]:
+    ips = mgmt_ips_for_subnet(mgmt_subnet)
+    return {
+        "CEOS_IMAGE": ceos_image,
+        "MGMT_SUBNET": mgmt_subnet,
+        "MGMT_GATEWAY": mgmt_gateway(mgmt_subnet),
+        "MGMT_PREFIX": str(mgmt_prefix_len(mgmt_subnet)),
+        "MGMT_IP_CEOS1": ips["ceos1"],
+        "MGMT_IP_CEOS2": ips["ceos2"],
+        "MGMT_IP_HOST1": ips["host1"],
+        "MGMT_IP_HOST2": ips["host2"],
+        "MGMT_IP_RADIUS": ips["radius"],
+        "RADIUS_SERVER_IP": ips["radius"],
+    }
+
+
+def substitute_placeholders(content: str, substitutions: dict[str, str]) -> str:
+    rendered = content
+    for key, value in substitutions.items():
+        rendered = rendered.replace(f"${{{key}}}", value)
+    if re.search(r"\$\{[A-Z0-9_]+\}", rendered):
+        unresolved = sorted(set(re.findall(r"\$\{([A-Z0-9_]+)\}", rendered)))
+        raise ValueError(f"unresolved template placeholders: {', '.join(unresolved)}")
+    return rendered
+
+
+def render_topology(
+    *,
+    repo_root: Path,
+    ceos_image: str,
+    mgmt_subnet: str,
+    src: Path | None = None,
+    dst: Path | None = None,
+) -> Path:
+    substitutions = build_substitutions(ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
+    topo_src = src or (repo_root / TOPOLOGY_PATH.relative_to(repo_root))
+    topo_dst = dst or (repo_root / GEN_TOPOLOGY_PATH.relative_to(repo_root))
+    content = topo_src.read_text(encoding="utf-8")
+    topo_dst.write_text(substitute_placeholders(content, substitutions), encoding="utf-8")
+    return topo_dst
+
+
+def render_config_templates(*, repo_root: Path, mgmt_subnet: str, ceos_image: str) -> None:
+    substitutions = build_substitutions(ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
+    out_dir = repo_root / "lab" / ".gen"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for output_name, template_rel in TEMPLATE_PATHS.items():
+        template_path = repo_root / template_rel
+        if not template_path.is_file():
+            raise FileNotFoundError(template_path)
+        rendered = substitute_placeholders(template_path.read_text(encoding="utf-8"), substitutions)
+        (out_dir / output_name).write_text(rendered, encoding="utf-8")
+
+
+def render_lab(
+    *,
+    repo_root: Path | None = None,
+    ceos_image: str = DEFAULT_CEOS_IMAGE,
+    mgmt_subnet: str = DEFAULT_MGMT_SUBNET,
+) -> Path:
+    root = repo_root or Path(__file__).resolve().parents[1]
+    render_config_templates(repo_root=root, mgmt_subnet=mgmt_subnet, ceos_image=ceos_image)
+    return render_topology(
+        repo_root=root,
+        ceos_image=ceos_image,
+        mgmt_subnet=mgmt_subnet,
+        src=root / "lab" / "qkd-macsec-radius.clab.yml",
+        dst=root / "lab" / ".gen.qkd-macsec-radius.clab.yml",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Render generated topology and mgmt-dependent configs.",
+    )
+    parser.add_argument(
+        "--ceos-image",
+        default=DEFAULT_CEOS_IMAGE,
+        help=f"cEOS Docker tag (default: {DEFAULT_CEOS_IMAGE})",
+    )
+    parser.add_argument(
+        "--mgmt-subnet",
+        default=DEFAULT_MGMT_SUBNET,
+        help=f"Management IPv4 subnet (default: {DEFAULT_MGMT_SUBNET})",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        topo_path = render_lab(ceos_image=args.ceos_image, mgmt_subnet=args.mgmt_subnet)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"rendered {topo_path.relative_to(Path(__file__).resolve().parents[1])}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

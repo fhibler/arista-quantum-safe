@@ -6,11 +6,11 @@ service routing protocols model multi-agent
 vrf instance MGMT
 !
 ! Default gateway for custom mgmt subnet (Containerlab bridge).
-ip route vrf MGMT 0.0.0.0/0 192.168.127.1
+ip route vrf MGMT 0.0.0.0/0 ${MGMT_GATEWAY}
 !
 interface Management0
    vrf MGMT
-   ip address 192.168.127.12/24
+   ip address ${MGMT_IP_CEOS2}/${MGMT_PREFIX}
 !
 interface Ethernet1
    no switchport
@@ -36,9 +36,9 @@ management api http-commands
    vrf MGMT
       no shutdown
 !
-radius-server host 192.168.127.50 vrf MGMT key testing123
+radius-server host ${RADIUS_SERVER_IP} vrf MGMT key testing123
 !
 aaa group server radius RADIUS
-   server 192.168.127.50 vrf MGMT
+   server ${RADIUS_SERVER_IP} vrf MGMT
 !
 end

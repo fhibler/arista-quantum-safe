@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from pathlib import Path
 from typing import Any
@@ -11,14 +12,44 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOPOLOGY_PATH = REPO_ROOT / "lab" / "qkd-macsec-radius.clab.yml"
 GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / ".gen.qkd-macsec-radius.clab.yml"
+GEN_CONFIG_DIR = REPO_ROOT / "lab" / ".gen"
 
-MGMT_IPS = {
-    "ceos1": "192.168.127.11",
-    "ceos2": "192.168.127.12",
-    "host1": "192.168.127.21",
-    "host2": "192.168.127.22",
-    "radius": "192.168.127.50",
+DEFAULT_MGMT_SUBNET = "172.20.127.0/24"
+MGMT_HOST_SUFFIXES = {
+    "ceos1": 11,
+    "ceos2": 12,
+    "host1": 21,
+    "host2": 22,
+    "radius": 50,
 }
+
+
+def mgmt_gateway(subnet: str | None = None) -> str:
+    """Return the Containerlab bridge gateway (.1) for a mgmt subnet."""
+    network = ipaddress.ip_network(subnet or DEFAULT_MGMT_SUBNET, strict=False)
+    return str(network.network_address + 1)
+
+
+def mgmt_ip(subnet: str | None, host_suffix: int) -> str:
+    """Return a mgmt host address within subnet using a fixed host octet."""
+    network = ipaddress.ip_network(subnet or DEFAULT_MGMT_SUBNET, strict=False)
+    return str(network.network_address + host_suffix)
+
+
+def mgmt_prefix_len(subnet: str | None = None) -> int:
+    """Return the prefix length for mgmt interface addresses."""
+    return ipaddress.ip_network(subnet or DEFAULT_MGMT_SUBNET, strict=False).prefixlen
+
+
+def mgmt_ips_for_subnet(subnet: str | None = None) -> dict[str, str]:
+    """Return locked mgmt IPs for all lab nodes on the given subnet."""
+    return {
+        host: mgmt_ip(subnet, suffix) for host, suffix in MGMT_HOST_SUFFIXES.items()
+    }
+
+
+MGMT_SUBNET = DEFAULT_MGMT_SUBNET
+MGMT_IPS = mgmt_ips_for_subnet(DEFAULT_MGMT_SUBNET)
 
 LINKS = [
     ("ceos1:eth1", "ceos2:eth1"),
@@ -28,10 +59,10 @@ LINKS = [
 
 DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
-MGMT_SUBNET = "192.168.127.0/24"
+MGMT_SUBNET_PLACEHOLDER = "${MGMT_SUBNET}"
 MGMT_VRF_ENV = "MGMT"
 RADIUS_SECRET = "testing123"
-RADIUS_SERVER_IP = "192.168.127.50"
+RADIUS_SERVER_IP = MGMT_IPS["radius"]
 
 HOST_DATA_PLANE = {
     "host1": {
@@ -44,36 +75,45 @@ HOST_DATA_PLANE = {
     },
 }
 
-CEOS_DATA_PLANE = {
-    "ceos1": {
-        "mgmt_ip": "192.168.127.11/24",
-        "eth1": "10.255.0.1/30",
-        "eth2": "10.0.1.254/24",
-        "static_route": ("10.0.2.0/24", "10.255.0.2"),
-    },
-    "ceos2": {
-        "mgmt_ip": "192.168.127.12/24",
-        "eth1": "10.255.0.2/30",
-        "eth2": "10.0.2.254/24",
-        "static_route": ("10.0.1.0/24", "10.255.0.1"),
-    },
-}
+def ceos_data_plane(subnet: str | None = None) -> dict[str, dict[str, Any]]:
+    """Return locked cEOS data-plane expectations for the given mgmt subnet."""
+    ips = mgmt_ips_for_subnet(subnet)
+    prefix = mgmt_prefix_len(subnet)
+    return {
+        "ceos1": {
+            "mgmt_ip": f"{ips['ceos1']}/{prefix}",
+            "mgmt_gateway": mgmt_gateway(subnet),
+            "eth1": "10.255.0.1/30",
+            "eth2": "10.0.1.254/24",
+            "static_route": ("10.0.2.0/24", "10.255.0.2"),
+        },
+        "ceos2": {
+            "mgmt_ip": f"{ips['ceos2']}/{prefix}",
+            "mgmt_gateway": mgmt_gateway(subnet),
+            "eth1": "10.255.0.2/30",
+            "eth2": "10.0.2.254/24",
+            "static_route": ("10.0.1.0/24", "10.255.0.1"),
+        },
+    }
+
+
+CEOS_DATA_PLANE = ceos_data_plane(DEFAULT_MGMT_SUBNET)
 
 RADIUS_BINDS = [
-    "../configs/radius/raddb/clients.conf:/etc/raddb/clients.conf:ro",
+    "../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro",
     "../configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro",
     "logs/radius:/var/log/radius",
 ]
 
 CEOS_STARTUP_CONFIGS = {
-    "ceos1": "../configs/ceos/ceos1.cfg",
-    "ceos2": "../configs/ceos/ceos2.cfg",
+    "ceos1": "../lab/.gen/ceos1.cfg",
+    "ceos2": "../lab/.gen/ceos2.cfg",
 }
 
 CONFIG_PATHS = {
-    "ceos1": REPO_ROOT / "configs" / "ceos" / "ceos1.cfg",
-    "ceos2": REPO_ROOT / "configs" / "ceos" / "ceos2.cfg",
-    "clients": REPO_ROOT / "configs" / "radius" / "raddb" / "clients.conf",
+    "ceos1": REPO_ROOT / "configs" / "ceos" / "ceos1.cfg.in",
+    "ceos2": REPO_ROOT / "configs" / "ceos" / "ceos2.cfg.in",
+    "clients": REPO_ROOT / "configs" / "radius" / "raddb" / "clients.conf.in",
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
 }
@@ -137,7 +177,7 @@ def validate_host_data_plane(nodes: dict[str, Any]) -> list[str]:
 
         if f"ip addr add {expected['addr']} dev eth1" not in exec_text:
             errors.append(f"{host} exec must configure {expected['addr']} on eth1")
-        if f"ip route add default via {expected['gateway']} dev eth1" not in exec_text:
+        if f"ip route replace default via {expected['gateway']} dev eth1" not in exec_text:
             errors.append(f"{host} exec must use default gateway {expected['gateway']}")
 
     return errors
@@ -151,15 +191,21 @@ def _ceos_config_text(name: str, repo_root: Path | None = None) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def validate_ceos_configs(repo_root: Path | None = None) -> list[str]:
-    """Validate cEOS startup configs against mgmt and data-plane contract."""
+def validate_ceos_configs(
+    repo_root: Path | None = None,
+    *,
+    mgmt_subnet: str | None = None,
+) -> list[str]:
+    """Validate rendered cEOS startup configs against mgmt and data-plane contract."""
     errors: list[str] = []
     root = repo_root or REPO_ROOT
+    expected_plane = ceos_data_plane(mgmt_subnet)
+    radius_ip = mgmt_ips_for_subnet(mgmt_subnet)["radius"]
 
-    for ceos, expected in CEOS_DATA_PLANE.items():
-        path = root / "configs" / "ceos" / f"{ceos}.cfg"
+    for ceos, expected in expected_plane.items():
+        path = root / "lab" / ".gen" / f"{ceos}.cfg"
         if not path.is_file():
-            errors.append(f"missing {path.relative_to(root)}")
+            errors.append(f"missing {path.relative_to(root)} (run make gen-topo)")
             continue
 
         text = path.read_text(encoding="utf-8")
@@ -167,6 +213,10 @@ def validate_ceos_configs(repo_root: Path | None = None) -> list[str]:
             errors.append(f"{ceos}.cfg must define vrf instance MGMT")
         if f"ip address {expected['mgmt_ip']}" not in text:
             errors.append(f"{ceos}.cfg Management0 must have {expected['mgmt_ip']}")
+        if f"ip route vrf MGMT 0.0.0.0/0 {expected['mgmt_gateway']}" not in text:
+            errors.append(
+                f"{ceos}.cfg must use mgmt gateway {expected['mgmt_gateway']}"
+            )
         if f"ip address {expected['eth1']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1']}")
         if f"ip address {expected['eth2']}" not in text:
@@ -176,7 +226,7 @@ def validate_ceos_configs(repo_root: Path | None = None) -> list[str]:
         if f"ip route {prefix} {nexthop}" not in text:
             errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
 
-        if f"radius-server host {RADIUS_SERVER_IP} vrf MGMT key {RADIUS_SECRET}" not in text:
+        if f"radius-server host {radius_ip} vrf MGMT key {RADIUS_SECRET}" not in text:
             errors.append(f"{ceos}.cfg must configure RADIUS server in MGMT VRF")
         if "aaa group server radius RADIUS" not in text:
             errors.append(f"{ceos}.cfg must define aaa group server radius RADIUS")
@@ -184,20 +234,25 @@ def validate_ceos_configs(repo_root: Path | None = None) -> list[str]:
     return errors
 
 
-def validate_radius_configs(repo_root: Path | None = None) -> list[str]:
+def validate_radius_configs(
+    repo_root: Path | None = None,
+    *,
+    mgmt_subnet: str | None = None,
+) -> list[str]:
     """Validate FreeRADIUS client and logging configuration."""
     errors: list[str] = []
     root = repo_root or REPO_ROOT
+    mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
 
-    clients_path = root / "configs" / "radius" / "raddb" / "clients.conf"
+    clients_path = root / "lab" / ".gen" / "clients.conf"
     radiusd_path = root / "configs" / "radius" / "raddb" / "radiusd.conf"
     dockerfile_path = root / "docker" / "radius" / "Dockerfile"
 
     if not clients_path.is_file():
-        errors.append("missing configs/radius/raddb/clients.conf")
+        errors.append("missing lab/.gen/clients.conf (run make gen-topo)")
     else:
         clients = clients_path.read_text(encoding="utf-8")
-        for ceos, ip in (("ceos1", MGMT_IPS["ceos1"]), ("ceos2", MGMT_IPS["ceos2"])):
+        for ceos, ip in (("ceos1", mgmt_ips["ceos1"]), ("ceos2", mgmt_ips["ceos2"])):
             block = re.search(rf"client\s+{ceos}\s*\{{([^}}]+)\}}", clients, re.DOTALL)
             if block is None:
                 errors.append(f"clients.conf must define client {ceos}")
@@ -238,17 +293,20 @@ def validate_topology(
     repo_root: Path | None = None,
     *,
     ceos_image: str | None = None,
+    mgmt_subnet: str | None = None,
 ) -> list[str]:
     """Return a list of contract violations (empty when valid)."""
     errors: list[str] = []
     expected_ceos_image = ceos_image or DEFAULT_CEOS_IMAGE
+    expected_mgmt_subnet = mgmt_subnet or DEFAULT_MGMT_SUBNET
+    expected_mgmt_ips = mgmt_ips_for_subnet(expected_mgmt_subnet)
 
     if data.get("name") != "qkd-macsec-radius":
         errors.append("name must be qkd-macsec-radius")
 
     mgmt = data.get("mgmt", {})
-    if mgmt.get("ipv4-subnet") != MGMT_SUBNET:
-        errors.append(f"mgmt.ipv4-subnet must be {MGMT_SUBNET}")
+    if mgmt.get("ipv4-subnet") != expected_mgmt_subnet:
+        errors.append(f"mgmt.ipv4-subnet must be {expected_mgmt_subnet}")
 
     topology = data.get("topology", {})
     kinds = topology.get("kinds", {}).get("arista_ceos", {})
@@ -259,7 +317,8 @@ def validate_topology(
         errors.append(f"CLAB_MGMT_VRF must be {MGMT_VRF_ENV}")
 
     nodes = topology.get("nodes", {})
-    for node, expected_ip in MGMT_IPS.items():
+
+    for node, expected_ip in expected_mgmt_ips.items():
         node_cfg = nodes.get(node)
         if node_cfg is None:
             errors.append(f"missing node {node}")
@@ -287,8 +346,8 @@ def validate_topology(
             errors.append(f"missing link {endpoints[0]} <-> {endpoints[1]}")
 
     errors.extend(validate_host_data_plane(nodes))
-    errors.extend(validate_ceos_configs(repo_root))
-    errors.extend(validate_radius_configs(repo_root))
+    errors.extend(validate_ceos_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
+    errors.extend(validate_radius_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
     errors.extend(validate_topo_host_paths(repo_root))
 
     return errors

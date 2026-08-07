@@ -1,8 +1,10 @@
 tmp/**
 
 # Containerlab runtime
-clab-qkd-macsec-radius/
-lab/.gen.*.clab.yml
+clab-*/
+lab/clab-*/
+lab/.gen/
+lab/.gen.*
 
 # Logs / secrets
 lab/logs/radius/*

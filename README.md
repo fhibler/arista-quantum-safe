@@ -2,7 +2,7 @@
 
 Containerlab topology for a cEOS + FreeRADIUS management-plane lab (Scope B: no MACsec).
 
-Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link. Each switch serves an Alpine Linux host on a separate routed subnet. FreeRADIUS runs on the management network (`192.168.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RADIUS traffic; hosts reach each other via static routes on the switches.
+Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link. Each switch serves an Alpine Linux host on a separate routed subnet. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RADIUS traffic; hosts reach each other via static routes on the switches.
 
 ## Overview
 
@@ -20,11 +20,12 @@ No MACsec or QKD configuration is included (Scope B).
 
 | Requirement | Notes |
 |-------------|-------|
-| Devcontainer rebuild | Session 4 installs Containerlab, docker-in-docker, and dev Python deps — see [docs/devcontainer.md](docs/devcontainer.md) |
+| Devcontainer rebuild | DinD devcontainer (`devcontainer-dind-slim:0.77.0`) — see [docs/devcontainer.md](docs/devcontainer.md) |
 | RAM | ~8 GB minimum (two cEOS containers are memory-heavy) |
 | Containerlab CLI | Installed by devcontainer `postCreateCommand`; verify with `containerlab version` |
 | Docker (dind) | Inner daemon must match host arch (amd64 or aarch64) |
 | cEOS image | **Required for deploy** — import manually or via optional `make download-ceos` |
+| Mgmt subnet | Default `172.20.127.0/24`; override with `MGMT_SUBNET=…` if host NIC overlaps (see [docs/makefile.md](docs/makefile.md)) |
 | Arista portal token | **Optional** — only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile)) |
 
 Rebuild the devcontainer after pulling changes (Command Palette → *Dev Containers: Rebuild Container*).
@@ -113,24 +114,24 @@ See [docs/makefile.md](docs/makefile.md) for all Makefile targets and [docs/veri
 
 ## Topology
 
-### Management plane (`192.168.127.0/24`)
+### Management plane (`172.20.127.0/24`)
 
 | Node | Mgmt IP | Role |
 |------|---------|------|
-| ceos1 | 192.168.127.11 | cEOS switch A |
-| ceos2 | 192.168.127.12 | cEOS switch B |
-| host1 | 192.168.127.21 | Alpine host on ceos1:eth2 |
-| host2 | 192.168.127.22 | Alpine host on ceos2:eth2 |
-| radius | 192.168.127.50 | FreeRADIUS (UDP 1812/1813) |
+| ceos1 | 172.20.127.11 | cEOS switch A |
+| ceos2 | 172.20.127.12 | cEOS switch B |
+| host1 | 172.20.127.21 | Alpine host on ceos1:eth2 |
+| host2 | 172.20.127.22 | Alpine host on ceos2:eth2 |
+| radius | 172.20.127.50 | FreeRADIUS (UDP 1812/1813) |
 
 ### Data plane (L3 routed segments)
 
 ```mermaid
 flowchart LR
-  subgraph mgmt["Mgmt 192.168.127.0/24"]
-    ceos1["ceos1<br/>192.168.127.11"]
-    ceos2["ceos2<br/>192.168.127.12"]
-    radius["radius<br/>192.168.127.50"]
+  subgraph mgmt["Mgmt 172.20.127.0/24"]
+    ceos1["ceos1<br/>172.20.127.11"]
+    ceos2["ceos2<br/>172.20.127.12"]
+    radius["radius<br/>172.20.127.50"]
   end
 
   subgraph data1["10.0.1.0/24"]
@@ -178,7 +179,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | cEOS tarball | `download/cEOS64-lab-4.36.1F.tar.xz` | `download/cEOSarm-lab-4.36.1F.tar.xz` (EFT suffix OK) |
 | cEOS Docker tag | `ceos:4.36.1F` | `ceos:4.36.1F` |
 | FreeRADIUS base | Official Hub image | Alpine 3.20 packages |
-| Devcontainer dind | Docker CE (latest) | Docker CE (latest) |
+| Devcontainer dind | `ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0` (inner Moby Docker) | Docker CE (latest) |
 
 `make check-ceos-image` fails with a clear message if the imported cEOS architecture does not match the host.
 
@@ -189,7 +190,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | Missing cEOS image | `make import-ceos-help` or `make download-ceos` |
 | Wrong cEOS arch | Re-import correct tarball; see `make check-ceos-image` output |
 | `ARISTA_TOKEN` / ardl errors | Verify token; fall back to manual import |
-| No mgmt connectivity | Confirm gateway `192.168.127.1` in `configs/ceos/*.cfg` — see [docs/verification.md](docs/verification.md#mgmt-gateway) |
+| No mgmt connectivity | Confirm gateway `<subnet>.1` in rendered `lab/.gen/ceos*.cfg` — see [docs/verification.md](docs/verification.md#mgmt-gateway) |
 | RADIUS issues | Check `lab/logs/radius/radius.log` and container logs |
 | Host ping fails | Verify L3 addresses and static routes in [docs/topology.md](docs/topology.md) |
 
@@ -211,13 +212,3 @@ pytest -m containerlab                 # optional Containerlab dry-run (rebuilt 
 ```
 
 Documentation index: [docs/README.md](docs/README.md).
-
-## Status
-
-| Session | Status |
-|---------|--------|
-| S1 — Repo scaffold + topology skeleton | Complete |
-| S2 — RADIUS + cEOS startup configs | Complete |
-| S3 — Makefile + CEOS_IMAGE plumbing | Complete |
-| S4 — Devcontainer hardening | Complete |
-| S5 — README, deploy, verify | Complete |

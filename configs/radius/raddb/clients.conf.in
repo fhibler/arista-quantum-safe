@@ -1,12 +1,12 @@
 client ceos1 {
-    ipaddr  = 192.168.127.11
+    ipaddr  = ${MGMT_IP_CEOS1}
     secret  = testing123
     require_message_authenticator = no
     nas_type = other
 }
 
 client ceos2 {
-    ipaddr  = 192.168.127.12
+    ipaddr  = ${MGMT_IP_CEOS2}
     secret  = testing123
     require_message_authenticator = no
     nas_type = other

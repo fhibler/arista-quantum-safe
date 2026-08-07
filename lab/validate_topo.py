@@ -1,4 +1,4 @@
-"""CLI entry point for topology contract validation (Session 4 / R9)."""
+"""CLI entry point for topology contract validation."""
 
 from __future__ import annotations
 
@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Expected arista_ceos image tag (default: value from topology)",
     )
+    parser.add_argument(
+        "--mgmt-subnet",
+        default=None,
+        help="Expected mgmt IPv4 subnet (default: value from topology)",
+    )
     args = parser.parse_args(argv)
 
     topo_path = args.topology
@@ -37,7 +42,11 @@ def main(argv: list[str] | None = None) -> int:
     if ceos_image is None:
         ceos_image = data.get("topology", {}).get("kinds", {}).get("arista_ceos", {}).get("image")
 
-    errors = validate_topology(data, ceos_image=ceos_image)
+    mgmt_subnet = args.mgmt_subnet
+    if mgmt_subnet is None:
+        mgmt_subnet = data.get("mgmt", {}).get("ipv4-subnet")
+
+    errors = validate_topology(data, ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1

@@ -1,4 +1,4 @@
-"""Tests for lab.validate_topo CLI (Session 4 / R9)."""
+"""Tests for lab.validate_topo CLI."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lab.topology_contract import GEN_TOPOLOGY_PATH, TOPOLOGY_PATH, validate_topology
+from lab.topology_contract import GEN_TOPOLOGY_PATH, load_topology, validate_topology
 from tests.scaffold_contract import REPO_ROOT
 
 
@@ -40,7 +40,7 @@ def test_validate_topo_cli_with_ceos_image_flag() -> None:
 
 def test_validate_topo_cli_fails_on_contract_violation(tmp_path: Path) -> None:
     broken = tmp_path / "broken.clab.yml"
-    data = yaml.safe_load(TOPOLOGY_PATH.read_text(encoding="utf-8"))
+    data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))
     data["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] = "10.0.0.1"
     broken.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
 

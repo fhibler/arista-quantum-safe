@@ -1,4 +1,4 @@
-"""Session 5 README and documentation contract tests."""
+"""README and documentation contract tests."""
 
 from __future__ import annotations
 
@@ -31,12 +31,6 @@ def test_readme_covers_required_sections() -> None:
         "## troubleshooting",
     ):
         assert fragment in content, f"README missing section containing {fragment!r}"
-
-
-def test_readme_session5_complete() -> None:
-    content = README.read_text(encoding="utf-8")
-    assert "S5 — README, deploy, verify | Complete" in content
-
 
 def test_verification_doc_exists() -> None:
     assert VERIFICATION_DOC.is_file()

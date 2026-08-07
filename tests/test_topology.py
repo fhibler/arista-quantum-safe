@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from lab.topology_contract import (
@@ -6,7 +8,7 @@ from lab.topology_contract import (
     CEOS_STARTUP_CONFIGS,
     DEFAULT_CEOS_IMAGE,
     HOST_DATA_PLANE,
-    MGMT_IPS,
+    MGMT_SUBNET_PLACEHOLDER,
     RADIUS_BINDS,
     REPO_ROOT,
     load_topology,
@@ -14,6 +16,12 @@ from lab.topology_contract import (
     validate_host_data_plane,
     validate_topology,
 )
+from tests.scaffold_contract import REPO_ROOT as SCAFFOLD_ROOT
+
+
+@pytest.fixture(autouse=True)
+def ensure_generated_topo() -> None:
+    subprocess.run(["make", "gen-topo"], cwd=SCAFFOLD_ROOT, check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -21,22 +29,35 @@ def topology() -> dict:
     return load_topology()
 
 
+@pytest.fixture
+def generated_topology() -> dict:
+    from lab.topology_contract import GEN_TOPOLOGY_PATH
+
+    return load_topology(GEN_TOPOLOGY_PATH)
+
+
 def test_topology_yaml_parses(topology: dict) -> None:
     assert topology["name"] == "qkd-macsec-radius"
 
 
-def test_topology_contract(topology: dict) -> None:
-    errors = validate_topology(topology)
+def test_topology_template_placeholders(topology: dict) -> None:
+    assert topology["mgmt"]["ipv4-subnet"] == MGMT_SUBNET_PLACEHOLDER
+    assert topology["topology"]["kinds"]["arista_ceos"]["image"] == CEOS_IMAGE_PLACEHOLDER
+    assert topology["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] == "${MGMT_IP_CEOS1}"
+
+
+def test_generated_topology_contract(generated_topology: dict) -> None:
+    errors = validate_topology(generated_topology)
     assert errors == [], "\n".join(errors)
 
 
-def test_validate_topology_accepts_ceos_image_override(topology: dict) -> None:
+def test_validate_topology_accepts_ceos_image_override(generated_topology: dict) -> None:
     custom = "ceos:5.0.0F"
-    data = {**topology, "topology": {**topology["topology"]}}
+    data = {**generated_topology, "topology": {**generated_topology["topology"]}}
     data["topology"]["kinds"] = {
-        **topology["topology"]["kinds"],
+        **generated_topology["topology"]["kinds"],
         "arista_ceos": {
-            **topology["topology"]["kinds"]["arista_ceos"],
+            **generated_topology["topology"]["kinds"]["arista_ceos"],
             "image": custom,
         },
     }
@@ -47,11 +68,6 @@ def test_validate_topology_accepts_ceos_image_override(topology: dict) -> None:
 def test_ceos_image_placeholder(topology: dict) -> None:
     image = topology["topology"]["kinds"]["arista_ceos"]["image"]
     assert image == CEOS_IMAGE_PLACEHOLDER
-
-
-@pytest.mark.parametrize("node,expected_ip", MGMT_IPS.items())
-def test_mgmt_ips(topology: dict, node: str, expected_ip: str) -> None:
-    assert topology["topology"]["nodes"][node]["mgmt-ipv4"] == expected_ip
 
 
 @pytest.mark.parametrize("expected_bind", RADIUS_BINDS)
@@ -72,8 +88,8 @@ def test_host_data_plane_exec(topology: dict, host: str, spec: dict) -> None:
 
 
 @pytest.mark.parametrize("ceos,spec", CEOS_DATA_PLANE.items())
-def test_ceos_startup_config_paths(topology: dict, ceos: str, spec: dict) -> None:
-    startup = topology["topology"]["nodes"][ceos]["startup-config"]
+def test_ceos_startup_config_paths(generated_topology: dict, ceos: str, spec: dict) -> None:
+    startup = generated_topology["topology"]["nodes"][ceos]["startup-config"]
     assert startup == CEOS_STARTUP_CONFIGS[ceos]
     path = resolve_topo_path(startup, REPO_ROOT / "lab")
     assert path.is_file()

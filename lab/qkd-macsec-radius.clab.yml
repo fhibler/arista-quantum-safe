@@ -2,7 +2,7 @@ name: qkd-macsec-radius
 
 mgmt:
   network: qkd-mgmt
-  ipv4-subnet: 192.168.127.0/24
+  ipv4-subnet: ${MGMT_SUBNET}
 
 topology:
   kinds:
@@ -13,34 +13,35 @@ topology:
   nodes:
     ceos1:
       kind: arista_ceos
-      mgmt-ipv4: 192.168.127.11
-      startup-config: ../configs/ceos/ceos1.cfg
+      mgmt-ipv4: ${MGMT_IP_CEOS1}
+      startup-config: ../lab/.gen/ceos1.cfg
     ceos2:
       kind: arista_ceos
-      mgmt-ipv4: 192.168.127.12
-      startup-config: ../configs/ceos/ceos2.cfg
+      mgmt-ipv4: ${MGMT_IP_CEOS2}
+      startup-config: ../lab/.gen/ceos2.cfg
+      startup-delay: 120
     host1:
       kind: linux
       image: alpine:3.20
-      mgmt-ipv4: 192.168.127.21
+      mgmt-ipv4: ${MGMT_IP_HOST1}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.1.1/24 dev eth1
-        - ip route add default via 10.0.1.254 dev eth1
+        - ip route replace default via 10.0.1.254 dev eth1
     host2:
       kind: linux
       image: alpine:3.20
-      mgmt-ipv4: 192.168.127.22
+      mgmt-ipv4: ${MGMT_IP_HOST2}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.2.1/24 dev eth1
-        - ip route add default via 10.0.2.254 dev eth1
+        - ip route replace default via 10.0.2.254 dev eth1
     radius:
       kind: linux
       image: qkd-radius:latest
-      mgmt-ipv4: 192.168.127.50
+      mgmt-ipv4: ${MGMT_IP_RADIUS}
       binds:
-        - ../configs/radius/raddb/clients.conf:/etc/raddb/clients.conf:ro
+        - ../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro
         - ../configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro
         - logs/radius:/var/log/radius
   links:

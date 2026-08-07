@@ -1,4 +1,4 @@
-# QKD-MACsec-RADIUS lab — Containerlab lifecycle (Session 3)
+# QKD-MACsec-RADIUS lab — Containerlab lifecycle
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -6,15 +6,19 @@ SHELL := /bin/bash
 CEOS_IMAGE ?= ceos:4.36.1F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
-CEOS_DOWNLOAD_DIR := download
+CEOS_DOWNLOAD_DIR ?= download
 CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
+MGMT_SUBNET   ?= 172.20.127.0/24
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg
 RADIUS_IMAGE  := qkd-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
+HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
+MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
 
-.PHONY: help gen-topo validate-topo test check-ceos-image import-ceos-help \
+.PHONY: help gen-topo validate-topo test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius deploy destroy redeploy \
         inspect graph ssh-ceos1 ssh-ceos2 test-radius test-hosts
 
@@ -22,13 +26,15 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-$(CLAB_TOPO_GEN): $(CLAB_TOPO_SRC)
-	sed 's|image: $${CEOS_IMAGE}|image: $(CEOS_IMAGE)|' $< > $@
+$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1.cfg.in configs/ceos/ceos2.cfg.in configs/radius/raddb/clients.conf.in
+	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
-gen-topo: validate-topo ## Generate topology YAML with CEOS_IMAGE override
+gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
+	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
+	@$(MAKE) --no-print-directory validate-topo
 
 validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
-	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)'
+	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 test: ## Run offline pytest (scaffold + contract validation)
 	$(PYTHON) -m pytest
@@ -61,6 +67,26 @@ check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
 	fi; \
 	echo "cEOS image '$(CEOS_IMAGE)' present ($$img_arch)"
 
+import-ceos: ## Import cEOS tarball from download/ (no API token)
+	@set -euo pipefail; \
+	case "$$(uname -m)" in \
+		x86_64|amd64)  CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz" ;; \
+		aarch64|arm64) \
+			CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz"; \
+			if [ ! -f "$$CEOS_TAR" ]; then \
+				CEOS_TAR=$$(compgen -G "$(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION)"*.tar.xz 2>/dev/null | head -1 || true); \
+			fi ;; \
+		*) echo "unsupported architecture: $$(uname -m)"; exit 1 ;; \
+	esac; \
+	if [ -z "$${CEOS_TAR:-}" ] || [ ! -f "$$CEOS_TAR" ]; then \
+		echo "cEOS tarball not found under $(CEOS_DOWNLOAD_DIR)/"; \
+		$(MAKE) --no-print-directory import-ceos-help; \
+		exit 1; \
+	fi; \
+	echo "Importing $$CEOS_TAR → $(CEOS_IMAGE)"; \
+	docker import "$$CEOS_TAR" "$(CEOS_IMAGE)"; \
+	$(MAKE) --no-print-directory check-ceos-image
+
 import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
 	@echo "# Manual import (no API token required):"
 	@echo ""
@@ -69,6 +95,9 @@ import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
 	@echo ""
 	@echo "# aarch64:"
 	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
+	@echo ""
+	@echo "# Or use the arch-aware helper:"
+	@echo "make import-ceos"
 	@echo ""
 	@echo "# Optional auto-download (requires ARISTA_TOKEN — see make download-ceos-help):"
 	@echo "make download-ceos"
@@ -86,6 +115,21 @@ download-ceos-help: ## Print Arista token setup and ardl usage
 
 download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_TOKEN)
 	@set -euo pipefail; \
+	case "$$(uname -m)" in \
+		x86_64|amd64)  CEOS_FORMAT=cEOS64; CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz" ;; \
+		aarch64|arm64) \
+			CEOS_FORMAT=cEOSarm; \
+			CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz"; \
+			if [ ! -f "$$CEOS_TAR" ]; then \
+				CEOS_TAR=$$(compgen -G "$(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION)"*.tar.xz 2>/dev/null | head -1 || true); \
+			fi ;; \
+		*) echo "unsupported architecture: $$(uname -m)"; exit 1 ;; \
+	esac; \
+	if [ -n "$${CEOS_TAR:-}" ] && [ -f "$$CEOS_TAR" ]; then \
+		echo "Tarball already present ($$CEOS_TAR); importing without Arista API."; \
+		$(MAKE) --no-print-directory import-ceos; \
+		exit 0; \
+	fi; \
 	set -a; [ -f .env ] && . ./.env; set +a; \
 	if [ -z "$${ARISTA_TOKEN:-}" ]; then \
 		echo "ARISTA_TOKEN not set. Copy .env.example → .env or export token."; \
@@ -93,30 +137,32 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		echo "Manual fallback: make import-ceos-help"; \
 		exit 1; \
 	fi; \
-	if [ ! -x .venv/bin/python3 ]; then python3 -m venv .venv; fi; \
-	if [ ! -x .venv/bin/ardl ]; then \
+	if [ ! -x .venv/bin/python3 ] || ! .venv/bin/python3 -m pip --version >/dev/null 2>&1; then \
+		rm -rf .venv && python3 -m venv .venv; \
+	fi; \
+	if ! .venv/bin/python3 -c "import eos_downloader" 2>/dev/null; then \
 		.venv/bin/python3 -m pip install 'eos-downloader>=0.16.0'; \
 	fi; \
-	case "$$(uname -m)" in \
-		x86_64|amd64)  CEOS_FORMAT=cEOS64 ;; \
-		aarch64|arm64) CEOS_FORMAT=cEOSarm ;; \
-		*) echo "unsupported architecture: $$(uname -m)"; exit 1 ;; \
-	esac; \
 	mkdir -p "$(CEOS_DOWNLOAD_DIR)"; \
 	cd "$(CEOS_DOWNLOAD_DIR)" && \
-	ARISTA_GET_EOS_OUTPUT="." ../.venv/bin/ardl get eos \
+	ARISTA_GET_EOS_OUTPUT="." ../.venv/bin/ardl --token "$$ARISTA_TOKEN" get eos \
 		--version "$(CEOS_VERSION)" \
 		--format "$$CEOS_FORMAT" \
 		--output "." \
 		--import-docker \
 		--docker-name "$(CEOS_DOCKER_NAME)" \
-		--docker-tag "$(CEOS_VERSION)"
+		--docker-tag "$(CEOS_VERSION)" || { \
+		echo ""; \
+		echo "ardl failed contacting the Arista portal (often transient)."; \
+		echo "If download/$(CEOS_FORMAT)-lab-$(CEOS_VERSION)*.tar.xz already exists, run: make import-ceos"; \
+		exit 1; \
+	}
 
-build-radius: ## Build qkd-radius:latest multi-arch image
-	docker build -t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
+build-radius: lab/.gen/clients.conf ## Build qkd-radius:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
 
 deploy: gen-topo build-radius check-ceos-image ## Deploy lab (gen-topo → build-radius → check-ceos-image → clab deploy)
-	containerlab deploy --reconfigure -t $(CLAB_TOPO_GEN)
+	containerlab deploy -t $(CLAB_TOPO_GEN)
 
 destroy: ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
@@ -137,10 +183,14 @@ ssh-ceos2: ## Open cEOS CLI on ceos2
 
 test-radius: ## Ping and RADIUS auth test from both switches
 	@set -euo pipefail; \
-	docker exec clab-$(CLAB_NAME)-ceos1 Cli -c "ping vrf MGMT 192.168.127.50 count 3"; \
-	docker exec clab-$(CLAB_NAME)-ceos2 Cli -c "ping vrf MGMT 192.168.127.50 count 3"; \
-	docker exec clab-$(CLAB_NAME)-ceos1 Cli -c "test aaa group RADIUS server 192.168.127.50 vrf MGMT key testing123"; \
-	docker exec clab-$(CLAB_NAME)-ceos2 Cli -c "test aaa group RADIUS server 192.168.127.50 vrf MGMT key testing123"
+	for node in ceos1 ceos2; do \
+		printf 'enable\nping vrf MGMT $(MGMT_IP_RADIUS) repeat 3\n' \
+			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
+			| grep -q '0% packet loss'; \
+		printf 'enable\ntest aaa group RADIUS server $(MGMT_IP_RADIUS) vrf MGMT key testing123\n' \
+			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
+			| grep -q 'successfully authenticated'; \
+	done
 
 test-hosts: ## host1 ping host2 across routed segments
 	@set -euo pipefail; \

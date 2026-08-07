@@ -1,4 +1,4 @@
-"""Containerlab integration tests (Session 4 / R3).
+"""Containerlab integration tests.
 
 Skipped by default via pyproject.toml addopts. Run explicitly after devcontainer rebuild:
 

@@ -1,19 +1,8 @@
 {
-    "name": "Ubuntu (Ansible, Docker)",
-    "image": "mcr.microsoft.com/devcontainers/base:noble",
+    "name": "QKD-MACsec-RADIUS (Containerlab DinD)",
+    "image": "ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0",
 
     "features": {
-        "ghcr.io/devcontainers/features/common-utils:2": {
-            "installZsh": true,
-            "installOhMyZsh": true,
-            "installOhMyZshConfig": true,
-            "upgradePackages": true,
-            "nonFreePackages": true,
-            "installSsl": true,
-            "username": "automatic",
-            "userUid": "automatic",
-            "userGid": "automatic"
-        },
         "ghcr.io/devcontainers-extra/features/ansible:2": {
             "version": "latest",
             "injections": "requests"
@@ -21,21 +10,14 @@
         "ghcr.io/hspaans/devcontainer-features/ansible-lint:2": {
             "version": "latest"
         },
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {
-            "moby": false,
-            "version": "latest",
-            "installDockerBuildx": true,
-            "installDockerComposeSwitch": false,
-            "dockerDashComposeVersion": "v2"
-        },
         "ghcr.io/devcontainers/features/node:2.0.0": {}
     },
-    // The magic fix: Run as root. Podman maps this safely back to your Mac user.
+
     "remoteUser": "root",
     "containerUser": "root",
-    
+
     "containerEnv": {
-        "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg",
+        "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"
     },
 
     "customizations": {
@@ -49,11 +31,11 @@
                 "terminal.integrated.profiles.linux": {
                     "zsh": { "path": "/usr/bin/zsh" }
                 },
-                "terminal.integrated.defaultProfile.linux": "zsh",
+                "terminal.integrated.defaultProfile.linux": "zsh"
             }
         }
     },
     "forwardPorts": [8080, 12345],
 
-    "postCreateCommand": "bash -c \"$(curl -sL https://get.containerlab.dev)\" && apt-get update && apt-get install -y iproute2 iputils-ping tcpdump && pip install -r requirements-dev.txt"
+    "postCreateCommand": "pip install -r requirements-dev.txt"
 }

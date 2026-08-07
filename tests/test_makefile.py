@@ -1,9 +1,8 @@
-"""Tests for Makefile topology generation and lifecycle targets (Session 3)."""
+"""Tests for Makefile topology generation and lifecycle targets."""
 
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,6 +12,7 @@ import yaml
 
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
+    DEFAULT_MGMT_SUBNET,
     GEN_TOPOLOGY_PATH,
     TOPOLOGY_PATH,
     load_topology,
@@ -34,22 +34,6 @@ def _run_make(*targets: str, env: dict[str, str] | None = None, check: bool = Tr
     )
 
 
-def _sed_gen_topo(src: Path, dst: Path, ceos_image: str) -> None:
-    content = src.read_text(encoding="utf-8")
-    content = re.sub(r"image: \$\{CEOS_IMAGE\}", f"image: {ceos_image}", content)
-    content = re.sub(r"image: ceos:.*", f"image: {ceos_image}", content)
-    dst.write_text(content, encoding="utf-8")
-
-
-@pytest.fixture(autouse=True)
-def cleanup_generated_topo() -> None:
-    if GEN_TOPOLOGY_PATH.exists():
-        GEN_TOPOLOGY_PATH.unlink()
-    yield
-    if GEN_TOPOLOGY_PATH.exists():
-        GEN_TOPOLOGY_PATH.unlink()
-
-
 def test_makefile_exists() -> None:
     assert MAKEFILE.is_file()
 
@@ -62,6 +46,7 @@ def test_makefile_exists() -> None:
         "validate-topo",
         "test",
         "check-ceos-image",
+        "import-ceos",
         "import-ceos-help",
         "download-ceos",
         "download-ceos-help",
@@ -88,6 +73,7 @@ def test_gen_topo_default_image() -> None:
     data = load_topology(GEN_TOPOLOGY_PATH)
     image = data["topology"]["kinds"]["arista_ceos"]["image"]
     assert image == DEFAULT_CEOS_IMAGE
+    assert data["mgmt"]["ipv4-subnet"] == DEFAULT_MGMT_SUBNET
 
 
 def test_gen_topo_custom_ceos_image() -> None:
@@ -99,14 +85,26 @@ def test_gen_topo_custom_ceos_image() -> None:
     assert errors == []
 
 
-def test_gen_topo_substitutes_ceos_image_placeholder() -> None:
+def test_gen_topo_custom_mgmt_subnet() -> None:
+    custom = "192.168.28.0/24"
+    _run_make("gen-topo", f"MGMT_SUBNET={custom}")
+    data = load_topology(GEN_TOPOLOGY_PATH)
+    assert data["mgmt"]["ipv4-subnet"] == custom
+    assert data["topology"]["nodes"]["radius"]["mgmt-ipv4"] == "192.168.28.50"
+    errors = validate_topology(data, mgmt_subnet=custom)
+    assert errors == []
+
+
+def test_gen_topo_substitutes_placeholders() -> None:
     _run_make("gen-topo")
     src = TOPOLOGY_PATH.read_text(encoding="utf-8")
     gen = GEN_TOPOLOGY_PATH.read_text(encoding="utf-8")
     assert "${CEOS_IMAGE}" in src
+    assert "${MGMT_SUBNET}" in src
     assert "${CEOS_IMAGE}" not in gen
+    assert "${MGMT_SUBNET}" not in gen
     assert f"image: {DEFAULT_CEOS_IMAGE}" in gen
-    assert src.replace("${CEOS_IMAGE}", DEFAULT_CEOS_IMAGE) == gen
+    assert f"ipv4-subnet: {DEFAULT_MGMT_SUBNET}" in gen
 
 
 def test_validate_topo_passes_via_make() -> None:
@@ -116,8 +114,9 @@ def test_validate_topo_passes_via_make() -> None:
 
 
 def test_validate_topo_fails_on_contract_violation(tmp_path: Path) -> None:
+    _run_make("gen-topo")
     broken = tmp_path / "broken.clab.yml"
-    _sed_gen_topo(TOPOLOGY_PATH, broken, DEFAULT_CEOS_IMAGE)
+    broken.write_text(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     data = yaml.safe_load(broken.read_text(encoding="utf-8"))
     data["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] = "10.0.0.1"
     broken.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
@@ -126,12 +125,11 @@ def test_validate_topo_fails_on_contract_violation(tmp_path: Path) -> None:
     assert any("ceos1 mgmt-ipv4" in err for err in errors)
 
 
-def test_sed_substitution_preserves_yaml_structure(tmp_path: Path) -> None:
-    generated = tmp_path / "generated.clab.yml"
-    _sed_gen_topo(TOPOLOGY_PATH, generated, "ceos:9.9.9F")
-    data = yaml.safe_load(generated.read_text(encoding="utf-8"))
+def test_render_preserves_yaml_structure() -> None:
+    _run_make("gen-topo")
+    data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))
     assert data["topology"]["nodes"]["radius"]["image"] == "qkd-radius:latest"
-    assert data["topology"]["kinds"]["arista_ceos"]["image"] == "ceos:9.9.9F"
+    assert data["topology"]["kinds"]["arista_ceos"]["image"] == DEFAULT_CEOS_IMAGE
 
 
 def test_import_ceos_help_output() -> None:
@@ -148,12 +146,16 @@ def test_download_ceos_help_output() -> None:
     assert ".env.example" in result.stdout
 
 
-def test_download_ceos_fails_without_token() -> None:
+def test_download_ceos_fails_without_token(tmp_path: Path) -> None:
     dotenv = REPO_ROOT / ".env"
     had_dotenv = dotenv.exists()
     prior = dotenv.read_text(encoding="utf-8") if had_dotenv else None
     dotenv.unlink(missing_ok=True)
+    empty_download = tmp_path / "empty-download"
+    empty_download.mkdir()
     env = {k: v for k, v in os.environ.items() if k != "ARISTA_TOKEN"}
+    env["CEOS_DOWNLOAD_DIR"] = str(empty_download)
+    env["ARISTA_TOKEN"] = ""
     try:
         result = _run_make("download-ceos", env=env, check=False)
         assert result.returncode != 0
@@ -188,9 +190,26 @@ def test_download_ceos_recipe_sources_dotenv() -> None:
 
 def test_download_ceos_recipe_uses_download_dir() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "CEOS_DOWNLOAD_DIR := download" in content
+    assert "CEOS_DOWNLOAD_DIR ?=" in content
     assert 'cd "$(CEOS_DOWNLOAD_DIR)"' in content
     assert '--output "."' in content
+    assert 'import eos_downloader' in content
+    assert "Tarball already present" in content
+    assert "make import-ceos" in content
+
+
+def test_import_ceos_recipe_imports_local_tarball() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "import-ceos:" in content
+    assert 'docker import "$$CEOS_TAR" "$(CEOS_IMAGE)"' in content
+
+
+def test_download_ceos_recipe_installs_eos_downloader_when_missing() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "eos-downloader>=0.16.0" in content
+    assert "import eos_downloader" in content
+    assert "rm -rf .venv && python3 -m venv .venv" in content
+    assert "! .venv/bin/ardl" not in content
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
@@ -209,5 +228,25 @@ def test_make_test_recipe_runs_pytest() -> None:
 
 
 def test_validate_topo_uses_cli_module() -> None:
+    result = _run_make("-n", "gen-topo")
+    assert "lab.render_topo" in result.stdout
     result = _run_make("-n", "validate-topo")
     assert "lab.validate_topo" in result.stdout
+
+
+def test_makefile_defines_mgmt_subnet() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "MGMT_SUBNET   ?=" in content
+    assert "172.20.127.0/24" in content
+    assert "prepare-ceos-monitor" not in content
+    assert "prepare-mgmt-net" not in content
+
+
+def test_test_radius_recipe_uses_ceos_cli_enable_and_repeat() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-radius:" in content
+    assert "printf 'enable\\nping vrf MGMT" in content
+    assert "repeat 3" in content
+    assert "successfully authenticated" in content
+    assert "Cli -c \"ping vrf MGMT" not in content
+    assert "count 3" not in content

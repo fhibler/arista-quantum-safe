@@ -43,23 +43,22 @@ def test_devcontainer_remote_user_root() -> None:
     assert '"containerUser": "root"' in text
 
 
-def test_devcontainer_preserves_claude_and_ansible_features() -> None:
+def test_devcontainer_preserves_ansible_features() -> None:
     text = _devcontainer_text()
-    assert "ghcr.io/stu-bell/devcontainer-features/claude-code:0" in text
     assert "ghcr.io/devcontainers-extra/features/ansible:2" in text
     assert "ghcr.io/hspaans/devcontainer-features/ansible-lint:2" in text
 
 
-def test_devcontainer_preserves_arista_proxy_env() -> None:
+def test_devcontainer_ansible_config_env() -> None:
     text = _devcontainer_text()
-    assert '"ANTHROPIC_BASE_URL": "https://ai-proxy.infra.corp.arista.io/"' in text
     assert '"ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"' in text
+    assert "ANTHROPIC_BASE_URL" not in text
 
 
-def test_devcontainer_preserves_mounts() -> None:
+def test_devcontainer_no_claude_mounts() -> None:
     text = _devcontainer_text()
-    assert ".claude" in text
-    assert ".ai-proxy-api-key" in text
+    assert ".claude" not in text
+    assert ".ai-proxy-api-key" not in text
 
 
 def test_devcontainer_containerlab_extension() -> None:
@@ -67,9 +66,9 @@ def test_devcontainer_containerlab_extension() -> None:
     assert "srl-labs.vscode-containerlab" in text
 
 
-def test_devcontainer_docker_in_docker_pinned() -> None:
+def test_devcontainer_docker_in_docker_options() -> None:
     dind = _devcontainer_feature_options("ghcr.io/devcontainers/features/docker-in-docker:2")
-    assert dind["version"] == "26.1.5"
+    assert dind["version"] == "latest"
     assert dind["moby"] is False
     assert dind["installDockerBuildx"] is True
     assert dind["installDockerComposeSwitch"] is False

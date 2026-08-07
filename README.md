@@ -20,7 +20,7 @@ No MACsec or QKD configuration is included (Scope B).
 
 | Requirement | Notes |
 |-------------|-------|
-| Devcontainer rebuild | Session 4 installs Containerlab, pinned Docker CE 26.1.5, and dev Python deps — see [docs/devcontainer.md](docs/devcontainer.md) |
+| Devcontainer rebuild | Session 4 installs Containerlab, docker-in-docker, and dev Python deps — see [docs/devcontainer.md](docs/devcontainer.md) |
 | RAM | ~8 GB minimum (two cEOS containers are memory-heavy) |
 | Containerlab CLI | Installed by devcontainer `postCreateCommand`; verify with `containerlab version` |
 | Docker (dind) | Inner daemon must match host arch (amd64 or aarch64) |
@@ -178,7 +178,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | cEOS tarball | `cEOS64-lab-4.36.2F.tar.xz` | `cEOSarm-lab-4.36.2F.tar.xz` (EFT suffix OK) |
 | cEOS Docker tag | `ceos:4.36.2F` | `ceos:4.36.2F` |
 | FreeRADIUS base | Official Hub image | Alpine 3.20 packages |
-| Devcontainer dind | Docker CE 26.1.5 | Docker CE 26.1.5 |
+| Devcontainer dind | Docker CE (latest) | Docker CE (latest) |
 
 `make check-ceos-image` fails with a clear message if the imported cEOS architecture does not match the host.
 

@@ -24,11 +24,6 @@
       "version": "2.0.0",
       "resolved": "ghcr.io/hspaans/devcontainer-features/ansible-lint@sha256:f5834ceb37c4fc57883852e82b1bb0d9794d0a7c4f280a0456b09f1df7c145af",
       "integrity": "sha256:f5834ceb37c4fc57883852e82b1bb0d9794d0a7c4f280a0456b09f1df7c145af"
-    },
-    "ghcr.io/stu-bell/devcontainer-features/claude-code:0": {
-      "version": "0.1.0",
-      "resolved": "ghcr.io/stu-bell/devcontainer-features/claude-code@sha256:f87b4da3f8648db9111cb25c6bd3817d096018d81f3fb596340f7ffdba14409a",
-      "integrity": "sha256:f87b4da3f8648db9111cb25c6bd3817d096018d81f3fb596340f7ffdba14409a"
     }
   }
 }

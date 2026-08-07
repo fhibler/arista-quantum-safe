@@ -103,10 +103,11 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		*) echo "unsupported architecture: $$(uname -m)"; exit 1 ;; \
 	esac; \
 	mkdir -p "$(CEOS_DOWNLOAD_DIR)"; \
-	ARISTA_GET_EOS_OUTPUT="$(CEOS_DOWNLOAD_DIR)" .venv/bin/ardl get eos \
+	cd "$(CEOS_DOWNLOAD_DIR)" && \
+	ARISTA_GET_EOS_OUTPUT="." ../.venv/bin/ardl get eos \
 		--version "$(CEOS_VERSION)" \
 		--format "$$CEOS_FORMAT" \
-		--output "$(CEOS_DOWNLOAD_DIR)" \
+		--output "." \
 		--import-docker \
 		--docker-name "$(CEOS_DOCKER_NAME)" \
 		--docker-tag "$(CEOS_VERSION)"

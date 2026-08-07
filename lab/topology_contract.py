@@ -60,10 +60,15 @@ CEOS_DATA_PLANE = {
 }
 
 RADIUS_BINDS = [
-    "configs/radius/raddb/clients.conf:/etc/raddb/clients.conf:ro",
-    "configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro",
-    "lab/logs/radius:/var/log/radius",
+    "../configs/radius/raddb/clients.conf:/etc/raddb/clients.conf:ro",
+    "../configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro",
+    "logs/radius:/var/log/radius",
 ]
+
+CEOS_STARTUP_CONFIGS = {
+    "ceos1": "../configs/ceos/ceos1.cfg",
+    "ceos2": "../configs/ceos/ceos2.cfg",
+}
 
 CONFIG_PATHS = {
     "ceos1": REPO_ROOT / "configs" / "ceos" / "ceos1.cfg",
@@ -72,6 +77,31 @@ CONFIG_PATHS = {
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
 }
+
+
+def resolve_topo_path(relative_path: str, topo_dir: Path | None = None) -> Path:
+    """Resolve a topology-relative path the way Containerlab does (base = topo file dir)."""
+    base = topo_dir or (REPO_ROOT / "lab")
+    return (base / relative_path).resolve()
+
+
+def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
+    """Ensure startup-config and bind host paths exist relative to the topology file."""
+    errors: list[str] = []
+    root = repo_root or REPO_ROOT
+    topo_dir = root / "lab"
+
+    for ceos, rel_path in CEOS_STARTUP_CONFIGS.items():
+        host_path = resolve_topo_path(rel_path, topo_dir)
+        if not host_path.is_file():
+            errors.append(f"{ceos} startup-config host path missing: {host_path}")
+
+    for bind in RADIUS_BINDS:
+        host_path = resolve_topo_path(bind.split(":", 1)[0], topo_dir)
+        if not host_path.exists():
+            errors.append(f"radius bind host path missing: {host_path}")
+
+    return errors
 
 
 def load_topology(path: Path | None = None) -> dict[str, Any]:
@@ -237,9 +267,8 @@ def validate_topology(
         if node_cfg.get("mgmt-ipv4") != expected_ip:
             errors.append(f"{node} mgmt-ipv4 must be {expected_ip}")
 
-    for ceos in ("ceos1", "ceos2"):
+    for ceos, expected in CEOS_STARTUP_CONFIGS.items():
         startup = nodes.get(ceos, {}).get("startup-config")
-        expected = f"configs/ceos/{ceos}.cfg"
         if startup != expected:
             errors.append(f"{ceos} startup-config must be {expected}")
 
@@ -260,5 +289,6 @@ def validate_topology(
     errors.extend(validate_host_data_plane(nodes))
     errors.extend(validate_ceos_configs(repo_root))
     errors.extend(validate_radius_configs(repo_root))
+    errors.extend(validate_topo_host_paths(repo_root))
 
     return errors

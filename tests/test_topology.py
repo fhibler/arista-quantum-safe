@@ -1,15 +1,16 @@
-from pathlib import Path
-
 import pytest
 
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
     CEOS_IMAGE_PLACEHOLDER,
+    CEOS_STARTUP_CONFIGS,
     DEFAULT_CEOS_IMAGE,
     HOST_DATA_PLANE,
     MGMT_IPS,
     RADIUS_BINDS,
+    REPO_ROOT,
     load_topology,
+    resolve_topo_path,
     validate_host_data_plane,
     validate_topology,
 )
@@ -73,8 +74,8 @@ def test_host_data_plane_exec(topology: dict, host: str, spec: dict) -> None:
 @pytest.mark.parametrize("ceos,spec", CEOS_DATA_PLANE.items())
 def test_ceos_startup_config_paths(topology: dict, ceos: str, spec: dict) -> None:
     startup = topology["topology"]["nodes"][ceos]["startup-config"]
-    assert startup == f"configs/ceos/{ceos}.cfg"
-    path = Path(__file__).resolve().parents[1] / startup
+    assert startup == CEOS_STARTUP_CONFIGS[ceos]
+    path = resolve_topo_path(startup, REPO_ROOT / "lab")
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert spec["eth1"] in text

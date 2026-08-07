@@ -189,7 +189,8 @@ def test_download_ceos_recipe_sources_dotenv() -> None:
 def test_download_ceos_recipe_uses_download_dir() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "CEOS_DOWNLOAD_DIR := download" in content
-    assert '--output "$(CEOS_DOWNLOAD_DIR)"' in content
+    assert 'cd "$(CEOS_DOWNLOAD_DIR)"' in content
+    assert '--output "."' in content
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")

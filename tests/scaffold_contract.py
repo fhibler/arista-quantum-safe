@@ -9,7 +9,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = [
     ".gitignore",
     ".env.example",
-    "ansible.cfg",
     "Makefile",
     "lab/qkd-macsec-radius.clab.yml",
     "lab/logs/radius/.gitkeep",

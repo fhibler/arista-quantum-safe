@@ -23,14 +23,9 @@
     "remoteUser": "root",
     "containerUser": "root",
 
-    // "containerEnv": {
-    //     "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"
-    // },
-
     "customizations": {
         "vscode": {
             "extensions": [
-                "redhat.ansible",
                 "ms-azuretools.vscode-docker",
                 "srl-labs.vscode-containerlab"
             ],

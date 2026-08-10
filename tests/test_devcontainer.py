@@ -62,15 +62,17 @@ def test_devcontainer_remote_user_root() -> None:
     assert '"containerUser": "root"' in text
 
 
-def test_devcontainer_preserves_ansible_features() -> None:
+def test_devcontainer_has_no_ansible_scaffold() -> None:
     text = _devcontainer_text()
     assert "ghcr.io/devcontainers-extra/features/ansible:2" not in text
     assert "ghcr.io/hspaans/devcontainer-features/ansible-lint:2" not in text
+    assert "redhat.ansible" not in text
+    assert "ANSIBLE_CONFIG" not in text
+    assert "ansible.cfg" not in text
 
 
-def test_devcontainer_ansible_config_env() -> None:
+def test_devcontainer_no_ai_proxy_env() -> None:
     text = _devcontainer_text()
-    assert '"ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"' in text
     assert "ANTHROPIC_BASE_URL" not in text
 
 

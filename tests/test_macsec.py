@@ -39,7 +39,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
         "Key in use: deadbeef12345678:1"
     )
 
-    def fake_ceos_cli(container: str, commands: str) -> str:
+    def fake_ceos_cli(container: str, commands: str, **kwargs: object) -> str:
         if "show dot1x hosts" in commands:
             return f"Et1  mac  {DOT1X_EAP_IDENTITY}  EAPOL  SUCCESS"
         if "show dot1x interface" in commands:
@@ -85,7 +85,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
 def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
     call_count = {"n": 0}
 
-    def fake_ceos_cli(_container: str, commands: str) -> str:
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
         if "show mac security participants" in commands:
             call_count["n"] += 1
             ckn = "aaa" if call_count["n"] == 1 else "bbb"

@@ -18,6 +18,7 @@ REQUIRED_PATHS = [
     "configs/radius/raddb/radiusd.conf",
     "configs/radius/raddb/mods-config/files/authorize",
     "docker/radius/Dockerfile",
+    "docker/kme/Dockerfile",
     "docs/verification.md",
 ]
 

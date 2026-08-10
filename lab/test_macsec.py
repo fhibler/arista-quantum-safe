@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -49,11 +50,11 @@ def extract_ckn(participants_output: str) -> str:
     return match.group(1)
 
 
-def check_authenticator_config(container: str) -> None:
-    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n")
+def check_authenticator_config(container: str, *, verbose: bool | None = None) -> None:
+    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n", verbose=verbose)
     if "aaa authentication dot1x default group" not in cfg.lower():
         raise MacsecCheckError(f"{AUTHENTICATOR} dot1x aaa: expected dot1x authentication group")
-    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n")
+    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n", verbose=verbose)
     assert_contains(intf, "dot1x pae authenticator", label=f"{AUTHENTICATOR} dot1x authenticator")
     assert_contains(intf, f"mac security profile {MACSEC_PROFILE}", label=f"{AUTHENTICATOR} macsec profile")
     report_config(
@@ -61,30 +62,30 @@ def check_authenticator_config(container: str) -> None:
     )
 
 
-def check_supplicant_config(container: str) -> None:
-    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n")
+def check_supplicant_config(container: str, *, verbose: bool | None = None) -> None:
+    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n", verbose=verbose)
     assert_contains(cfg, f"supplicant profile {DOT1X_SUPPLICANT_PROFILE}", label=f"{SUPPLICANT} supplicant profile")
     assert_contains(cfg, f"identity {DOT1X_EAP_IDENTITY}", label=f"{SUPPLICANT} EAP identity")
     assert_contains(cfg, "eap-method tls", label=f"{SUPPLICANT} EAP-TLS")
     assert_contains(cfg, f"ssl profile {DOT1X_EAP_SSL_PROFILE}", label=f"{SUPPLICANT} DOT1X ssl profile")
-    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n")
+    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n", verbose=verbose)
     assert_contains(intf, f"dot1x pae supplicant {DOT1X_SUPPLICANT_PROFILE}", label=f"{SUPPLICANT} dot1x supplicant")
     report_config(
         f"dot1x supplicant {DOT1X_SUPPLICANT_PROFILE}, EAP-TLS + ssl profile {DOT1X_EAP_SSL_PROFILE}"
     )
 
 
-def check_authenticator_dot1x(container: str) -> None:
-    hosts = ceos_cli(container, "enable\nshow dot1x hosts\n")
+def check_authenticator_dot1x(container: str, *, verbose: bool | None = None) -> None:
+    hosts = ceos_cli(container, "enable\nshow dot1x hosts\n", verbose=verbose)
     assert_contains(hosts, DOT1X_EAP_IDENTITY, label=f"{AUTHENTICATOR} dot1x host identity")
     assert_contains(hosts, "SUCCESS", label=f"{AUTHENTICATOR} dot1x host state")
-    detail = ceos_cli(container, f"enable\nshow dot1x interface {MACSEC_INTERFACE} detail\n")
+    detail = ceos_cli(container, f"enable\nshow dot1x interface {MACSEC_INTERFACE} detail\n", verbose=verbose)
     assert_contains(detail, "Port status: Authorized", label=f"{AUTHENTICATOR} dot1x port authorized")
     report_live(f"802.1X host {DOT1X_EAP_IDENTITY} SUCCESS, port Authorized")
 
 
-def check_supplicant_dot1x(container: str) -> None:
-    output = ceos_cli(container, "enable\nshow dot1x supplicant\n")
+def check_supplicant_dot1x(container: str, *, verbose: bool | None = None) -> None:
+    output = ceos_cli(container, "enable\nshow dot1x supplicant\n", verbose=verbose)
     assert_contains(output, f"Identity: {DOT1X_EAP_IDENTITY}", label=f"{SUPPLICANT} dot1x identity")
     assert_contains(output, "Status: success", label=f"{SUPPLICANT} dot1x status")
     assert_contains(output, "EAP method: tls", label=f"{SUPPLICANT} EAP method")
@@ -93,8 +94,12 @@ def check_supplicant_dot1x(container: str) -> None:
     report_live(f"802.1X supplicant success (EAP-TLS, {PQC_EAP_GROUP})")
 
 
-def check_macsec_interface(container: str, node: str) -> None:
-    output = ceos_cli(container, f"enable\nshow mac security interface {MACSEC_INTERFACE} detail\n")
+def check_macsec_interface(container: str, node: str, *, verbose: bool | None = None) -> None:
+    output = ceos_cli(
+        container,
+        f"enable\nshow mac security interface {MACSEC_INTERFACE} detail\n",
+        verbose=verbose,
+    )
     assert_contains(output, "Controlled port: True", label=f"{node} controlled port")
     assert_contains(output, "Traffic: encrypted", label=f"{node} traffic encrypted")
     if "Key in use: None" in output or "Key in use:" not in output:
@@ -102,8 +107,8 @@ def check_macsec_interface(container: str, node: str) -> None:
     report_live(f"MACsec controlled port up, traffic encrypted on {MACSEC_INTERFACE}")
 
 
-def check_mka_participants(container: str, node: str) -> str:
-    output = ceos_cli(container, "enable\nshow mac security participants detail\n")
+def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
+    output = ceos_cli(container, "enable\nshow mac security participants detail\n", verbose=verbose)
     assert_contains(output, "CKN:", label=f"{node} MKA participants")
     assert_contains(output, "Success: True", label=f"{node} MKA session success")
     assert_contains(output, "Live peer list:", label=f"{node} MKA live peers")
@@ -114,8 +119,8 @@ def check_mka_participants(container: str, node: str) -> str:
     return ckn
 
 
-def probe_inter_switch_ping(container: str, node: str, peer_ip: str) -> None:
-    output = ceos_cli(container, f"enable\nping {peer_ip} repeat 3\n")
+def probe_inter_switch_ping(container: str, node: str, peer_ip: str, *, verbose: bool | None = None) -> None:
+    output = ceos_cli(container, f"enable\nping {peer_ip} repeat 3\n", verbose=verbose)
     if "0% packet loss" not in output and "Success rate is 100 percent" not in output:
         raise MacsecCheckError(f"{node} ping {peer_ip} over MACsec link: no successful replies")
     report_live(f"ping {peer_ip} over encrypted {MACSEC_INTERFACE} (0% loss)")
@@ -126,6 +131,7 @@ def run_macsec_checks(
     clab_name: str,
     mgmt_subnet: str,
     skip_config: bool = False,
+    verbose: bool | None = None,
 ) -> None:
     from lab.topology_contract import mgmt_ips_for_subnet
 
@@ -144,18 +150,18 @@ def run_macsec_checks(
 
     print_device(AUTHENTICATOR)
     if not skip_config:
-        check_authenticator_config(auth_container)
-    check_authenticator_dot1x(auth_container)
-    check_macsec_interface(auth_container, AUTHENTICATOR)
-    auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR)
+        check_authenticator_config(auth_container, verbose=verbose)
+    check_authenticator_dot1x(auth_container, verbose=verbose)
+    check_macsec_interface(auth_container, AUTHENTICATOR, verbose=verbose)
+    auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR, verbose=verbose)
 
     print()
     print_device(SUPPLICANT)
     if not skip_config:
-        check_supplicant_config(supp_container)
-    check_supplicant_dot1x(supp_container)
-    check_macsec_interface(supp_container, SUPPLICANT)
-    supp_ckn = check_mka_participants(supp_container, SUPPLICANT)
+        check_supplicant_config(supp_container, verbose=verbose)
+    check_supplicant_dot1x(supp_container, verbose=verbose)
+    check_macsec_interface(supp_container, SUPPLICANT, verbose=verbose)
+    supp_ckn = check_mka_participants(supp_container, SUPPLICANT, verbose=verbose)
 
     if auth_ckn != supp_ckn:
         raise MacsecCheckError(
@@ -165,8 +171,18 @@ def run_macsec_checks(
 
     print()
     print_device("inter-switch")
-    probe_inter_switch_ping(auth_container, AUTHENTICATOR, INTER_SWITCH_PEER[AUTHENTICATOR])
-    probe_inter_switch_ping(supp_container, SUPPLICANT, INTER_SWITCH_PEER[SUPPLICANT])
+    probe_inter_switch_ping(
+        auth_container,
+        AUTHENTICATOR,
+        INTER_SWITCH_PEER[AUTHENTICATOR],
+        verbose=verbose,
+    )
+    probe_inter_switch_ping(
+        supp_container,
+        SUPPLICANT,
+        INTER_SWITCH_PEER[SUPPLICANT],
+        verbose=verbose,
+    )
 
     scope = "live checks only" if skip_config else "[config] and [live] checks"
     print(f"\nMACsec: OK — all {scope} passed (802.1X EAP-TLS, MKA, encrypted traffic)")
@@ -183,13 +199,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip EOS running-config checks (live state only)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Echo commands and print full output (also enabled by VERBOSE=1)",
+    )
     args = parser.parse_args(argv)
+    verbose = args.verbose or os.environ.get("VERBOSE") == "1"
 
     try:
         run_macsec_checks(
             clab_name=args.clab_name,
             mgmt_subnet=args.mgmt_subnet,
             skip_config=args.skip_config,
+            verbose=verbose,
         )
     except (MacsecCheckError, subprocess.CalledProcessError) as exc:
         print(f"\nMACsec: FAIL — {exc}", file=sys.stderr)

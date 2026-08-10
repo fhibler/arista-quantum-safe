@@ -6,15 +6,15 @@ Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link
 
 ## Overview
 
-Five Containerlab nodes exercise management-plane RADIUS authentication, L3 host routing, and switch-to-switch MACsec:
+Five Containerlab nodes exercise management-plane RADIUS authentication, L3 host routing, and switch-to-switch MACsec. Two ETSI QKD 014 KME simulators on the mgmt network form a linked pair; RADIUS is the SAE client for `kme-a` only:
 
 | Node | Role |
 |------|------|
 | ceos1, ceos2 | Arista cEOS switches — MGMT VRF, RadSec client, **ceos1 dot1x authenticator / ceos2 EAP-TLS supplicant** on Ethernet1 |
 | host1, host2 | Alpine 3.20 hosts on routed data segments |
-| radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
-
-QKD integration is not included in this lab.
+| radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network; SAE client to `kme-a` |
+| kme-a | [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) KME (HTTPS 8010, RADIUS + peer) — see [docs/kme.md](docs/kme.md) |
+| kme-b | Peer KME (HTTPS 8020, linked to `kme-a` via `OTHER_KMES`) — see [docs/kme.md](docs/kme.md) |
 
 ## Prerequisites
 
@@ -165,7 +165,7 @@ Full contract: [docs/topology.md](docs/topology.md).
 
 | # | Check | Command |
 |---|-------|---------|
-| 1 | All nodes up | `make inspect` → 5× running |
+| 1 | All nodes up | `make inspect` → 7× running |
 | 2 | ceos1 → radius | ping in MGMT VRF |
 | 3 | ceos2 → radius | ping in MGMT VRF |
 | 4 | FreeRADIUS listening | `docker logs clab-qkd-macsec-radius-radius` |

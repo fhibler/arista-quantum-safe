@@ -55,7 +55,7 @@ RUN ./configure --prefix=/opt/freeradius \
 
 FROM alpine:${ALPINE_VERSION}
 
-RUN apk add --no-cache talloc pcre libcurl json-c tzdata
+RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl
 
 COPY --from=openssl-build /opt/openssl /opt/openssl
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius

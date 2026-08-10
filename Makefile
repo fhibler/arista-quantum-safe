@@ -12,16 +12,25 @@ CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key)
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem)
 RADIUS_IMAGE  := qkd-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
+KME_IMAGE     := qkd-kme:latest
+KME_DOCKERFILE := docker/kme/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+VERBOSE       ?=
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
+MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-a'])")
+MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
+KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID; print(KME_SAE_ID)")
+
+LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-radius deploy destroy redeploy \
-        inspect graph ssh-ceos1 ssh-ceos2 test-radius test-pqc test-macsec test-hosts
+        download-ceos download-ceos-help build-radius build-kme deploy destroy redeploy \
+        inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -181,7 +190,18 @@ test-radius-image: ## Verify qkd-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 P
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-deploy: gen-topo build-radius check-ceos-image ## Deploy lab (gen-topo → build-radius → check-ceos-image → clab deploy)
+build-kme: $(GEN_CONFIGS) ## Build qkd-kme:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
+	@$(MAKE) --no-print-directory test-kme-image
+
+test-kme-image: ## Verify qkd-kme:latest (ETSI QKD 014 simulator)
+	@set -euo pipefail; \
+	docker run --rm --entrypoint python3 $(KME_IMAGE) -c "from server.app import App; import flask; print('import ok')"; \
+	echo "KME:        next-door-key-simulator import OK"; \
+	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
+	echo "KME:        entrypoint present"
+
+deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (gen-topo → build images → check-ceos-image → clab deploy)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
 
 destroy: ## Destroy lab and cleanup runtime artifacts
@@ -201,33 +221,27 @@ ssh-ceos1: ## Open cEOS CLI on ceos1
 ssh-ceos2: ## Open cEOS CLI on ceos2
 	docker exec -it clab-$(CLAB_NAME)-ceos2 Cli
 
-test-radius: ## RadSec auth test from both switches (requires deployed lab)
-	@set -euo pipefail; \
-	docker exec clab-$(CLAB_NAME)-radius netstat -ltn | grep -q ':2083'; \
-	for node in ceos1 ceos2; do \
-		printf 'enable\nping vrf MGMT $(MGMT_IP_RADIUS) repeat 3\n' \
-			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
-			| grep -q '0% packet loss'; \
-		printf 'enable\nshow management security ssl profile RADSEC\n' \
-			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
-			| grep -q 'valid'; \
-		printf 'enable\nshow management security ssl profile RADSEC detail\n' \
-			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
-			| grep -q 'X25519MLKEM768'; \
-		printf 'enable\nshow running-config | section radius\n' \
-			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
-			| grep -q 'tls ssl-profile RADSEC'; \
-		printf 'enable\ntest aaa group RADIUS server $(MGMT_IP_RADIUS) tls port 2083 vrf MGMT\n' \
-			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
-			| grep -q 'successfully authenticated'; \
-	done
+test-lab: ## All live lab checks (requires deployed lab; use VERBOSE=1 for command echo)
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-pqc
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
+	@echo "All lab checks passed."
 
-test-pqc: ## TLS 1.3 + PQC: per-node [config] and [live] checks (requires deployed lab)
-	@$(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)'
+test-radius: ## RadSec auth test from both switches (requires deployed lab; VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section radius
 
-test-macsec: ## Dynamic MACsec: 802.1X EAP-TLS + MKA on inter-switch link (requires deployed lab)
-	@$(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)'
+test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section kme
 
-test-hosts: ## host1 ping host2 across routed segments
-	@set -euo pipefail; \
-	docker exec clab-$(CLAB_NAME)-host1 ping -c3 10.0.2.1
+test-pqc: ## TLS 1.3 + PQC checks (requires deployed lab; VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-hosts: ## host1 ping host2 across routed segments (VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section hosts

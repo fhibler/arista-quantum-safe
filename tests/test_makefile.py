@@ -52,6 +52,7 @@ def test_makefile_exists() -> None:
         "download-ceos",
         "download-ceos-help",
         "build-radius",
+        "build-kme",
         "deploy",
         "destroy",
         "redeploy",
@@ -59,7 +60,9 @@ def test_makefile_exists() -> None:
         "graph",
         "ssh-ceos1",
         "ssh-ceos2",
+        "test-lab",
         "test-radius",
+        "test-kme",
         "test-pqc",
         "test-hosts",
     ],
@@ -244,15 +247,13 @@ def test_makefile_defines_mgmt_subnet() -> None:
     assert "prepare-mgmt-net" not in content
 
 
-def test_test_radius_recipe_uses_ceos_cli_enable_and_repeat() -> None:
+def test_test_radius_recipe_delegates_to_test_lab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "test-radius:" in content
-    assert "printf 'enable\\nping vrf MGMT" in content
-    assert "repeat 3" in content
-    assert "successfully authenticated" in content
-    assert "Cli -c \"ping vrf MGMT" not in content
-    assert "count 3" not in content
-    assert "ssl profile EAPI" not in content.split("test-radius:")[1].split("test-pqc:")[0]
+    radius = content.split("test-radius:")[1].split("test-kme:")[0]
+    assert "$(LAB_TEST)" in radius
+    assert "--section radius" in radius
+    assert "VERBOSE" in radius
 
 
 def test_test_pqc_recipe_delegates_to_python_module() -> None:

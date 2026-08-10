@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 
+from lab.gen_kme_pki import generate_kme_pki
 from lab.gen_pki import generate_radsec_pki
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
@@ -37,6 +38,8 @@ def build_substitutions(*, ceos_image: str, mgmt_subnet: str) -> dict[str, str]:
         "MGMT_IP_HOST1": ips["host1"],
         "MGMT_IP_HOST2": ips["host2"],
         "MGMT_IP_RADIUS": ips["radius"],
+        "MGMT_IP_KME_A": ips["kme-a"],
+        "MGMT_IP_KME_B": ips["kme-b"],
         "RADIUS_SERVER_IP": ips["radius"],
     }
 
@@ -95,6 +98,7 @@ def render_lab(
         ceos_hosts={"ceos1": "ceos1", "ceos2": "ceos2"},
         ceos_mgmt_ips={"ceos1": ips["ceos1"], "ceos2": ips["ceos2"]},
     )
+    generate_kme_pki(repo_root=root, kme_a_ip=ips["kme-a"], kme_b_ip=ips["kme-b"])
     return render_topology(
         repo_root=root,
         ceos_image=ceos_image,

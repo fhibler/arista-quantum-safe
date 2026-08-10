@@ -21,6 +21,8 @@ MGMT_HOST_SUFFIXES = {
     "host1": 21,
     "host2": 22,
     "radius": 50,
+    "kme-a": 51,
+    "kme-b": 52,
 }
 
 
@@ -76,6 +78,25 @@ SSH_PQC_CIPHERS = (
 )
 SSH_PQC_MACS = "hmac-sha2-256 hmac-sha2-512"
 RADIUS_SERVER_IP = MGMT_IPS["radius"]
+KME_A_SERVER_IP = MGMT_IPS["kme-a"]
+KME_B_SERVER_IP = MGMT_IPS["kme-b"]
+
+KME_IMAGE = "qkd-kme:latest"
+KME_A_PORT = 8010
+KME_B_PORT = 8020
+KME_A_ID = "9b7703f1-9b6d-403d-b850-18a1b6fd6d8f"
+KME_B_ID = "ffb23f4d-5d5b-47e5-a8c5-fe9e47d646cd"
+KME_SAE_ID = "25840139-0dd4-49ae-ba1e-b86731601803"
+KME_B_SAE_ID = "c565d5aa-8670-4446-8471-b0e53e315d2a"
+
+# Backward-compatible aliases for callers that still use the old names.
+KME_SERVER_IP = KME_A_SERVER_IP
+KME2_SERVER_IP = KME_B_SERVER_IP
+KME_PORT = KME_A_PORT
+KME2_PORT = KME_B_PORT
+KME_ID = KME_A_ID
+KME2_ID = KME_B_ID
+KME2_SAE_ID = KME_B_SAE_ID
 
 HOST_DATA_PLANE = {
     "host1": {
@@ -119,8 +140,80 @@ RADIUS_BINDS = [
     "../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro",
     "../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro",
     "../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro",
+    "../lab/.gen/kme-pki/sae.crt.pem:/etc/kme/sae.crt.pem:ro",
+    "../lab/.gen/kme-pki/sae.key.pem:/etc/kme/sae.key.pem:ro",
+    "../lab/.gen/kme-pki/ca.crt.pem:/etc/kme/ca.crt.pem:ro",
     "logs/radius:/var/log/radius",
 ]
+
+KME_BINDS = [
+    "../lab/.gen/kme-pki:/certs:ro",
+]
+
+KME_COMMON_ENV = {
+    "HOST": "0.0.0.0",
+    "DEFAULT_KEY_SIZE": "32",
+    "MAX_KEY_COUNT": "100000",
+    "MAX_KEYS_PER_REQUEST": "128",
+    "MAX_KEY_SIZE": "1024",
+    "MIN_KEY_SIZE": "32",
+    "KEY_GEN_SEC_TO_GEN": "30",
+    "CA_FILE": "/certs/ca.crt.pem",
+    "SAE_CERT": "/certs/sae.crt.pem",
+}
+
+KME_NODES: dict[str, dict[str, Any]] = {
+    "kme-a": {
+        "port": KME_A_PORT,
+        "kme_id": KME_A_ID,
+        "attached_sae_id": KME_SAE_ID,
+        "kme_cert": "/certs/kme-a.crt.pem",
+        "kme_key": "/certs/kme-a.key.pem",
+        "peer_node": "kme-b",
+        "peer_port": KME_B_PORT,
+        "radius_ip_required": True,
+    },
+    "kme-b": {
+        "port": KME_B_PORT,
+        "kme_id": KME_B_ID,
+        "attached_sae_id": KME_B_SAE_ID,
+        "kme_cert": "/certs/kme-b.crt.pem",
+        "kme_key": "/certs/kme-b.key.pem",
+        "peer_node": "kme-a",
+        "peer_port": KME_A_PORT,
+        "radius_ip_required": False,
+    },
+}
+
+KME_PKI_FILES = [
+    "ca.crt.pem",
+    "kme-a.crt.pem",
+    "kme-a.key.pem",
+    "kme-b.crt.pem",
+    "kme-b.key.pem",
+    "sae.crt.pem",
+    "sae.key.pem",
+]
+
+
+def kme_other_kmes(peer_ip: str, peer_port: int) -> str:
+    """Return OTHER_KMES URL for a peer KME on the mgmt plane."""
+    return f"https://{peer_ip}:{peer_port}"
+
+
+def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
+    """Return expected KME container env for a lab node."""
+    spec = KME_NODES[node]
+    peer = spec["peer_node"]
+    return {
+        **KME_COMMON_ENV,
+        "PORT": str(spec["port"]),
+        "KME_ID": spec["kme_id"],
+        "ATTACHED_SAE_ID": spec["attached_sae_id"],
+        "OTHER_KMES": kme_other_kmes(mgmt_ips[peer], spec["peer_port"]),
+        "KME_CERT": spec["kme_cert"],
+        "KME_KEY": spec["kme_key"],
+    }
 
 CEOS_RADSEC_PKI_EXEC = {
     "ceos1": (
@@ -183,6 +276,7 @@ CONFIG_PATHS = {
     "tls_site": REPO_ROOT / "configs" / "radius" / "raddb" / "sites-available" / "tls",
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
+    "kme_dockerfile": REPO_ROOT / "docker" / "kme" / "Dockerfile",
     "eap": REPO_ROOT / "configs" / "radius" / "raddb" / "mods-available" / "eap",
 }
 
@@ -208,6 +302,16 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
         host_path = resolve_topo_path(bind.split(":", 1)[0], topo_dir)
         if not host_path.exists():
             errors.append(f"radius bind host path missing: {host_path}")
+
+    for bind in KME_BINDS:
+        host_path = resolve_topo_path(bind.split(":", 1)[0], topo_dir)
+        if not host_path.exists():
+            errors.append(f"kme bind host path missing: {host_path}")
+
+    kme_pki_dir = root / "lab" / ".gen" / "kme-pki"
+    for name in KME_PKI_FILES:
+        if not (kme_pki_dir / name).is_file():
+            errors.append(f"missing lab/.gen/kme-pki/{name} (run make gen-topo)")
 
     for ceos, binds in CEOS_BINDS.items():
         for bind in binds:
@@ -556,6 +660,63 @@ def validate_topology(
     for expected_bind in RADIUS_BINDS:
         if expected_bind not in radius_binds:
             errors.append(f"radius must bind {expected_bind}")
+
+    kme_a_cfg = nodes.get("kme-a")
+    if kme_a_cfg is None:
+        errors.append("missing node kme-a")
+    else:
+        if kme_a_cfg.get("kind") != "linux":
+            errors.append("kme-a kind must be linux")
+        if kme_a_cfg.get("image") != KME_IMAGE:
+            errors.append(f"kme-a image must be {KME_IMAGE}")
+        if kme_a_cfg.get("mgmt-ipv4") != expected_mgmt_ips["kme-a"]:
+            errors.append(f"kme-a mgmt-ipv4 must be {expected_mgmt_ips['kme-a']}")
+        kme_a_binds = kme_a_cfg.get("binds", [])
+        for expected_bind in KME_BINDS:
+            if expected_bind not in kme_a_binds:
+                errors.append(f"kme-a must bind {expected_bind}")
+        kme_a_env = kme_a_cfg.get("env", {})
+        for key, value in kme_env_for_node("kme-a", mgmt_ips=expected_mgmt_ips).items():
+            if str(kme_a_env.get(key)) != value:
+                errors.append(f"kme-a env {key} must be {value!r}")
+        if str(kme_a_env.get("RADIUS_IP")) != expected_mgmt_ips["radius"]:
+            errors.append(f"kme-a env RADIUS_IP must be {expected_mgmt_ips['radius']}")
+        cap_add = kme_a_cfg.get("cap-add") or kme_a_cfg.get("cap_add") or []
+        if "NET_ADMIN" not in cap_add:
+            errors.append("kme-a must include cap-add NET_ADMIN for mgmt-plane iptables isolation")
+
+    kme_b_cfg = nodes.get("kme-b")
+    if kme_b_cfg is None:
+        errors.append("missing node kme-b")
+    else:
+        if kme_b_cfg.get("kind") != "linux":
+            errors.append("kme-b kind must be linux")
+        if kme_b_cfg.get("image") != KME_IMAGE:
+            errors.append(f"kme-b image must be {KME_IMAGE}")
+        if kme_b_cfg.get("mgmt-ipv4") != expected_mgmt_ips["kme-b"]:
+            errors.append(f"kme-b mgmt-ipv4 must be {expected_mgmt_ips['kme-b']}")
+        kme_b_binds = kme_b_cfg.get("binds", [])
+        for expected_bind in KME_BINDS:
+            if expected_bind not in kme_b_binds:
+                errors.append(f"kme-b must bind {expected_bind}")
+        kme_b_env = kme_b_cfg.get("env", {})
+        for key, value in kme_env_for_node("kme-b", mgmt_ips=expected_mgmt_ips).items():
+            if str(kme_b_env.get(key)) != value:
+                errors.append(f"kme-b env {key} must be {value!r}")
+        if "RADIUS_IP" in kme_b_env:
+            errors.append("kme-b must not set RADIUS_IP (peer-only KME)")
+        cap_add = kme_b_cfg.get("cap-add") or kme_b_cfg.get("cap_add") or []
+        if "NET_ADMIN" not in cap_add:
+            errors.append("kme-b must include cap-add NET_ADMIN for mgmt-plane iptables isolation")
+
+    kme_endpoints = {
+        endpoint
+        for link in topology.get("links", [])
+        for endpoint in link.get("endpoints", [])
+        if endpoint.startswith("kme-a:") or endpoint.startswith("kme-b:")
+    }
+    if kme_endpoints:
+        errors.append(f"KME nodes must not have data-plane links (found {sorted(kme_endpoints)})")
 
     for ceos, expected_binds in CEOS_BINDS.items():
         actual_binds = nodes.get(ceos, {}).get("binds", [])

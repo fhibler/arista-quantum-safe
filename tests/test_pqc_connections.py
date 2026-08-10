@@ -65,7 +65,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
         ceos_ips={"ceos1": "172.20.127.11", "ceos2": "172.20.127.12"},
     )
 
-    def fake_docker_exec(container: str, command: str, *, input_text: str = "", check: bool = True):
+    def fake_docker_exec(container: str, command: str, *, input_text: str = "", check: bool = True, **kwargs: object):
         _ = check
         if "netstat" in command:
             return subprocess.CompletedProcess(args=[], returncode=0, stdout="tcp 0.0.0.0:2083", stderr="")
@@ -116,8 +116,25 @@ def test_run_live_checks_happy_path(capsys) -> None:
             )
         raise AssertionError(f"unexpected docker exec: {container} {command!r}")
 
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "test aaa group RADIUS" in commands:
+            return "successfully authenticated"
+        return (
+            "State: valid\n"
+            "SSL Profile: EAPI\n"
+            f"TLS key establishment group(v1.3): {PQC_GROUP}:ecdh_x25519\n"
+            "tls ssl-profile RADSEC\n"
+            "key-exchange mlkem768x25519-sha256\n"
+            "aes256-gcm@openssh.com\n"
+            "vrf MGMT\n"
+            "no shutdown\n"
+            "SSHD status for VRF MGMT: enabled\n"
+            "SSHD status for Default VRF: disabled\n"
+        )
+
     with (
         patch("lab.test_pqc_connections.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
         patch(
             "lab.test_pqc_connections.subprocess.run",
             return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),

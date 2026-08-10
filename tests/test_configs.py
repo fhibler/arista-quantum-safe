@@ -70,15 +70,23 @@ def test_radiusd_conf_logs_to_bind_mount(repo_root: Path) -> None:
     radiusd = (repo_root / "configs" / "radius" / "raddb" / "radiusd.conf").read_text(
         encoding="utf-8"
     )
+    assert "logdir = /var/log/radius" in radiusd
     assert "destination = files" in radiusd
     assert "file = /var/log/radius/radius.log" in radiusd
+    assert "auth = yes" in radiusd
 
 
-def test_authorize_accepts_lab_auth(repo_root: Path) -> None:
+def test_authorize_accepts_non_eap_and_uses_eap_module(repo_root: Path) -> None:
     authorize = (
         repo_root / "configs" / "radius" / "raddb" / "mods-config" / "files" / "authorize"
     ).read_text(encoding="utf-8")
-    assert "DEFAULT Auth-Type := Accept" in authorize
+    assert "DEFAULT Service-Type == NAS-Prompt-User, Auth-Type := Accept" in authorize
+    assert "DEFAULT Auth-Type := Accept" not in authorize
+    assert "Auth-Type := EAP" not in authorize
+    eap = (repo_root / "configs" / "radius" / "raddb" / "mods-available" / "eap").read_text(
+        encoding="utf-8"
+    )
+    assert "default_eap_type = tls" in eap
 
 
 def test_data_plane_constants_match_host_exec() -> None:

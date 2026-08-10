@@ -1,0 +1,22 @@
+# EAP-TLS for dynamic MACsec dot1x (inner TLS; RadSec outer transport is TLS 1.3 + PQC).
+eap {
+	default_eap_type = tls
+	timer_expire = 60
+	max_sessions = ${max_requests}
+
+	tls-config tls-common {
+		private_key_file = /etc/raddb/certs/radsec/server.pem
+		certificate_file = /etc/raddb/certs/radsec/server.pem
+		ca_file = /etc/raddb/certs/radsec/ca.pem
+		random_file = /dev/urandom
+		fragment_size = 1024
+		include_length = yes
+		tls_min_version = "1.3"
+		tls_max_version = "1.3"
+		ecdh_curve = ""
+	}
+
+	tls {
+		tls = tls-common
+	}
+}

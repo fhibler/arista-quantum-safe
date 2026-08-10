@@ -66,6 +66,10 @@ RADSEC_SECRET = "radsec"
 RADSEC_PORT = 2083
 SSL_PROFILE = "RADSEC"
 EAPI_SSL_PROFILE = "EAPI"
+MACSEC_PROFILE = "dynamic"
+DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
+DOT1X_EAP_SSL_PROFILE = "DOT1X"
+DOT1X_EAP_IDENTITY = "ceos2"
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
@@ -179,6 +183,7 @@ CONFIG_PATHS = {
     "tls_site": REPO_ROOT / "configs" / "radius" / "raddb" / "sites-available" / "tls",
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
+    "eap": REPO_ROOT / "configs" / "radius" / "raddb" / "mods-available" / "eap",
 }
 
 
@@ -343,6 +348,44 @@ def validate_ceos_configs(
         if not ssh_default_shutdown:
             errors.append(f"{ceos}.cfg must disable SSH on the default VRF (shutdown)")
 
+        if "dot1x system-auth-control" not in text:
+            errors.append(f"{ceos}.cfg must enable dot1x system-auth-control")
+        if f"profile {MACSEC_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define mac security profile {MACSEC_PROFILE}")
+        if "key source dot1x" not in text:
+            errors.append(f"{ceos}.cfg mac security profile must use key source dot1x")
+        if f"mac security profile {MACSEC_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet1 must apply mac security profile {MACSEC_PROFILE}")
+
+        if ceos == "ceos1":
+            if "aaa authentication dot1x default group RADIUS" not in text:
+                errors.append(f"{ceos}.cfg must authenticate dot1x via RadSec group RADIUS")
+            if "aaa accounting dot1x default start-stop group RADIUS" not in text:
+                errors.append(f"{ceos}.cfg must account dot1x via RadSec group RADIUS")
+            if "dot1x pae authenticator" not in text:
+                errors.append(f"{ceos}.cfg Ethernet1 must act as dot1x authenticator")
+            if "dot1x port-control auto" not in text:
+                errors.append(f"{ceos}.cfg Ethernet1 must use dot1x port-control auto")
+        elif ceos == "ceos2":
+            if f"supplicant profile {DOT1X_SUPPLICANT_PROFILE}" not in text:
+                errors.append(
+                    f"{ceos}.cfg must define dot1x supplicant profile {DOT1X_SUPPLICANT_PROFILE}"
+                )
+            if f"identity {DOT1X_EAP_IDENTITY}" not in text:
+                errors.append(f"{ceos}.cfg dot1x supplicant must use identity {DOT1X_EAP_IDENTITY}")
+            if "eap-method tls" not in text:
+                errors.append(f"{ceos}.cfg dot1x supplicant must use eap-method tls")
+            if f"ssl profile {DOT1X_EAP_SSL_PROFILE}" not in text:
+                errors.append(
+                    f"{ceos}.cfg dot1x supplicant must reference ssl profile {DOT1X_EAP_SSL_PROFILE}"
+                )
+            if f"ssl profile {DOT1X_EAP_SSL_PROFILE}" not in text.split("management security", 1)[-1]:
+                errors.append(f"{ceos}.cfg must define ssl profile {DOT1X_EAP_SSL_PROFILE}")
+            if f"dot1x pae supplicant {DOT1X_SUPPLICANT_PROFILE}" not in text:
+                errors.append(
+                    f"{ceos}.cfg Ethernet1 must enable dot1x supplicant {DOT1X_SUPPLICANT_PROFILE}"
+                )
+
     return errors
 
 
@@ -383,6 +426,31 @@ def validate_radius_configs(
             if "limit_proxy_state = true" not in body:
                 errors.append(f"clients-radsec.conf {ceos} must set limit_proxy_state")
 
+    eap_path = root / "configs" / "radius" / "raddb" / "mods-available" / "eap"
+    authorize_path = root / "configs" / "radius" / "raddb" / "mods-config" / "files" / "authorize"
+
+    if not eap_path.is_file():
+        errors.append("missing configs/radius/raddb/mods-available/eap")
+    else:
+        eap = eap_path.read_text(encoding="utf-8")
+        if "/etc/raddb/certs/radsec/server.pem" not in eap:
+            errors.append("eap module must reference RadSec server certificate")
+        if 'tls_min_version = "1.3"' not in eap:
+            errors.append("eap module must restrict TLS to 1.3")
+
+    if not authorize_path.is_file():
+        errors.append("missing configs/radius/raddb/mods-config/files/authorize")
+    else:
+        authorize = authorize_path.read_text(encoding="utf-8")
+        if "DEFAULT Service-Type == NAS-Prompt-User, Auth-Type := Accept" not in authorize:
+            errors.append(
+                "authorize must Accept only test aaa (NAS-Prompt-User), not dot1x EAP"
+            )
+        if "DEFAULT Auth-Type := Accept" in authorize:
+            errors.append("authorize must not blanket Accept (breaks dot1x EAP-TLS / MPPE)")
+        if "Auth-Type := EAP" in authorize:
+            errors.append("authorize must not set blanket Auth-Type EAP (use eap module in default site)")
+
     if not tls_site_path.is_file():
         errors.append("missing configs/radius/raddb/sites-available/tls")
     else:
@@ -407,8 +475,12 @@ def validate_radius_configs(
         errors.append("missing configs/radius/raddb/radiusd.conf")
     else:
         radiusd = radiusd_path.read_text(encoding="utf-8")
+        if "logdir = /var/log/radius" not in radiusd:
+            errors.append("radiusd.conf must set logdir = /var/log/radius for clab bind mount")
         if "/var/log/radius/radius.log" not in radiusd:
             errors.append("radiusd.conf must log to /var/log/radius/radius.log")
+        if "auth = yes" not in radiusd:
+            errors.append("radiusd.conf must enable auth logging (auth = yes)")
 
     if not dockerfile_path.is_file():
         errors.append("missing docker/radius/Dockerfile")
@@ -419,6 +491,15 @@ def validate_radius_configs(
             "ARG OPENSSL_VERSION=openssl-3.5.7",
             "FROM alpine:${ALPINE_VERSION} AS openssl-build",
             "openssl-pqc.cnf",
+            "mods-available/eap",
+            "mods-enabled/eap",
+            "logdir = /var/log/radius",
+            "auth = yes",
+            "auth_log",
+            "updated = return",
+            "radius-detail.log",
+            "policy.d/macsec-dot1x",
+            "macsec-dot1x",
             "sites-enabled/tls",
             "clients-radsec.conf",
         ):

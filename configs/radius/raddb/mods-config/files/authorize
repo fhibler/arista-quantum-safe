@@ -1,2 +1,4 @@
-# Lab: accept all Access-Requests for EOS connectivity testing (Scope B).
-DEFAULT Auth-Type := Accept
+# test aaa (RadSec probe) only — matches Service-Type NAS-Prompt-User, not dot1x.
+# dot1x EAP-TLS must stay on the eap module path so Access-Accept carries MPPE keys
+# (MSK) for the authenticator to derive MACsec CAK/CKN.
+DEFAULT Service-Type == NAS-Prompt-User, Auth-Type := Accept

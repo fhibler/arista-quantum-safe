@@ -1,0 +1,10 @@
+# Dynamic MACsec (802.1X-2020): the authenticator derives CAK/CKN from the EAP MSK
+# and EAP-Key-Name. FreeRADIUS stores the session id in EAP-Session-Id; copy it to
+# EAP-Key-Name on Access-Accept (see stock sites-available/default post-auth comments).
+macsec-dot1x {
+	if (&reply:EAP-Session-Id) {
+		update reply {
+			EAP-Key-Name := &reply:EAP-Session-Id
+		}
+	}
+}

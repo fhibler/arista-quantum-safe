@@ -2,6 +2,8 @@ hostname ceos1
 no aaa root
 !
 aaa authentication policy local allow-nopassword-remote-login
+aaa authentication dot1x default group RADIUS
+aaa accounting dot1x default start-stop group RADIUS
 aaa authorization exec default local
 username admin nopassword role network-admin privilege 15
 !
@@ -19,6 +21,9 @@ interface Management0
 interface Ethernet1
    no switchport
    ip address 10.255.0.1/30
+   mac security profile dynamic
+   dot1x pae authenticator
+   dot1x port-control auto
 !
 interface Ethernet2
    no switchport
@@ -73,5 +78,11 @@ radius-server host ${RADIUS_SERVER_IP} vrf MGMT tls ssl-profile RADSEC
 !
 aaa group server radius RADIUS
    server ${RADIUS_SERVER_IP} tls vrf MGMT
+!
+dot1x system-auth-control
+!
+mac security
+   profile dynamic
+      key source dot1x
 !
 end

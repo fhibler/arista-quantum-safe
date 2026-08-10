@@ -65,17 +65,28 @@ ENV LD_LIBRARY_PATH=/opt/openssl/lib
 ENV OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf
 
 RUN ln -sf /opt/freeradius/etc/raddb /etc/raddb \
- && mkdir -p /etc/raddb/certs/radsec \
- && ln -sf ../sites-available/tls /etc/raddb/sites-enabled/tls
+ && mkdir -p /etc/raddb/certs/radsec /var/log/radius \
+ && ln -sf ../sites-available/tls /etc/raddb/sites-enabled/tls \
+ && ln -sf ../mods-available/eap /etc/raddb/mods-enabled/eap \
+ && sed -i 's/^#[[:space:]]*updated = return[[:space:]]*$/updated = return/' /etc/raddb/sites-enabled/default \
+ && sed -i 's|^logdir = ${localstatedir}/log/radius|logdir = /var/log/radius|' /etc/raddb/radiusd.conf \
+ && sed -i 's/^\tauth = no/\tauth = yes/' /etc/raddb/radiusd.conf \
+ && sed -i 's/^\tauth_goodpass = no/\tauth_goodpass = yes/' /etc/raddb/radiusd.conf \
+ && sed -i 's/^\tauth_badpass = no/\tauth_badpass = yes/' /etc/raddb/radiusd.conf \
+ && sed -i 's/^#[[:space:]]*auth_log[[:space:]]*$/auth_log/' /etc/raddb/sites-enabled/default \
+ && sed -i 's|filename = \${radacctdir}/%{%{Packet-Src-IP-Address}:-%{Packet-Src-IPv6-Address}}/auth-detail-%Y%m%d|filename = /var/log/radius/radius-detail.log|' /etc/raddb/mods-enabled/detail.log
 
 COPY docker/radius/openssl-pqc.cnf /etc/raddb/openssl-pqc.cnf
+COPY configs/radius/raddb/mods-available/eap /etc/raddb/mods-available/eap
 COPY configs/radius/raddb/sites-available/tls /etc/raddb/sites-available/tls
 COPY lab/.gen/pki/server.pem /etc/raddb/certs/radsec/server.pem
 COPY lab/.gen/pki/ca.pem /etc/raddb/certs/radsec/ca.pem
 COPY lab/.gen/clients.conf /etc/raddb/clients.conf
 COPY lab/.gen/clients-radsec.conf /etc/raddb/clients-radsec.conf
 COPY configs/radius/raddb/radiusd.conf /etc/raddb/radiusd-log.conf
+COPY configs/radius/raddb/policy.d/macsec-dot1x /etc/raddb/policy.d/macsec-dot1x
 COPY configs/radius/raddb/mods-config/files/authorize /etc/raddb/mods-config/files/authorize
+RUN sed -i '/^\tremove_reply_message_if_eap$/i\\tmacsec-dot1x' /etc/raddb/sites-enabled/default
 RUN printf '\n$INCLUDE radiusd-log.conf\n' >> /etc/raddb/radiusd.conf
 
 CMD ["radiusd", "-f"]

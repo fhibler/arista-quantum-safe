@@ -11,9 +11,11 @@ from lab.test_macsec import (
     AUTHENTICATOR,
     DOT1X_EAP_IDENTITY,
     MacsecCheckError,
+    check_dot1x_reauth_cycle,
     extract_ckn,
     run_macsec_checks,
 )
+from lab.topology_contract import DOT1X_REAUTH_PERIOD_SEC
 
 
 def test_extract_ckn_parses_hex_value() -> None:
@@ -68,7 +70,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
             return (
                 "dot1x pae authenticator\n"
                 "dot1x reauthentication\n"
-                "dot1x timeout reauth-period 60\n"
+                f"dot1x timeout reauth-period {DOT1X_REAUTH_PERIOD_SEC}\n"
                 "dot1x pae supplicant macsec-sp\n"
                 "mac security profile dynamic"
             )
@@ -107,3 +109,93 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
     with patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
             run_macsec_checks(clab_name="qkd-macsec-radius", mgmt_subnet="172.20.127.0/24", skip_config=True)
+
+
+def test_check_dot1x_reauth_cycle_happy_path() -> None:
+    participants = (
+        "Interface: Ethernet1\n"
+        "    CKN: abcdef0123456789\n"
+        "      Success: True\n"
+        '      Live peer list: ["peer1"]'
+    )
+    login_ok_counts = iter([2, 3])
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "show dot1x hosts" in commands:
+            return f"{DOT1X_EAP_IDENTITY} SUCCESS"
+        if "show dot1x interface" in commands:
+            return "Port status: Authorized"
+        if "show dot1x supplicant" in commands:
+            return (
+                f"Identity: {DOT1X_EAP_IDENTITY}\n"
+                "Status: success\n"
+                "EAP method: tls\n"
+                "SSL profile: DOT1X\n"
+                "TLS key establishment group: X25519MLKEM768"
+            )
+        if "show mac security participants" in commands:
+            return participants
+        raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
+
+    def fake_docker_exec(container: str, command: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert "Login OK" in command
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=str(next(login_ok_counts)), stderr="")
+
+    targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
+
+    with (
+        patch("lab.test_macsec.time.sleep") as sleep,
+        patch("lab.test_macsec.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+    ):
+        check_dot1x_reauth_cycle(
+            targets,
+            "clab-test-ceos1",
+            "clab-test-ceos2",
+            "abcdef0123456789",
+        )
+        sleep.assert_called_once_with(DOT1X_REAUTH_PERIOD_SEC + 15)
+
+
+def test_check_dot1x_reauth_cycle_raises_when_login_ok_unchanged() -> None:
+    participants = (
+        "Interface: Ethernet1\n"
+        "    CKN: abcdef0123456789\n"
+        "      Success: True\n"
+        '      Live peer list: ["peer1"]'
+    )
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "show dot1x hosts" in commands:
+            return f"{DOT1X_EAP_IDENTITY} SUCCESS"
+        if "show dot1x interface" in commands:
+            return "Port status: Authorized"
+        if "show dot1x supplicant" in commands:
+            return (
+                f"Identity: {DOT1X_EAP_IDENTITY}\n"
+                "Status: success\n"
+                "EAP method: tls\n"
+                "SSL profile: DOT1X\n"
+                "TLS key establishment group: X25519MLKEM768"
+            )
+        if "show mac security participants" in commands:
+            return participants
+        raise AssertionError(commands)
+
+    def fake_docker_exec(_container: str, _command: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="1", stderr="")
+
+    targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
+
+    with (
+        patch("lab.test_macsec.time.sleep"),
+        patch("lab.test_macsec.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+    ):
+        with pytest.raises(MacsecCheckError, match="expected additional RADIUS Login OK"):
+            check_dot1x_reauth_cycle(
+                targets,
+                "clab-test-ceos1",
+                "clab-test-ceos2",
+                "abcdef0123456789",
+            )

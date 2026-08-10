@@ -18,7 +18,7 @@ from tests.scaffold_contract import REPO_ROOT
 GEN_TOPO = REPO_ROOT / "lab" / ".gen.qkd-macsec-radius.clab.yml"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def generated_topology() -> Path:
     subprocess.run(["make", "gen-topo"], cwd=REPO_ROOT, check=True, capture_output=True, text=True)
     assert GEN_TOPO.is_file(), "make gen-topo did not produce generated topology"

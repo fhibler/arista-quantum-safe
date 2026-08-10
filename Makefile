@@ -30,7 +30,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-kme deploy-kme-radius wait-kme-pool deploy destroy redeploy \
-        inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-hosts
+        inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -252,7 +252,11 @@ test-pqc: ## TLS 1.3 + PQC checks (requires deployed lab; VERBOSE=1 for full out
 
 test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full output)
 	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
+		$(if $(filter 1,$(VERBOSE)),--verbose,) \
+		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
+
+test-macsec-reauth: ## MACsec + periodic 802.1X reauth wait (~75s; requires deployed lab)
+	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec
 
 test-hosts: ## host1 ping host2 across routed segments (VERBOSE=1 for full output)
 	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section hosts

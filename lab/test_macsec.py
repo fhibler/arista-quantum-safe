@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
@@ -16,7 +17,7 @@ from lab.topology_contract import (
     DOT1X_SUPPLICANT_PROFILE,
     MACSEC_PROFILE,
 )
-from lab.test_pqc_connections import LabTargets, assert_contains, ceos_cli
+from lab.test_pqc_connections import LabTargets, assert_contains, ceos_cli, docker_exec
 
 MACSEC_INTERFACE = "Ethernet1"
 AUTHENTICATOR = "ceos1"
@@ -26,6 +27,7 @@ INTER_SWITCH_PEER = {
     AUTHENTICATOR: CEOS_DATA_PLANE[SUPPLICANT]["eth1"].split("/")[0],
     SUPPLICANT: CEOS_DATA_PLANE[AUTHENTICATOR]["eth1"].split("/")[0],
 }
+REAUTH_WAIT_BUFFER_SEC = 15
 
 
 class MacsecCheckError(RuntimeError):
@@ -127,6 +129,54 @@ def check_mka_participants(container: str, node: str, *, verbose: bool | None = 
     return ckn
 
 
+def count_radius_login_ok(radius_container: str, *, verbose: bool | None = None) -> int:
+    result = docker_exec(
+        radius_container,
+        "grep -c 'Auth: Login OK' /var/log/radius/radius.log 2>/dev/null || true",
+        check=False,
+        verbose=verbose,
+        title=f"{radius_container} Login OK count",
+    )
+    return int(result.stdout.strip() or 0)
+
+
+def check_dot1x_reauth_cycle(
+    targets: LabTargets,
+    auth_container: str,
+    supp_container: str,
+    baseline_ckn: str,
+    *,
+    verbose: bool | None = None,
+) -> None:
+    wait_sec = DOT1X_REAUTH_PERIOD_SEC + REAUTH_WAIT_BUFFER_SEC
+    baseline_ok = count_radius_login_ok(targets.radius_container, verbose=verbose)
+
+    print(f"\n=== reauth (waiting {wait_sec}s for periodic 802.1X reauthentication) ===")
+    time.sleep(wait_sec)
+
+    check_authenticator_dot1x(auth_container, verbose=verbose)
+    check_supplicant_dot1x(supp_container, verbose=verbose)
+
+    auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR, verbose=verbose)
+    supp_ckn = check_mka_participants(supp_container, SUPPLICANT, verbose=verbose)
+    if auth_ckn != baseline_ckn or supp_ckn != baseline_ckn:
+        raise MacsecCheckError(
+            f"CKN changed after reauth: baseline={baseline_ckn!r}, "
+            f"{AUTHENTICATOR}={auth_ckn!r}, {SUPPLICANT}={supp_ckn!r}"
+        )
+
+    after_ok = count_radius_login_ok(targets.radius_container, verbose=verbose)
+    if after_ok <= baseline_ok:
+        raise MacsecCheckError(
+            f"expected additional RADIUS Login OK after {wait_sec}s reauth wait "
+            f"(baseline {baseline_ok}, after {after_ok})"
+        )
+    report_live(
+        f"802.1X reauth cycle OK — port Authorized, CKN stable ({baseline_ckn}), "
+        f"RADIUS Login OK count {baseline_ok} → {after_ok}"
+    )
+
+
 def probe_inter_switch_ping(container: str, node: str, peer_ip: str, *, verbose: bool | None = None) -> None:
     output = ceos_cli(container, f"enable\nping {peer_ip} repeat 3\n", verbose=verbose)
     if "0% packet loss" not in output and "Success rate is 100 percent" not in output:
@@ -139,6 +189,7 @@ def run_macsec_checks(
     clab_name: str,
     mgmt_subnet: str,
     skip_config: bool = False,
+    verify_reauth: bool = False,
     verbose: bool | None = None,
 ) -> None:
     from lab.topology_contract import mgmt_ips_for_subnet
@@ -192,8 +243,19 @@ def run_macsec_checks(
         verbose=verbose,
     )
 
+    if verify_reauth:
+        check_dot1x_reauth_cycle(
+            targets,
+            auth_container,
+            supp_container,
+            auth_ckn,
+            verbose=verbose,
+        )
+
+    checks = "[config] and [live] checks" if not skip_config else "live checks only"
+    reauth_note = ", reauth cycle" if verify_reauth else ""
     print(
-        f"\nMACsec: OK — all {'live checks only' if skip_config else '[config] and [live] checks'} "
+        f"\nMACsec: OK — all {checks}{reauth_note} "
         "passed (802.1X EAP-TLS, MKA, encrypted traffic)"
     )
 
@@ -210,18 +272,28 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip EOS running-config checks (live state only)",
     )
     parser.add_argument(
+        "--verify-reauth",
+        action="store_true",
+        help=(
+            "After baseline checks, wait for periodic 802.1X reauth and verify "
+            "Authorized state, stable CKN, and RADIUS Login OK (also VERIFY_REAUTH=1)"
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Echo commands and print full output (also enabled by VERBOSE=1)",
     )
     args = parser.parse_args(argv)
     verbose = args.verbose or os.environ.get("VERBOSE") == "1"
+    verify_reauth = args.verify_reauth or os.environ.get("VERIFY_REAUTH") == "1"
 
     try:
         run_macsec_checks(
             clab_name=args.clab_name,
             mgmt_subnet=args.mgmt_subnet,
             skip_config=args.skip_config,
+            verify_reauth=verify_reauth,
             verbose=verbose,
         )
     except (MacsecCheckError, subprocess.CalledProcessError) as exc:

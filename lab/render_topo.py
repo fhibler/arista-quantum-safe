@@ -93,6 +93,7 @@ def render_lab(
         repo_root=root,
         radius_ip=ips["radius"],
         ceos_hosts={"ceos1": "ceos1", "ceos2": "ceos2"},
+        ceos_mgmt_ips={"ceos1": ips["ceos1"], "ceos2": ips["ceos2"]},
     )
     return render_topology(
         repo_root=root,

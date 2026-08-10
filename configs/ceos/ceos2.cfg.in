@@ -39,12 +39,29 @@ management api netconf
 !
 management api http-commands
    no shutdown
+   protocol https ssl profile EAPI
    !
    vrf MGMT
       no shutdown
 !
-! RadSec PKI is installed post-boot via containerlab exec (copy is exec-only, not startup-config).
+management ssh
+   key-exchange mlkem768x25519-sha256
+   cipher aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com
+   mac hmac-sha2-256 hmac-sha2-512
+   shutdown
+   !
+   vrf MGMT
+      no shutdown
+      !
+!
+! RadSec/eAPI PKI is installed post-boot via containerlab exec (copy is exec-only, not startup-config).
 management security
+   ssl profile EAPI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos2-eapi.pem key ceos2-eapi.key
+   !
    ssl profile RADSEC
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1

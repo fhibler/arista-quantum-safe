@@ -40,6 +40,7 @@ def test_verification_doc_lists_checklist() -> None:
     content = VERIFICATION_DOC.read_text(encoding="utf-8")
     assert "make inspect" in content
     assert "make test-radius" in content
+    assert "make test-pqc" in content
     assert "make test-hosts" in content
     assert "Path C" in content
 

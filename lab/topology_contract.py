@@ -65,6 +65,12 @@ MGMT_VRF_ENV = "MGMT"
 RADSEC_SECRET = "radsec"
 RADSEC_PORT = 2083
 SSL_PROFILE = "RADSEC"
+EAPI_SSL_PROFILE = "EAPI"
+SSH_PQC_KEX = "mlkem768x25519-sha256"
+SSH_PQC_CIPHERS = (
+    "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
+)
+SSH_PQC_MACS = "hmac-sha2-256 hmac-sha2-512"
 RADIUS_SERVER_IP = MGMT_IPS["radius"]
 
 HOST_DATA_PLANE = {
@@ -116,12 +122,16 @@ CEOS_RADSEC_PKI_EXEC = {
     "ceos1": (
         'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
         'echo "copy flash:ceos1-client.pem certificate:"; '
-        'echo "copy flash:ceos1-client.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos1-client.key sslkey:"; '
+        'echo "copy flash:ceos1-eapi.pem certificate:"; '
+        'echo "copy flash:ceos1-eapi.key sslkey:"; } | Cli\''
     ),
     "ceos2": (
         'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
         'echo "copy flash:ceos2-client.pem certificate:"; '
-        'echo "copy flash:ceos2-client.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos2-client.key sslkey:"; '
+        'echo "copy flash:ceos2-eapi.pem certificate:"; '
+        'echo "copy flash:ceos2-eapi.key sslkey:"; } | Cli\''
     ),
 }
 
@@ -130,11 +140,15 @@ CEOS_BINDS = {
         "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
         "../lab/.gen/pki/ceos1-client.pem:/mnt/flash/ceos1-client.pem:ro",
         "../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro",
+        "../lab/.gen/pki/ceos1-eapi.pem:/mnt/flash/ceos1-eapi.pem:ro",
+        "../lab/.gen/pki/ceos1-eapi.key:/mnt/flash/ceos1-eapi.key:ro",
     ],
     "ceos2": [
         "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
         "../lab/.gen/pki/ceos2-client.pem:/mnt/flash/ceos2-client.pem:ro",
         "../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro",
+        "../lab/.gen/pki/ceos2-eapi.pem:/mnt/flash/ceos2-eapi.pem:ro",
+        "../lab/.gen/pki/ceos2-eapi.key:/mnt/flash/ceos2-eapi.key:ro",
     ],
 }
 
@@ -144,8 +158,12 @@ PKI_FILES = [
     "server.pem",
     "ceos1-client.pem",
     "ceos1-client.key",
+    "ceos1-eapi.pem",
+    "ceos1-eapi.key",
     "ceos2-client.pem",
     "ceos2-client.key",
+    "ceos2-eapi.pem",
+    "ceos2-eapi.key",
 ]
 
 CEOS_STARTUP_CONFIGS = {
@@ -292,10 +310,38 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must configure PQC-hybrid key establishment groups")
         if f"server {radius_ip} tls vrf MGMT" not in text:
             errors.append(f"{ceos}.cfg aaa group must use RadSec transport in MGMT VRF")
+        if f"ssl profile {EAPI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {EAPI_SSL_PROFILE}")
+        if f"protocol https ssl profile {EAPI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must enable eAPI HTTPS with ssl profile {EAPI_SSL_PROFILE}")
+        if f"certificate {ceos}-eapi.pem key {ceos}-eapi.key" not in text:
+            errors.append(f"{ceos}.cfg must reference per-switch eAPI certificate")
         if "copy flash:" in text:
             errors.append(f"{ceos}.cfg must not use copy flash in startup-config (use containerlab exec)")
         if "aaa group server radius RADIUS" not in text:
             errors.append(f"{ceos}.cfg must define aaa group server radius RADIUS")
+        if "management ssh" not in text:
+            errors.append(f"{ceos}.cfg must configure management ssh")
+        if f"key-exchange {SSH_PQC_KEX}" not in text:
+            errors.append(f"{ceos}.cfg must configure SSH PQC key exchange ({SSH_PQC_KEX})")
+        if f"cipher {SSH_PQC_CIPHERS}" not in text:
+            errors.append(f"{ceos}.cfg must configure SSH PQC ciphers")
+        if f"mac {SSH_PQC_MACS}" not in text:
+            errors.append(f"{ceos}.cfg must configure SSH PQC MAC algorithms")
+        ssh_vrf_enabled = re.search(
+            r"management ssh.*?vrf MGMT\s+no shutdown",
+            text,
+            flags=re.DOTALL,
+        )
+        if not ssh_vrf_enabled:
+            errors.append(f"{ceos}.cfg must enable SSH in vrf MGMT")
+        ssh_default_shutdown = re.search(
+            r"management ssh.*?^\s+shutdown\s*$",
+            text,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if not ssh_default_shutdown:
+            errors.append(f"{ceos}.cfg must disable SSH on the default VRF (shutdown)")
 
     return errors
 

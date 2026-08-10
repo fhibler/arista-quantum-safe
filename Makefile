@@ -11,7 +11,7 @@ CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos2-client.pem ceos2-client.key)
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key)
 RADIUS_IMAGE  := qkd-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -20,7 +20,7 @@ MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ip
 
 .PHONY: help gen-topo validate-topo test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius deploy destroy redeploy \
-        inspect graph ssh-ceos1 ssh-ceos2 test-radius test-hosts
+        inspect graph ssh-ceos1 ssh-ceos2 test-radius test-pqc test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -216,6 +216,9 @@ test-radius: ## RadSec auth test from both switches (requires deployed lab)
 			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
 			| grep -q 'successfully authenticated'; \
 	done
+
+test-pqc: ## TLS 1.3 + PQC: per-node [config] and [live] checks (requires deployed lab)
+	@$(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 test-hosts: ## host1 ping host2 across routed segments
 	@set -euo pipefail; \

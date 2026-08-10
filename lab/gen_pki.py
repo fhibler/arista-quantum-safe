@@ -19,13 +19,81 @@ def _write_ext(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _generate_eapi_server_cert(
+    *,
+    work: Path,
+    out: Path,
+    name: str,
+    mgmt_ip: str,
+    ca_crt: Path,
+    ca_key: Path,
+) -> None:
+    """Create or refresh a per-switch eAPI server cert when the mgmt IP changes."""
+    marker = work / f"{name}-eapi-san"
+    server_key = work / f"{name}-eapi.key"
+    server_csr = work / f"{name}-eapi.csr"
+    server_crt = work / f"{name}-eapi.crt"
+    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == mgmt_ip:
+        pass
+    else:
+        _run(
+            [
+                "openssl",
+                "req",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(server_key),
+                "-out",
+                str(server_csr),
+                "-subj",
+                f"/CN={name}/O=Lab/C=US",
+            ]
+        )
+        server_ext = work / f"{name}-eapi.ext"
+        _write_ext(
+            server_ext,
+            [
+                f"subjectAltName = IP:{mgmt_ip},DNS:{name},DNS:clab-qkd-macsec-radius-{name}",
+                "extendedKeyUsage = serverAuth",
+                "keyUsage = digitalSignature,keyEncipherment",
+            ],
+        )
+        _run(
+            [
+                "openssl",
+                "x509",
+                "-req",
+                "-in",
+                str(server_csr),
+                "-CA",
+                str(ca_crt),
+                "-CAkey",
+                str(ca_key),
+                "-CAcreateserial",
+                "-out",
+                str(server_crt),
+                "-days",
+                str(CERT_DAYS),
+                "-extfile",
+                str(server_ext),
+            ]
+        )
+        marker.write_text(f"{mgmt_ip}\n", encoding="utf-8")
+
+    (out / f"{name}-eapi.pem").write_bytes(server_crt.read_bytes())
+    (out / f"{name}-eapi.key").write_bytes(server_key.read_bytes())
+
+
 def generate_radsec_pki(
     *,
     repo_root: Path | None = None,
     radius_ip: str,
     ceos_hosts: dict[str, str] | None = None,
+    ceos_mgmt_ips: dict[str, str] | None = None,
 ) -> Path:
-    """Create CA, server, and per-switch client certificates under lab/.gen/pki/."""
+    """Create CA, server, and per-switch client/eAPI certificates under lab/.gen/pki/."""
     root = repo_root or REPO_ROOT
     out = root / "lab" / ".gen" / "pki"
     work = out / ".work"
@@ -166,5 +234,16 @@ def generate_radsec_pki(
     for name in hosts:
         (out / f"{name}-client.pem").write_bytes((work / f"{name}-client.crt").read_bytes())
         (out / f"{name}-client.key").write_bytes((work / f"{name}-client.key").read_bytes())
+
+    mgmt_ips = ceos_mgmt_ips or {}
+    for name, mgmt_ip in mgmt_ips.items():
+        _generate_eapi_server_cert(
+            work=work,
+            out=out,
+            name=name,
+            mgmt_ip=mgmt_ip,
+            ca_crt=ca_crt,
+            ca_key=ca_key,
+        )
 
     return out

@@ -20,8 +20,10 @@ topology:
         - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
         - ../lab/.gen/pki/ceos1-client.pem:/mnt/flash/ceos1-client.pem:ro
         - ../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro
+        - ../lab/.gen/pki/ceos1-eapi.pem:/mnt/flash/ceos1-eapi.pem:ro
+        - ../lab/.gen/pki/ceos1-eapi.key:/mnt/flash/ceos1-eapi.key:ro
       exec:
-        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-client.pem certificate:"; echo "copy flash:ceos1-client.key sslkey:"; } | Cli'
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-client.pem certificate:"; echo "copy flash:ceos1-client.key sslkey:"; echo "copy flash:ceos1-eapi.pem certificate:"; echo "copy flash:ceos1-eapi.key sslkey:"; } | Cli'
     ceos2:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS2}
@@ -30,8 +32,10 @@ topology:
         - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
         - ../lab/.gen/pki/ceos2-client.pem:/mnt/flash/ceos2-client.pem:ro
         - ../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro
+        - ../lab/.gen/pki/ceos2-eapi.pem:/mnt/flash/ceos2-eapi.pem:ro
+        - ../lab/.gen/pki/ceos2-eapi.key:/mnt/flash/ceos2-eapi.key:ro
       exec:
-        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-client.pem certificate:"; echo "copy flash:ceos2-client.key sslkey:"; } | Cli'
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-client.pem certificate:"; echo "copy flash:ceos2-client.key sslkey:"; echo "copy flash:ceos2-eapi.pem certificate:"; echo "copy flash:ceos2-eapi.key sslkey:"; } | Cli'
     host1:
       kind: linux
       image: alpine:3.20

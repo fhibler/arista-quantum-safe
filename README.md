@@ -99,6 +99,7 @@ Lab policy (`DEFAULT Auth-Type := Accept`) is baked into the image. Config bind 
 make deploy
 make inspect
 make test-radius
+make test-pqc
 make test-hosts
 make destroy
 ```
@@ -168,7 +169,8 @@ Full contract: [docs/topology.md](docs/topology.md).
 | 3 | ceos2 → radius | ping in MGMT VRF |
 | 4 | FreeRADIUS listening | `docker logs clab-qkd-macsec-radius-radius` |
 | 5 | RADIUS auth | `make test-radius` |
-| 6 | Host routing | `make test-hosts` |
+| 6 | TLS 1.3 PQC (eAPI + RadSec + SSH) | `make test-pqc` |
+| 7 | Host routing | `make test-hosts` |
 
 Details and troubleshooting: [docs/verification.md](docs/verification.md).
 

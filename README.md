@@ -197,6 +197,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | No mgmt connectivity | Confirm gateway `<subnet>.1` in rendered `lab/.gen/ceos*.cfg` — see [docs/verification.md](docs/verification.md#mgmt-gateway) |
 | RADIUS issues | Check `lab/logs/radius/radius.log` and container logs |
 | Host ping fails | Verify L3 addresses and static routes in [docs/topology.md](docs/topology.md) |
+| Reset lab host to clean slate | `make clean` — see [docs/verification.md](docs/verification.md#full-reset) |
 
 ## Configuration
 

@@ -11,6 +11,7 @@ CEOS_DOWNLOAD_DIR ?= download
 CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
+CLAB_MGMT_NETWORK := qkd-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
 GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg lab/.gen/kme-radius.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos1-gnmi.pem ceos1-gnmi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key ceos2-gnmi.pem ceos2-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
 RADIUS_IMAGE  := qkd-radius:latest
@@ -30,7 +31,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-kme deploy-kme-radius wait-kme-pool deploy destroy redeploy \
-        inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
+        clean inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -217,6 +218,52 @@ deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (KME/RADI
 
 destroy: ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
+
+clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker images
+	@set -uo pipefail; \
+	echo "=== Destroying lab (if deployed) ==="; \
+	if [ -f "$(CLAB_TOPO_GEN)" ]; then \
+		containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup 2>/dev/null || true; \
+	fi; \
+	if command -v docker >/dev/null 2>&1; then \
+		ids=$$(docker ps -aq --filter "name=clab-$(CLAB_NAME)-" 2>/dev/null || true); \
+		if [ -n "$$ids" ]; then \
+			echo "Removing leftover clab-$(CLAB_NAME)-* containers"; \
+			docker rm -f $$ids 2>/dev/null || true; \
+		fi; \
+		if docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
+			echo "Removing Docker network $(CLAB_MGMT_NETWORK)"; \
+			docker network rm "$(CLAB_MGMT_NETWORK)" 2>/dev/null || true; \
+		fi; \
+	fi; \
+	echo "=== Removing generated topology, PKI, and Containerlab state ==="; \
+	rm -rf lab/.gen lab/.gen.* lab/.ceos-monitor lab/clab-* clab-*; \
+	echo "=== Cleaning lab logs ==="; \
+	find lab/logs/radius -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
+	echo "=== Removing download tarballs ==="; \
+	rm -rf "$(CEOS_DOWNLOAD_DIR)"; \
+	echo "=== Removing Python virtualenv and test caches ==="; \
+	rm -rf .venv .pytest_cache; \
+	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true; \
+	echo "=== Removing tmp/ workspace ==="; \
+	rm -rf tmp; \
+	echo "=== Removing local secrets ==="; \
+	rm -f .env; \
+	if command -v docker >/dev/null 2>&1; then \
+		echo "=== Removing Docker images ==="; \
+		for repo in qkd-radius qkd-kme; do \
+			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
+			for tag in $$tags; do \
+				echo "  rmi $$tag"; \
+				docker rmi "$$tag" 2>/dev/null || true; \
+			done; \
+		done; \
+		if docker image inspect "$(CEOS_IMAGE)" >/dev/null 2>&1; then \
+			echo "  rmi $(CEOS_IMAGE)"; \
+			docker rmi "$(CEOS_IMAGE)" 2>/dev/null || true; \
+		fi; \
+	fi; \
+	echo "=== Clean complete ==="
 
 redeploy: destroy deploy ## Destroy then deploy
 

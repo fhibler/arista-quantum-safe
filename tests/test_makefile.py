@@ -57,6 +57,7 @@ def test_makefile_exists() -> None:
         "wait-kme-pool",
         "deploy",
         "destroy",
+        "clean",
         "redeploy",
         "inspect",
         "graph",
@@ -271,3 +272,19 @@ def test_test_macsec_recipe_delegates_to_python_module() -> None:
     assert "test-macsec:" in content
     macsec = content.split("test-macsec:")[1].split("test-hosts:")[0]
     assert "lab.test_macsec" in macsec
+
+
+def test_clean_recipe_removes_artifacts_and_images() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    clean = content.split("clean:")[1].split("redeploy:")[0]
+    assert "containerlab destroy" in clean
+    assert "rm -rf lab/.gen lab/.gen.*" in clean
+    assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' in clean
+    assert "rm -rf .venv .pytest_cache" in clean
+    assert "docker images" in clean
+    assert "qkd-radius" in clean
+    assert "qkd-kme" in clean
+    assert "docker rmi" in clean
+    assert "rm -f .env" in clean
+    assert "CLAB_MGMT_NETWORK" in clean
+    assert "docker network rm" in clean

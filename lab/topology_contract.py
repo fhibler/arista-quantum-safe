@@ -80,6 +80,7 @@ MACSEC_PROFILE = "dynamic"
 DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
 DOT1X_EAP_SSL_PROFILE = "DOT1X"
 DOT1X_EAP_IDENTITY = "ceos2"
+DOT1X_REAUTH_PERIOD_SEC = 60
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
@@ -537,6 +538,13 @@ def validate_ceos_configs(
                 errors.append(f"{ceos}.cfg Ethernet1 must act as dot1x authenticator")
             if "dot1x port-control auto" not in text:
                 errors.append(f"{ceos}.cfg Ethernet1 must use dot1x port-control auto")
+            if "dot1x reauthentication" not in text:
+                errors.append(f"{ceos}.cfg Ethernet1 must enable dot1x reauthentication")
+            if f"dot1x timeout reauth-period {DOT1X_REAUTH_PERIOD_SEC}" not in text:
+                errors.append(
+                    f"{ceos}.cfg Ethernet1 must set dot1x timeout reauth-period "
+                    f"{DOT1X_REAUTH_PERIOD_SEC}"
+                )
         elif ceos == "ceos2":
             if f"supplicant profile {DOT1X_SUPPLICANT_PROFILE}" not in text:
                 errors.append(
@@ -621,6 +629,20 @@ def validate_radius_configs(
             errors.append("authorize must not blanket Accept (breaks dot1x EAP-TLS / MPPE)")
         if "Auth-Type := EAP" in authorize:
             errors.append("authorize must not set blanket Auth-Type EAP (use eap module in default site)")
+
+    macsec_dot1x_path = root / "configs" / "radius" / "raddb" / "policy.d" / "macsec-dot1x"
+    if not macsec_dot1x_path.is_file():
+        errors.append("missing configs/radius/raddb/policy.d/macsec-dot1x")
+    else:
+        macsec_dot1x = macsec_dot1x_path.read_text(encoding="utf-8")
+        if "EAP-Key-Name := &reply:EAP-Session-Id" not in macsec_dot1x:
+            errors.append("macsec-dot1x policy must copy EAP-Session-Id to EAP-Key-Name")
+        if f"Session-Timeout := {DOT1X_REAUTH_PERIOD_SEC}" not in macsec_dot1x:
+            errors.append(
+                f"macsec-dot1x policy must set Session-Timeout := {DOT1X_REAUTH_PERIOD_SEC}"
+            )
+        if "Termination-Action := RADIUS-Request" not in macsec_dot1x:
+            errors.append("macsec-dot1x policy must set Termination-Action := RADIUS-Request")
 
     if not tls_site_path.is_file():
         errors.append("missing configs/radius/raddb/sites-available/tls")

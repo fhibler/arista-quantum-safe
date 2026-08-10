@@ -12,6 +12,7 @@ from lab.topology_contract import (
     CEOS_DATA_PLANE,
     DOT1X_EAP_IDENTITY,
     DOT1X_EAP_SSL_PROFILE,
+    DOT1X_REAUTH_PERIOD_SEC,
     DOT1X_SUPPLICANT_PROFILE,
     MACSEC_PROFILE,
 )
@@ -56,9 +57,16 @@ def check_authenticator_config(container: str, *, verbose: bool | None = None) -
         raise MacsecCheckError(f"{AUTHENTICATOR} dot1x aaa: expected dot1x authentication group")
     intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n", verbose=verbose)
     assert_contains(intf, "dot1x pae authenticator", label=f"{AUTHENTICATOR} dot1x authenticator")
+    assert_contains(intf, "dot1x reauthentication", label=f"{AUTHENTICATOR} dot1x reauthentication")
+    assert_contains(
+        intf,
+        f"dot1x timeout reauth-period {DOT1X_REAUTH_PERIOD_SEC}",
+        label=f"{AUTHENTICATOR} dot1x reauth period",
+    )
     assert_contains(intf, f"mac security profile {MACSEC_PROFILE}", label=f"{AUTHENTICATOR} macsec profile")
     report_config(
-        f"dot1x authenticator, mac security profile {MACSEC_PROFILE}, RadSec AAA group RADIUS"
+        f"dot1x authenticator with reauth every {DOT1X_REAUTH_PERIOD_SEC}s, "
+        f"mac security profile {MACSEC_PROFILE}, RadSec AAA group RADIUS"
     )
 
 

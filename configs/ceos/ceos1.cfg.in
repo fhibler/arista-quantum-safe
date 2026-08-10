@@ -23,7 +23,9 @@ interface Ethernet1
    ip address 10.255.0.1/30
    mac security profile dynamic
    dot1x pae authenticator
+   dot1x reauthentication
    dot1x port-control auto
+   dot1x timeout reauth-period 60
 !
 interface Ethernet2
    no switchport

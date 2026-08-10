@@ -67,6 +67,8 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
         if "show running-config interface Ethernet1" in commands:
             return (
                 "dot1x pae authenticator\n"
+                "dot1x reauthentication\n"
+                "dot1x timeout reauth-period 60\n"
                 "dot1x pae supplicant macsec-sp\n"
                 "mac security profile dynamic"
             )

@@ -12,7 +12,7 @@ CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem)
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg lab/.gen/kme-radius.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos1-gnmi.pem ceos1-gnmi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key ceos2-gnmi.pem ceos2-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
 RADIUS_IMAGE  := qkd-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
 KME_IMAGE     := qkd-kme:latest
@@ -29,7 +29,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-radius build-kme deploy destroy redeploy \
+        download-ceos download-ceos-help build-radius build-kme deploy-kme-radius wait-kme-pool deploy destroy redeploy \
         inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-hosts
 
 help: ## Show available targets
@@ -201,7 +201,18 @@ test-kme-image: ## Verify qkd-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (gen-topo → build images → check-ceos-image → clab deploy)
+DEPLOY_KME_NODES := kme-a,kme-b,radius
+
+deploy-kme-radius: $(CLAB_TOPO_GEN) ## Deploy RADIUS + KME nodes first (staged)
+	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES)
+
+wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
+	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (KME/RADIUS first, wait for keys, then full topo)
+	@$(MAKE) --no-print-directory deploy-kme-radius
+	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
 
 destroy: ## Destroy lab and cleanup runtime artifacts

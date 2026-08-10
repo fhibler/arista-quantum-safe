@@ -1,4 +1,4 @@
-"""Live lab checks for TLS 1.3 and PQC-hybrid connectivity (eAPI + RadSec + SSH)."""
+"""Live lab checks for TLS 1.3 and PQC-hybrid connectivity (eAPI + gNMI + RadSec + SSH)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,17 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-from lab.topology_contract import RADSEC_PORT, mgmt_ips_for_subnet
+from lab.topology_contract import (
+    EOSSDKRPC_PORT,
+    GNMI_PORT,
+    GNMI_SSL_PROFILE,
+    PROBE_CLIENT_CERT,
+    PROBE_CLIENT_KEY,
+    RADSEC_PORT,
+    RESTCONF_PORT,
+    RESTCONF_SSL_PROFILE,
+    mgmt_ips_for_subnet,
+)
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 OPENSSL_PQC_CNF = "/etc/raddb/openssl-pqc.cnf"
@@ -211,6 +221,91 @@ def check_radsec_config(targets: LabTargets, node: str, *, verbose: bool | None 
     report_config(f"RadSec ssl profile RADSEC valid ({PQC_GROUP}), tls ssl-profile RADSEC")
 
 
+def check_gnmi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    container = targets.ceos_container(node)
+    check_switch_ssl_profile(targets, node, GNMI_SSL_PROFILE, verbose=verbose)
+    gnmi = ceos_cli(container, "enable\nshow management api gnmi\n", verbose=verbose)
+    assert_contains(gnmi, f"SSL profile: {GNMI_SSL_PROFILE}", label=f"{node} gNMI binding")
+    detail = ceos_cli(
+        container,
+        f"enable\nshow management security ssl profile {GNMI_SSL_PROFILE} detail\n",
+        verbose=verbose,
+    )
+    assert_contains(detail, "trust certificate radsec-ca.pem", label=f"{node} GNMI mTLS trust")
+    report_config(f"gNMI ssl profile {GNMI_SSL_PROFILE} valid ({PQC_GROUP}), mTLS trust, grpc bound")
+
+
+def check_restconf_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    container = targets.ceos_container(node)
+    check_switch_ssl_profile(targets, node, RESTCONF_SSL_PROFILE, verbose=verbose)
+    restconf = ceos_cli(container, "enable\nshow management api restconf\n", verbose=verbose)
+    assert_contains(restconf, f"SSL profile: {RESTCONF_SSL_PROFILE}", label=f"{node} RESTCONF binding")
+    report_config(f"RESTCONF ssl profile {RESTCONF_SSL_PROFILE} valid ({PQC_GROUP}), HTTPS bound")
+
+
+def check_eossdkrpc_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    container = targets.ceos_container(node)
+    rpc = ceos_cli(container, "enable\nshow management api eos-sdk-rpc\n", verbose=verbose)
+    assert_contains(rpc, f"SSL profile: {GNMI_SSL_PROFILE}", label=f"{node} eos-sdk-rpc binding")
+    report_config(f"eos-sdk-rpc ssl profile {GNMI_SSL_PROFILE} valid ({PQC_GROUP}), grpc bound")
+
+
+def probe_gnmi_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    ip = targets.ceos_ips[node]
+    output = openssl_s_client(
+        targets.radius_container,
+        connect=f"{ip}:{GNMI_PORT}",
+        ca_file=RADSEC_CA_IN_RADIUS,
+        verbose=verbose,
+    )
+    if not negotiated_pqc_group(output):
+        raise PqcConnectionError(f"{node} gNMI TLS: expected PQC group {PQC_GROUP!r}")
+    report_live(f"gNMI gRPC TLS handshake (TLS 1.3, {PQC_GROUP})")
+
+
+def probe_gnmi_mtls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    ip = targets.ceos_ips[node]
+    cert_file = PROBE_CLIENT_CERT.format(node=node)
+    key_file = PROBE_CLIENT_KEY.format(node=node)
+    output = openssl_s_client(
+        targets.radius_container,
+        connect=f"{ip}:{GNMI_PORT}",
+        ca_file=RADSEC_CA_IN_RADIUS,
+        cert_file=cert_file,
+        key_file=key_file,
+        verbose=verbose,
+    )
+    if not negotiated_pqc_group(output):
+        raise PqcConnectionError(f"{node} gNMI mTLS: expected PQC group {PQC_GROUP!r}")
+    report_live(f"gNMI gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
+
+
+def probe_restconf_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    ip = targets.ceos_ips[node]
+    output = openssl_s_client(
+        targets.radius_container,
+        connect=f"{ip}:{RESTCONF_PORT}",
+        ca_file=RADSEC_CA_IN_RADIUS,
+        verbose=verbose,
+    )
+    if not negotiated_pqc_group(output):
+        raise PqcConnectionError(f"{node} RESTCONF TLS: expected PQC group {PQC_GROUP!r}")
+    report_live(f"RESTCONF HTTPS handshake (TLS 1.3, {PQC_GROUP})")
+
+
+def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    ip = targets.ceos_ips[node]
+    output = openssl_s_client(
+        targets.radius_container,
+        connect=f"{ip}:{EOSSDKRPC_PORT}",
+        ca_file=RADSEC_CA_IN_RADIUS,
+        verbose=verbose,
+    )
+    if not negotiated_pqc_group(output):
+        raise PqcConnectionError(f"{node} eos-sdk-rpc TLS: expected PQC group {PQC_GROUP!r}")
+    report_live(f"eos-sdk-rpc gRPC TLS handshake (TLS 1.3, {PQC_GROUP})")
+
+
 def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
     ip = targets.ceos_ips[node]
     output = openssl_s_client(
@@ -324,7 +419,7 @@ def run_live_checks(
 
     print("PQC verification (TLS 1.3 + hybrid KEX)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   TLS handshakes, eAPI JSON-RPC, RadSec AAA, SSH PQC KEX\n")
+    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH\n")
 
     print_device("radius")
     if not skip_config:
@@ -335,16 +430,23 @@ def run_live_checks(
         print_device(node)
         if not skip_config:
             check_eapi_config(targets, node, verbose=verbose)
+            check_gnmi_config(targets, node, verbose=verbose)
+            check_restconf_config(targets, node, verbose=verbose)
+            check_eossdkrpc_config(targets, node, verbose=verbose)
             check_radsec_config(targets, node, verbose=verbose)
             check_ssh_pqc_config(targets, node, verbose=verbose)
         probe_eapi_https(targets, node, verbose=verbose)
         probe_eapi_jsonrpc(node, targets.ceos_ips[node], verbose=verbose)
+        probe_gnmi_tls(targets, node, verbose=verbose)
+        probe_gnmi_mtls(targets, node, verbose=verbose)
+        probe_restconf_tls(targets, node, verbose=verbose)
+        probe_eossdkrpc_tls(targets, node, verbose=verbose)
         probe_radsec_from_switch(targets, node, verbose=verbose)
         probe_ssh_pqc(targets, node, CEOS_PEERS[node], verbose=verbose)
 
     print()
     scope = "live checks only" if skip_config else "[config] and [live] checks"
-    print(f"PQC: OK — all {scope} passed (eAPI, RadSec, SSH; TLS 1.3)")
+    print(f"PQC: OK — all {scope} passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH; TLS 1.3)")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -10,7 +10,8 @@ import subprocess
 import sys
 from typing import Sequence
 
-from lab.topology_contract import KME_SAE_ID, mgmt_ips_for_subnet
+from lab.kme_http import DOCKER_EXEC_TIMEOUT_SEC, KME_CURL_FLAGS
+from lab.topology_contract import KME_KEY_SIZE, KME_SAE_ID, mgmt_ips_for_subnet
 
 ALL_SECTIONS = ("inspect", "radius", "kme", "pqc", "macsec", "hosts")
 
@@ -26,7 +27,14 @@ def section(title: str, *, verbose: bool) -> None:
     print(f"\n{bar}\n  {title}\n{bar}")
 
 
-def run_step(title: str, argv: Sequence[str], *, input_text: str = "", verbose: bool = False) -> subprocess.CompletedProcess[str]:
+def run_step(
+    title: str,
+    argv: Sequence[str],
+    *,
+    input_text: str = "",
+    verbose: bool = False,
+    timeout_sec: int | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a command; when verbose, echo argv and print captured output."""
     if verbose:
         print(f"\n--- {title} ---")
@@ -36,13 +44,17 @@ def run_step(title: str, argv: Sequence[str], *, input_text: str = "", verbose: 
             print(input_text.rstrip())
             print("--- end stdin ---")
 
-    result = subprocess.run(
-        list(argv),
-        input=input_text,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            list(argv),
+            input=input_text,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise LabTestError(f"{title} timed out after {timeout_sec}s") from exc
 
     if verbose:
         if result.stdout:
@@ -149,13 +161,19 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
             container,
             "curl",
             "-sk" if verbose else "-sfk",
+            *KME_CURL_FLAGS,
             "--cert",
             cert,
             "--key",
             key,
             url,
         ]
-        result = run_step(title, argv, verbose=verbose)
+        result = run_step(
+            title,
+            argv,
+            verbose=verbose,
+            timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
+        )
         if expect not in result.stdout:
             raise LabTestError(f"{title} missing expected field {expect}")
         if verbose:
@@ -165,6 +183,33 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
     if not verbose:
         print(f"KME status OK from RADIUS (SAE {KME_SAE_ID})")
         print("KME peer status OK (kme-a <-> kme-b)")
+
+    radius_container = f"clab-{clab_name}-radius"
+    roundtrip = run_step(
+        "KME enc/dec round-trip (RADIUS SAE, AES-256)",
+        [
+            "docker",
+            "exec",
+            radius_container,
+            "sh",
+            "-c",
+            "PYTHONPATH=/opt/qkd python3 -m lab.kme_sae_client roundtrip",
+        ],
+        verbose=verbose,
+        timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
+    )
+    payload = json.loads(roundtrip.stdout)
+    key_id = payload.get("key_ID")
+    key_size = payload.get("key_size")
+    if not key_id or key_size != KME_KEY_SIZE:
+        raise LabTestError(
+            f"KME round-trip: expected key_size {KME_KEY_SIZE}, got {payload!r}"
+        )
+    if verbose:
+        print("--- formatted JSON ---")
+        print(format_json(roundtrip.stdout))
+    if not verbose:
+        print(f"KME enc/dec round-trip OK (key_ID {key_id}, {key_size} bytes)")
 
 
 def run_python_module(title: str, module: str, *args: str, verbose: bool = False) -> None:

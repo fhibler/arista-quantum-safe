@@ -19,20 +19,21 @@ def _write_ext(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _generate_eapi_server_cert(
+def _generate_server_cert(
     *,
     work: Path,
     out: Path,
     name: str,
+    role: str,
     mgmt_ip: str,
     ca_crt: Path,
     ca_key: Path,
 ) -> None:
-    """Create or refresh a per-switch eAPI server cert when the mgmt IP changes."""
-    marker = work / f"{name}-eapi-san"
-    server_key = work / f"{name}-eapi.key"
-    server_csr = work / f"{name}-eapi.csr"
-    server_crt = work / f"{name}-eapi.crt"
+    """Create or refresh a per-switch TLS server cert when the mgmt IP changes."""
+    marker = work / f"{name}-{role}-san"
+    server_key = work / f"{name}-{role}.key"
+    server_csr = work / f"{name}-{role}.csr"
+    server_crt = work / f"{name}-{role}.crt"
     if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == mgmt_ip:
         pass
     else:
@@ -51,7 +52,7 @@ def _generate_eapi_server_cert(
                 f"/CN={name}/O=Lab/C=US",
             ]
         )
-        server_ext = work / f"{name}-eapi.ext"
+        server_ext = work / f"{name}-{role}.ext"
         _write_ext(
             server_ext,
             [
@@ -82,8 +83,8 @@ def _generate_eapi_server_cert(
         )
         marker.write_text(f"{mgmt_ip}\n", encoding="utf-8")
 
-    (out / f"{name}-eapi.pem").write_bytes(server_crt.read_bytes())
-    (out / f"{name}-eapi.key").write_bytes(server_key.read_bytes())
+    (out / f"{name}-{role}.pem").write_bytes(server_crt.read_bytes())
+    (out / f"{name}-{role}.key").write_bytes(server_key.read_bytes())
 
 
 def generate_radsec_pki(
@@ -237,13 +238,15 @@ def generate_radsec_pki(
 
     mgmt_ips = ceos_mgmt_ips or {}
     for name, mgmt_ip in mgmt_ips.items():
-        _generate_eapi_server_cert(
-            work=work,
-            out=out,
-            name=name,
-            mgmt_ip=mgmt_ip,
-            ca_crt=ca_crt,
-            ca_key=ca_key,
-        )
+        for role in ("eapi", "gnmi"):
+            _generate_server_cert(
+                work=work,
+                out=out,
+                name=name,
+                role=role,
+                mgmt_ip=mgmt_ip,
+                ca_crt=ca_crt,
+                ca_key=ca_key,
+            )
 
     return out

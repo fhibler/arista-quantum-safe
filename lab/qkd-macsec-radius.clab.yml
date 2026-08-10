@@ -22,8 +22,10 @@ topology:
         - ../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro
         - ../lab/.gen/pki/ceos1-eapi.pem:/mnt/flash/ceos1-eapi.pem:ro
         - ../lab/.gen/pki/ceos1-eapi.key:/mnt/flash/ceos1-eapi.key:ro
+        - ../lab/.gen/pki/ceos1-gnmi.pem:/mnt/flash/ceos1-gnmi.pem:ro
+        - ../lab/.gen/pki/ceos1-gnmi.key:/mnt/flash/ceos1-gnmi.key:ro
       exec:
-        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-client.pem certificate:"; echo "copy flash:ceos1-client.key sslkey:"; echo "copy flash:ceos1-eapi.pem certificate:"; echo "copy flash:ceos1-eapi.key sslkey:"; } | Cli'
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-client.pem certificate:"; echo "copy flash:ceos1-client.key sslkey:"; echo "copy flash:ceos1-eapi.pem certificate:"; echo "copy flash:ceos1-eapi.key sslkey:"; echo "copy flash:ceos1-gnmi.pem certificate:"; echo "copy flash:ceos1-gnmi.key sslkey:"; } | Cli'
     ceos2:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS2}
@@ -34,8 +36,10 @@ topology:
         - ../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro
         - ../lab/.gen/pki/ceos2-eapi.pem:/mnt/flash/ceos2-eapi.pem:ro
         - ../lab/.gen/pki/ceos2-eapi.key:/mnt/flash/ceos2-eapi.key:ro
+        - ../lab/.gen/pki/ceos2-gnmi.pem:/mnt/flash/ceos2-gnmi.pem:ro
+        - ../lab/.gen/pki/ceos2-gnmi.key:/mnt/flash/ceos2-gnmi.key:ro
       exec:
-        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-client.pem certificate:"; echo "copy flash:ceos2-client.key sslkey:"; echo "copy flash:ceos2-eapi.pem certificate:"; echo "copy flash:ceos2-eapi.key sslkey:"; } | Cli'
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-client.pem certificate:"; echo "copy flash:ceos2-client.key sslkey:"; echo "copy flash:ceos2-eapi.pem certificate:"; echo "copy flash:ceos2-eapi.key sslkey:"; echo "copy flash:ceos2-gnmi.pem certificate:"; echo "copy flash:ceos2-gnmi.key sslkey:"; } | Cli'
     host1:
       kind: linux
       image: alpine:3.20
@@ -55,6 +59,7 @@ topology:
     radius:
       kind: linux
       image: qkd-radius:latest
+      startup-delay: 15
       mgmt-ipv4: ${MGMT_IP_RADIUS}
       binds:
         - ../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro
@@ -63,9 +68,16 @@ topology:
         - ../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro
         - ../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro
         - ../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro
+        - ../lab/.gen/pki/ceos1-client.pem:/etc/raddb/certs/probe/ceos1-client.pem:ro
+        - ../lab/.gen/pki/ceos1-client.key:/etc/raddb/certs/probe/ceos1-client.key:ro
+        - ../lab/.gen/pki/ceos2-client.pem:/etc/raddb/certs/probe/ceos2-client.pem:ro
+        - ../lab/.gen/pki/ceos2-client.key:/etc/raddb/certs/probe/ceos2-client.key:ro
         - ../lab/.gen/kme-pki/sae.crt.pem:/etc/kme/sae.crt.pem:ro
         - ../lab/.gen/kme-pki/sae.key.pem:/etc/kme/sae.key.pem:ro
+        - ../lab/.gen/kme-pki/sae-b.crt.pem:/etc/kme/sae-b.crt.pem:ro
+        - ../lab/.gen/kme-pki/sae-b.key.pem:/etc/kme/sae-b.key.pem:ro
         - ../lab/.gen/kme-pki/ca.crt.pem:/etc/kme/ca.crt.pem:ro
+        - ../lab/.gen/kme-radius.conf:/etc/kme/radius-kme.conf:ro
         - logs/radius:/var/log/radius
     kme-a:
       kind: linux
@@ -78,11 +90,11 @@ topology:
         PORT: "8010"
         KME_ID: 9b7703f1-9b6d-403d-b850-18a1b6fd6d8f
         ATTACHED_SAE_ID: 25840139-0dd4-49ae-ba1e-b86731601803
-        DEFAULT_KEY_SIZE: "32"
+        DEFAULT_KEY_SIZE: "256"
         MAX_KEY_COUNT: "100000"
         MAX_KEYS_PER_REQUEST: "128"
         MAX_KEY_SIZE: "1024"
-        MIN_KEY_SIZE: "32"
+        MIN_KEY_SIZE: "256"
         KEY_GEN_SEC_TO_GEN: "30"
         OTHER_KMES: "https://${MGMT_IP_KME_B}:8020"
         CA_FILE: /certs/ca.crt.pem
@@ -95,6 +107,7 @@ topology:
     kme-b:
       kind: linux
       image: qkd-kme:latest
+      startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_KME_B}
       cap-add:
         - NET_ADMIN
@@ -103,17 +116,18 @@ topology:
         PORT: "8020"
         KME_ID: ffb23f4d-5d5b-47e5-a8c5-fe9e47d646cd
         ATTACHED_SAE_ID: c565d5aa-8670-4446-8471-b0e53e315d2a
-        DEFAULT_KEY_SIZE: "32"
+        DEFAULT_KEY_SIZE: "256"
         MAX_KEY_COUNT: "100000"
         MAX_KEYS_PER_REQUEST: "128"
         MAX_KEY_SIZE: "1024"
-        MIN_KEY_SIZE: "32"
+        MIN_KEY_SIZE: "256"
         KEY_GEN_SEC_TO_GEN: "30"
         OTHER_KMES: "https://${MGMT_IP_KME_A}:8010"
         CA_FILE: /certs/ca.crt.pem
         KME_CERT: /certs/kme-b.crt.pem
         KME_KEY: /certs/kme-b.key.pem
-        SAE_CERT: /certs/sae.crt.pem
+        SAE_CERT: /certs/sae-b.crt.pem
+        RADIUS_IP: ${MGMT_IP_RADIUS}
       binds:
         - ../lab/.gen/kme-pki:/certs:ro
   links:

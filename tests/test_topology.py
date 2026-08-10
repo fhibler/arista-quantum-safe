@@ -108,7 +108,8 @@ def test_kme_b_peer_linked(topology: dict) -> None:
     assert "NET_ADMIN" in kme_b["cap-add"]
     assert kme_b["env"]["OTHER_KMES"] == "https://${MGMT_IP_KME_A}:8010"
     assert kme_b["env"]["PORT"] == str(KME_B_PORT)
-    assert "RADIUS_IP" not in kme_b["env"]
+    assert kme_b["env"]["RADIUS_IP"] == "${MGMT_IP_RADIUS}"
+    assert kme_b["env"]["SAE_CERT"] == "/certs/sae-b.crt.pem"
     assert kme_b["env"]["KME_ID"] == KME_NODES["kme-b"]["kme_id"]
 
 

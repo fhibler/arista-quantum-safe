@@ -68,6 +68,14 @@ RADSEC_SECRET = "radsec"
 RADSEC_PORT = 2083
 SSL_PROFILE = "RADSEC"
 EAPI_SSL_PROFILE = "EAPI"
+GNMI_SSL_PROFILE = "GNMI"
+GNMI_PORT = 6030
+RESTCONF_SSL_PROFILE = "RESTCONF"
+RESTCONF_PORT = 6020
+EOSSDKRPC_SSL_PROFILE = GNMI_SSL_PROFILE
+EOSSDKRPC_PORT = 9543
+PROBE_CLIENT_CERT = "/etc/raddb/certs/probe/{node}-client.pem"
+PROBE_CLIENT_KEY = "/etc/raddb/certs/probe/{node}-client.key"
 MACSEC_PROFILE = "dynamic"
 DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
 DOT1X_EAP_SSL_PROFILE = "DOT1X"
@@ -88,6 +96,8 @@ KME_A_ID = "9b7703f1-9b6d-403d-b850-18a1b6fd6d8f"
 KME_B_ID = "ffb23f4d-5d5b-47e5-a8c5-fe9e47d646cd"
 KME_SAE_ID = "25840139-0dd4-49ae-ba1e-b86731601803"
 KME_B_SAE_ID = "c565d5aa-8670-4446-8471-b0e53e315d2a"
+KME_KEY_SIZE = 32  # AES-256 key length in bytes (ETSI API uses bits: 256)
+KME_KEY_SIZE_BITS = KME_KEY_SIZE * 8
 
 # Backward-compatible aliases for callers that still use the old names.
 KME_SERVER_IP = KME_A_SERVER_IP
@@ -140,9 +150,16 @@ RADIUS_BINDS = [
     "../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro",
     "../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro",
     "../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro",
+    "../lab/.gen/pki/ceos1-client.pem:/etc/raddb/certs/probe/ceos1-client.pem:ro",
+    "../lab/.gen/pki/ceos1-client.key:/etc/raddb/certs/probe/ceos1-client.key:ro",
+    "../lab/.gen/pki/ceos2-client.pem:/etc/raddb/certs/probe/ceos2-client.pem:ro",
+    "../lab/.gen/pki/ceos2-client.key:/etc/raddb/certs/probe/ceos2-client.key:ro",
     "../lab/.gen/kme-pki/sae.crt.pem:/etc/kme/sae.crt.pem:ro",
     "../lab/.gen/kme-pki/sae.key.pem:/etc/kme/sae.key.pem:ro",
+    "../lab/.gen/kme-pki/sae-b.crt.pem:/etc/kme/sae-b.crt.pem:ro",
+    "../lab/.gen/kme-pki/sae-b.key.pem:/etc/kme/sae-b.key.pem:ro",
     "../lab/.gen/kme-pki/ca.crt.pem:/etc/kme/ca.crt.pem:ro",
+    "../lab/.gen/kme-radius.conf:/etc/kme/radius-kme.conf:ro",
     "logs/radius:/var/log/radius",
 ]
 
@@ -152,11 +169,11 @@ KME_BINDS = [
 
 KME_COMMON_ENV = {
     "HOST": "0.0.0.0",
-    "DEFAULT_KEY_SIZE": "32",
+    "DEFAULT_KEY_SIZE": "256",
     "MAX_KEY_COUNT": "100000",
     "MAX_KEYS_PER_REQUEST": "128",
     "MAX_KEY_SIZE": "1024",
-    "MIN_KEY_SIZE": "32",
+    "MIN_KEY_SIZE": "256",
     "KEY_GEN_SEC_TO_GEN": "30",
     "CA_FILE": "/certs/ca.crt.pem",
     "SAE_CERT": "/certs/sae.crt.pem",
@@ -181,7 +198,8 @@ KME_NODES: dict[str, dict[str, Any]] = {
         "kme_key": "/certs/kme-b.key.pem",
         "peer_node": "kme-a",
         "peer_port": KME_A_PORT,
-        "radius_ip_required": False,
+        "radius_ip_required": True,
+        "sae_cert": "/certs/sae-b.crt.pem",
     },
 }
 
@@ -193,6 +211,8 @@ KME_PKI_FILES = [
     "kme-b.key.pem",
     "sae.crt.pem",
     "sae.key.pem",
+    "sae-b.crt.pem",
+    "sae-b.key.pem",
 ]
 
 
@@ -205,7 +225,7 @@ def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
     """Return expected KME container env for a lab node."""
     spec = KME_NODES[node]
     peer = spec["peer_node"]
-    return {
+    env = {
         **KME_COMMON_ENV,
         "PORT": str(spec["port"]),
         "KME_ID": spec["kme_id"],
@@ -213,7 +233,11 @@ def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
         "OTHER_KMES": kme_other_kmes(mgmt_ips[peer], spec["peer_port"]),
         "KME_CERT": spec["kme_cert"],
         "KME_KEY": spec["kme_key"],
+        "SAE_CERT": spec.get("sae_cert", KME_COMMON_ENV["SAE_CERT"]),
     }
+    if spec.get("radius_ip_required"):
+        env["RADIUS_IP"] = mgmt_ips["radius"]
+    return env
 
 CEOS_RADSEC_PKI_EXEC = {
     "ceos1": (
@@ -221,14 +245,18 @@ CEOS_RADSEC_PKI_EXEC = {
         'echo "copy flash:ceos1-client.pem certificate:"; '
         'echo "copy flash:ceos1-client.key sslkey:"; '
         'echo "copy flash:ceos1-eapi.pem certificate:"; '
-        'echo "copy flash:ceos1-eapi.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos1-eapi.key sslkey:"; '
+        'echo "copy flash:ceos1-gnmi.pem certificate:"; '
+        'echo "copy flash:ceos1-gnmi.key sslkey:"; } | Cli\''
     ),
     "ceos2": (
         'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
         'echo "copy flash:ceos2-client.pem certificate:"; '
         'echo "copy flash:ceos2-client.key sslkey:"; '
         'echo "copy flash:ceos2-eapi.pem certificate:"; '
-        'echo "copy flash:ceos2-eapi.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos2-eapi.key sslkey:"; '
+        'echo "copy flash:ceos2-gnmi.pem certificate:"; '
+        'echo "copy flash:ceos2-gnmi.key sslkey:"; } | Cli\''
     ),
 }
 
@@ -239,6 +267,8 @@ CEOS_BINDS = {
         "../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro",
         "../lab/.gen/pki/ceos1-eapi.pem:/mnt/flash/ceos1-eapi.pem:ro",
         "../lab/.gen/pki/ceos1-eapi.key:/mnt/flash/ceos1-eapi.key:ro",
+        "../lab/.gen/pki/ceos1-gnmi.pem:/mnt/flash/ceos1-gnmi.pem:ro",
+        "../lab/.gen/pki/ceos1-gnmi.key:/mnt/flash/ceos1-gnmi.key:ro",
     ],
     "ceos2": [
         "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
@@ -246,6 +276,8 @@ CEOS_BINDS = {
         "../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro",
         "../lab/.gen/pki/ceos2-eapi.pem:/mnt/flash/ceos2-eapi.pem:ro",
         "../lab/.gen/pki/ceos2-eapi.key:/mnt/flash/ceos2-eapi.key:ro",
+        "../lab/.gen/pki/ceos2-gnmi.pem:/mnt/flash/ceos2-gnmi.pem:ro",
+        "../lab/.gen/pki/ceos2-gnmi.key:/mnt/flash/ceos2-gnmi.key:ro",
     ],
 }
 
@@ -257,10 +289,14 @@ PKI_FILES = [
     "ceos1-client.key",
     "ceos1-eapi.pem",
     "ceos1-eapi.key",
+    "ceos1-gnmi.pem",
+    "ceos1-gnmi.key",
     "ceos2-client.pem",
     "ceos2-client.key",
     "ceos2-eapi.pem",
     "ceos2-eapi.key",
+    "ceos2-gnmi.pem",
+    "ceos2-gnmi.key",
 ]
 
 CEOS_STARTUP_CONFIGS = {
@@ -312,6 +348,10 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
     for name in KME_PKI_FILES:
         if not (kme_pki_dir / name).is_file():
             errors.append(f"missing lab/.gen/kme-pki/{name} (run make gen-topo)")
+
+    kme_radius_conf = root / "lab" / ".gen" / "kme-radius.conf"
+    if not kme_radius_conf.is_file():
+        errors.append("missing lab/.gen/kme-radius.conf (run make gen-topo)")
 
     for ceos, binds in CEOS_BINDS.items():
         for bind in binds:
@@ -425,6 +465,33 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must enable eAPI HTTPS with ssl profile {EAPI_SSL_PROFILE}")
         if f"certificate {ceos}-eapi.pem key {ceos}-eapi.key" not in text:
             errors.append(f"{ceos}.cfg must reference per-switch eAPI certificate")
+        if f"ssl profile {GNMI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {GNMI_SSL_PROFILE}")
+        if f"ssl profile {GNMI_SSL_PROFILE}" not in text.split("management api gnmi", 1)[-1]:
+            errors.append(f"{ceos}.cfg gNMI transport must reference ssl profile {GNMI_SSL_PROFILE}")
+        if f"certificate {ceos}-gnmi.pem key {ceos}-gnmi.key" not in text:
+            errors.append(f"{ceos}.cfg must reference per-switch gNMI certificate")
+        if "management api gnmi" not in text:
+            errors.append(f"{ceos}.cfg must enable management api gnmi")
+        if "transport grpc default" not in text:
+            errors.append(f"{ceos}.cfg must configure gNMI grpc default transport")
+        if f"ssl profile {RESTCONF_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {RESTCONF_SSL_PROFILE}")
+        if "management api restconf" not in text:
+            errors.append(f"{ceos}.cfg must enable management api restconf")
+        if f"ssl profile {RESTCONF_SSL_PROFILE}" not in text.split("management api restconf", 1)[-1]:
+            errors.append(f"{ceos}.cfg RESTCONF transport must reference ssl profile {RESTCONF_SSL_PROFILE}")
+        if "management api eos-sdk-rpc" not in text:
+            errors.append(f"{ceos}.cfg must enable management api eos-sdk-rpc")
+        if f"ssl profile {GNMI_SSL_PROFILE}" not in text.split("management api eos-sdk-rpc", 1)[-1]:
+            errors.append(f"{ceos}.cfg eos-sdk-rpc transport must reference ssl profile {GNMI_SSL_PROFILE}")
+        security = text.split("management security", 1)[-1]
+        gnmi_profile = security.split("ssl profile GNMI", 1)[-1].split("!", 1)[0]
+        if "trust certificate radsec-ca.pem" not in gnmi_profile:
+            errors.append(f"{ceos}.cfg GNMI ssl profile must trust radsec-ca.pem for mTLS")
+        restconf_profile = security.split(f"ssl profile {RESTCONF_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
+        if "trust certificate radsec-ca.pem" not in restconf_profile:
+            errors.append(f"{ceos}.cfg RESTCONF ssl profile must trust radsec-ca.pem for mTLS")
         if "copy flash:" in text:
             errors.append(f"{ceos}.cfg must not use copy flash in startup-config (use containerlab exec)")
         if "aaa group server radius RADIUS" not in text:
@@ -604,6 +671,9 @@ def validate_radius_configs(
             "radius-detail.log",
             "policy.d/macsec-dot1x",
             "macsec-dot1x",
+            "policy.d/kme-qkd",
+            "kme-qkd",
+            "kme-fetch-key",
             "sites-enabled/tls",
             "clients-radsec.conf",
         ):
@@ -679,8 +749,6 @@ def validate_topology(
         for key, value in kme_env_for_node("kme-a", mgmt_ips=expected_mgmt_ips).items():
             if str(kme_a_env.get(key)) != value:
                 errors.append(f"kme-a env {key} must be {value!r}")
-        if str(kme_a_env.get("RADIUS_IP")) != expected_mgmt_ips["radius"]:
-            errors.append(f"kme-a env RADIUS_IP must be {expected_mgmt_ips['radius']}")
         cap_add = kme_a_cfg.get("cap-add") or kme_a_cfg.get("cap_add") or []
         if "NET_ADMIN" not in cap_add:
             errors.append("kme-a must include cap-add NET_ADMIN for mgmt-plane iptables isolation")
@@ -703,8 +771,7 @@ def validate_topology(
         for key, value in kme_env_for_node("kme-b", mgmt_ips=expected_mgmt_ips).items():
             if str(kme_b_env.get(key)) != value:
                 errors.append(f"kme-b env {key} must be {value!r}")
-        if "RADIUS_IP" in kme_b_env:
-            errors.append("kme-b must not set RADIUS_IP (peer-only KME)")
+
         cap_add = kme_b_cfg.get("cap-add") or kme_b_cfg.get("cap_add") or []
         if "NET_ADMIN" not in cap_add:
             errors.append("kme-b must include cap-add NET_ADMIN for mgmt-plane iptables isolation")

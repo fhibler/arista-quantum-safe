@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from lab.topology_contract import GNMI_SSL_PROFILE, RESTCONF_SSL_PROFILE
 from lab.test_pqc_connections import (
     PQC_GROUP,
     SSH_PQC_KEX,
@@ -104,6 +105,9 @@ def test_run_live_checks_happy_path(capsys) -> None:
                     "State: valid\n"
                     "SSL Profile: EAPI\n"
                     f"TLS key establishment group(v1.3): {PQC_GROUP}:ecdh_x25519\n"
+                    f"SSL profile: {GNMI_SSL_PROFILE}\n"
+                    f"SSL profile: {RESTCONF_SSL_PROFILE}\n"
+                    "trust certificate radsec-ca.pem\n"
                     "tls ssl-profile RADSEC\n"
                     "key-exchange mlkem768x25519-sha256\n"
                     "aes256-gcm@openssh.com\n"
@@ -123,6 +127,9 @@ def test_run_live_checks_happy_path(capsys) -> None:
             "State: valid\n"
             "SSL Profile: EAPI\n"
             f"TLS key establishment group(v1.3): {PQC_GROUP}:ecdh_x25519\n"
+            f"SSL profile: {GNMI_SSL_PROFILE}\n"
+            f"SSL profile: {RESTCONF_SSL_PROFILE}\n"
+            "trust certificate radsec-ca.pem\n"
             "tls ssl-profile RADSEC\n"
             "key-exchange mlkem768x25519-sha256\n"
             "aes256-gcm@openssh.com\n"

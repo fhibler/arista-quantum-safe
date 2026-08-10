@@ -1,0 +1,12 @@
+#!/bin/sh
+# Fail-open helper for FreeRADIUS post-auth: never reject auth on KME errors.
+set -u
+export PYTHONPATH="/opt/qkd:${PYTHONPATH:-}"
+
+output="$(python3 -m lab.kme_sae_client fetch-enc-key 2>&1)" || {
+	printf '%s\n' "QKD enc_keys failed (fail-open): ${output}" >> /var/log/radius/radius.log 2>/dev/null || true
+	exit 0
+}
+
+printf '%s\n' "${output}"
+exit 0

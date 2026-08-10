@@ -170,7 +170,7 @@ Full contract: [docs/topology.md](docs/topology.md).
 | 3 | ceos2 → radius | ping in MGMT VRF |
 | 4 | FreeRADIUS listening | `docker logs clab-qkd-macsec-radius-radius` |
 | 5 | RADIUS auth | `make test-radius` |
-| 6 | TLS 1.3 PQC (eAPI + RadSec + SSH) | `make test-pqc` |
+| 6 | TLS 1.3 PQC (eAPI + gNMI + RadSec + SSH) | `make test-pqc` |
 | 7 | Dynamic MACsec (802.1X + MKA) | `make test-macsec` |
 | 8 | Host routing | `make test-hosts` |
 

@@ -53,6 +53,8 @@ def test_makefile_exists() -> None:
         "download-ceos-help",
         "build-radius",
         "build-kme",
+        "deploy-kme-radius",
+        "wait-kme-pool",
         "deploy",
         "destroy",
         "redeploy",

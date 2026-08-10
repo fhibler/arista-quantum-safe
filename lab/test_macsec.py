@@ -118,7 +118,7 @@ def check_macsec_interface(container: str, node: str, *, verbose: bool | None = 
 def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
     output = ceos_cli(container, "enable\nshow mac security participants detail\n", verbose=verbose)
     assert_contains(output, "CKN:", label=f"{node} MKA participants")
-    assert_contains(output, "Success: True", label=f"{node} MKA session success")
+    assert_contains(output, "Success: True", label=f"{node} MKA participant success")
     assert_contains(output, "Live peer list:", label=f"{node} MKA live peers")
     if 'Live peer list: []' in output:
         raise MacsecCheckError(f"{node}: MKA live peer list is empty")
@@ -192,8 +192,10 @@ def run_macsec_checks(
         verbose=verbose,
     )
 
-    scope = "live checks only" if skip_config else "[config] and [live] checks"
-    print(f"\nMACsec: OK — all {scope} passed (802.1X EAP-TLS, MKA, encrypted traffic)")
+    print(
+        f"\nMACsec: OK — all {'live checks only' if skip_config else '[config] and [live] checks'} "
+        "passed (802.1X EAP-TLS, MKA, encrypted traffic)"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

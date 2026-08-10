@@ -445,8 +445,10 @@ def run_live_checks(
         probe_ssh_pqc(targets, node, CEOS_PEERS[node], verbose=verbose)
 
     print()
-    scope = "live checks only" if skip_config else "[config] and [live] checks"
-    print(f"PQC: OK — all {scope} passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH; TLS 1.3)")
+    print(
+        f"PQC: OK — all {'live checks only' if skip_config else '[config] and [live] checks'} "
+        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH; TLS 1.3)"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

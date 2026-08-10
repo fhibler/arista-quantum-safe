@@ -61,7 +61,10 @@ DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
 MGMT_SUBNET_PLACEHOLDER = "${MGMT_SUBNET}"
 MGMT_VRF_ENV = "MGMT"
-RADIUS_SECRET = "testing123"
+MGMT_VRF_ENV = "MGMT"
+RADSEC_SECRET = "radsec"
+RADSEC_PORT = 2083
+SSL_PROFILE = "RADSEC"
 RADIUS_SERVER_IP = MGMT_IPS["radius"]
 
 HOST_DATA_PLANE = {
@@ -101,8 +104,48 @@ CEOS_DATA_PLANE = ceos_data_plane(DEFAULT_MGMT_SUBNET)
 
 RADIUS_BINDS = [
     "../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro",
+    "../lab/.gen/clients-radsec.conf:/etc/raddb/clients-radsec.conf:ro",
     "../configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro",
+    "../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro",
+    "../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro",
+    "../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro",
     "logs/radius:/var/log/radius",
+]
+
+CEOS_RADSEC_PKI_EXEC = {
+    "ceos1": (
+        'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
+        'echo "copy flash:ceos1-client.pem certificate:"; '
+        'echo "copy flash:ceos1-client.key sslkey:"; } | Cli\''
+    ),
+    "ceos2": (
+        'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
+        'echo "copy flash:ceos2-client.pem certificate:"; '
+        'echo "copy flash:ceos2-client.key sslkey:"; } | Cli\''
+    ),
+}
+
+CEOS_BINDS = {
+    "ceos1": [
+        "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
+        "../lab/.gen/pki/ceos1-client.pem:/mnt/flash/ceos1-client.pem:ro",
+        "../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro",
+    ],
+    "ceos2": [
+        "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
+        "../lab/.gen/pki/ceos2-client.pem:/mnt/flash/ceos2-client.pem:ro",
+        "../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro",
+    ],
+}
+
+PKI_FILES = [
+    "ca.pem",
+    "radsec-ca.pem",
+    "server.pem",
+    "ceos1-client.pem",
+    "ceos1-client.key",
+    "ceos2-client.pem",
+    "ceos2-client.key",
 ]
 
 CEOS_STARTUP_CONFIGS = {
@@ -114,6 +157,8 @@ CONFIG_PATHS = {
     "ceos1": REPO_ROOT / "configs" / "ceos" / "ceos1.cfg.in",
     "ceos2": REPO_ROOT / "configs" / "ceos" / "ceos2.cfg.in",
     "clients": REPO_ROOT / "configs" / "radius" / "raddb" / "clients.conf.in",
+    "clients_radsec": REPO_ROOT / "configs" / "radius" / "raddb" / "clients-radsec.conf.in",
+    "tls_site": REPO_ROOT / "configs" / "radius" / "raddb" / "sites-available" / "tls",
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
 }
@@ -140,6 +185,17 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
         host_path = resolve_topo_path(bind.split(":", 1)[0], topo_dir)
         if not host_path.exists():
             errors.append(f"radius bind host path missing: {host_path}")
+
+    for ceos, binds in CEOS_BINDS.items():
+        for bind in binds:
+            host_path = resolve_topo_path(bind.split(":", 1)[0], topo_dir)
+            if not host_path.exists():
+                errors.append(f"{ceos} bind host path missing: {host_path}")
+
+    pki_dir = root / "lab" / ".gen" / "pki"
+    for name in PKI_FILES:
+        if not (pki_dir / name).is_file():
+            errors.append(f"missing lab/.gen/pki/{name} (run make gen-topo)")
 
     return errors
 
@@ -226,8 +282,18 @@ def validate_ceos_configs(
         if f"ip route {prefix} {nexthop}" not in text:
             errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
 
-        if f"radius-server host {radius_ip} vrf MGMT key {RADIUS_SECRET}" not in text:
-            errors.append(f"{ceos}.cfg must configure RADIUS server in MGMT VRF")
+        if f"radius-server host {radius_ip} vrf MGMT tls ssl-profile {SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must configure RadSec server in MGMT VRF")
+        if "ssl profile RADSEC" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile RADSEC")
+        if "tls versions 1.3" not in text:
+            errors.append(f"{ceos}.cfg must restrict ssl profile to TLS 1.3")
+        if "key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1" not in text:
+            errors.append(f"{ceos}.cfg must configure PQC-hybrid key establishment groups")
+        if f"server {radius_ip} tls vrf MGMT" not in text:
+            errors.append(f"{ceos}.cfg aaa group must use RadSec transport in MGMT VRF")
+        if "copy flash:" in text:
+            errors.append(f"{ceos}.cfg must not use copy flash in startup-config (use containerlab exec)")
         if "aaa group server radius RADIUS" not in text:
             errors.append(f"{ceos}.cfg must define aaa group server radius RADIUS")
 
@@ -245,26 +311,51 @@ def validate_radius_configs(
     mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
 
     clients_path = root / "lab" / ".gen" / "clients.conf"
+    clients_radsec_path = root / "lab" / ".gen" / "clients-radsec.conf"
+    tls_site_path = root / "configs" / "radius" / "raddb" / "sites-available" / "tls"
     radiusd_path = root / "configs" / "radius" / "raddb" / "radiusd.conf"
     dockerfile_path = root / "docker" / "radius" / "Dockerfile"
+
+    if not clients_radsec_path.is_file():
+        errors.append("missing lab/.gen/clients-radsec.conf (run make gen-topo)")
+    else:
+        clients_radsec = clients_radsec_path.read_text(encoding="utf-8")
+        for ceos, ip in (("ceos1", mgmt_ips["ceos1"]), ("ceos2", mgmt_ips["ceos2"])):
+            block = re.search(rf"client\s+{ceos}\s*\{{([^}}]+)\}}", clients_radsec, re.DOTALL)
+            if block is None:
+                errors.append(f"clients-radsec.conf must define client {ceos}")
+                continue
+            body = block.group(1)
+            if f"ipaddr  = {ip}" not in body and f"ipaddr = {ip}" not in body:
+                errors.append(f"clients-radsec.conf {ceos} ipaddr must be {ip}")
+            if "proto   = tls" not in body and "proto = tls" not in body:
+                errors.append(f"clients-radsec.conf {ceos} must use proto tls")
+            if f"secret  = {RADSEC_SECRET}" not in body and f"secret = {RADSEC_SECRET}" not in body:
+                errors.append(f"clients-radsec.conf {ceos} secret must be {RADSEC_SECRET}")
+            if "require_message_authenticator = true" not in body:
+                errors.append(f"clients-radsec.conf {ceos} must set require_message_authenticator")
+            if "limit_proxy_state = true" not in body:
+                errors.append(f"clients-radsec.conf {ceos} must set limit_proxy_state")
+
+    if not tls_site_path.is_file():
+        errors.append("missing configs/radius/raddb/sites-available/tls")
+    else:
+        tls_site = tls_site_path.read_text(encoding="utf-8")
+        if 'tls_min_version = "1.3"' not in tls_site:
+            errors.append("tls site must set tls_min_version 1.3")
+        if f"port = {RADSEC_PORT}" not in tls_site:
+            errors.append(f"tls site must listen on port {RADSEC_PORT}")
+        if "require_client_cert = yes" not in tls_site:
+            errors.append("tls site must require client certificates")
 
     if not clients_path.is_file():
         errors.append("missing lab/.gen/clients.conf (run make gen-topo)")
     else:
         clients = clients_path.read_text(encoding="utf-8")
-        for ceos, ip in (("ceos1", mgmt_ips["ceos1"]), ("ceos2", mgmt_ips["ceos2"])):
-            block = re.search(rf"client\s+{ceos}\s*\{{([^}}]+)\}}", clients, re.DOTALL)
-            if block is None:
-                errors.append(f"clients.conf must define client {ceos}")
-                continue
-            body = block.group(1)
-            if f"ipaddr  = {ip}" not in body and f"ipaddr = {ip}" not in body:
-                errors.append(f"clients.conf {ceos} ipaddr must be {ip}")
-            if f"secret  = {RADIUS_SECRET}" not in body and f"secret = {RADIUS_SECRET}" not in body:
-                errors.append(f"clients.conf {ceos} secret must be {RADIUS_SECRET}")
-
         if "172.17.0.0/16" not in clients:
             errors.append("clients.conf must include dockernet client 172.17.0.0/16")
+        if "client ceos1" in clients or "client ceos2" in clients:
+            errors.append("clients.conf must not define plain UDP ceos clients (use clients-radsec.conf)")
 
     if not radiusd_path.is_file():
         errors.append("missing configs/radius/raddb/radiusd.conf")
@@ -278,9 +369,12 @@ def validate_radius_configs(
     else:
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
         for fragment in (
-            "FROM alpine:3.20 AS radius-arm64",
-            "FROM freeradius/freeradius-server:latest-3.2-alpine AS radius-amd64",
-            "FROM radius-${TARGETARCH}",
+            "ARG FREERADIUS_VERSION=release_3_2_6",
+            "ARG OPENSSL_VERSION=openssl-3.5.7",
+            "FROM alpine:${ALPINE_VERSION} AS openssl-build",
+            "openssl-pqc.cnf",
+            "sites-enabled/tls",
+            "clients-radsec.conf",
         ):
             if fragment not in dockerfile:
                 errors.append(f"Dockerfile must contain: {fragment!r}")
@@ -335,6 +429,17 @@ def validate_topology(
     for expected_bind in RADIUS_BINDS:
         if expected_bind not in radius_binds:
             errors.append(f"radius must bind {expected_bind}")
+
+    for ceos, expected_binds in CEOS_BINDS.items():
+        actual_binds = nodes.get(ceos, {}).get("binds", [])
+        for expected_bind in expected_binds:
+            if expected_bind not in actual_binds:
+                errors.append(f"{ceos} must bind {expected_bind}")
+        expected_exec = CEOS_RADSEC_PKI_EXEC.get(ceos)
+        if expected_exec is not None:
+            exec_cmds = _host_exec_commands(nodes.get(ceos, {}))
+            if expected_exec not in exec_cmds:
+                errors.append(f"{ceos} must exec RadSec PKI install")
 
     actual_links = {
         tuple(link["endpoints"])

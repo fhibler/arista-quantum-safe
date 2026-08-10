@@ -3,6 +3,7 @@ name: qkd-macsec-radius
 mgmt:
   network: qkd-mgmt
   ipv4-subnet: ${MGMT_SUBNET}
+  external-access: false
 
 topology:
   kinds:
@@ -15,11 +16,22 @@ topology:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS1}
       startup-config: ../lab/.gen/ceos1.cfg
+      binds:
+        - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
+        - ../lab/.gen/pki/ceos1-client.pem:/mnt/flash/ceos1-client.pem:ro
+        - ../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro
+      exec:
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-client.pem certificate:"; echo "copy flash:ceos1-client.key sslkey:"; } | Cli'
     ceos2:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS2}
       startup-config: ../lab/.gen/ceos2.cfg
-      startup-delay: 120
+      binds:
+        - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
+        - ../lab/.gen/pki/ceos2-client.pem:/mnt/flash/ceos2-client.pem:ro
+        - ../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro
+      exec:
+        - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-client.pem certificate:"; echo "copy flash:ceos2-client.key sslkey:"; } | Cli'
     host1:
       kind: linux
       image: alpine:3.20
@@ -42,7 +54,11 @@ topology:
       mgmt-ipv4: ${MGMT_IP_RADIUS}
       binds:
         - ../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro
+        - ../lab/.gen/clients-radsec.conf:/etc/raddb/clients-radsec.conf:ro
         - ../configs/radius/raddb/radiusd.conf:/etc/raddb/radiusd-log.conf:ro
+        - ../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro
+        - ../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro
+        - ../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro
         - logs/radius:/var/log/radius
   links:
     - endpoints: ["ceos1:eth1", "ceos2:eth1"]

@@ -1,0 +1,19 @@
+# RadSec NAS clients (TLS, port 2083). Rendered to lab/.gen/clients-radsec.conf.
+
+client ceos1 {
+    ipaddr  = ${MGMT_IP_CEOS1}
+    proto   = tls
+    secret  = radsec
+    nas_type = other
+    require_message_authenticator = true
+    limit_proxy_state = true
+}
+
+client ceos2 {
+    ipaddr  = ${MGMT_IP_CEOS2}
+    proto   = tls
+    secret  = radsec
+    nas_type = other
+    require_message_authenticator = true
+    limit_proxy_state = true
+}

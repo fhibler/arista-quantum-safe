@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 
+from lab.gen_pki import generate_radsec_pki
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
     DEFAULT_MGMT_SUBNET,
@@ -20,6 +21,7 @@ TEMPLATE_PATHS = {
     "ceos1.cfg": Path("configs/ceos/ceos1.cfg.in"),
     "ceos2.cfg": Path("configs/ceos/ceos2.cfg.in"),
     "clients.conf": Path("configs/radius/raddb/clients.conf.in"),
+    "clients-radsec.conf": Path("configs/radius/raddb/clients-radsec.conf.in"),
 }
 
 
@@ -86,6 +88,12 @@ def render_lab(
 ) -> Path:
     root = repo_root or Path(__file__).resolve().parents[1]
     render_config_templates(repo_root=root, mgmt_subnet=mgmt_subnet, ceos_image=ceos_image)
+    ips = mgmt_ips_for_subnet(mgmt_subnet)
+    generate_radsec_pki(
+        repo_root=root,
+        radius_ip=ips["radius"],
+        ceos_hosts={"ceos1": "ceos1", "ceos2": "ceos2"},
+    )
     return render_topology(
         repo_root=root,
         ceos_image=ceos_image,

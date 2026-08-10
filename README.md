@@ -84,10 +84,10 @@ make download-ceos
 
 ## FreeRADIUS multi-arch
 
-The `qkd-radius:latest` image is built by `make build-radius`:
+The `qkd-radius:latest` image is built by `make build-radius` (~2 min first build):
 
-- **amd64** — official `freeradius/freeradius-server:latest-3.2-alpine` base
-- **arm64** — Alpine 3.20 `apk freeradius` fallback (Hub image is amd64-only)
+- **amd64 and arm64** — FreeRADIUS **3.2.6** + OpenSSL **3.5.7** (PQC-hybrid groups including `X25519MLKEM768`)
+- Post-build verification: `make test-radius-image`
 
 Lab policy (`DEFAULT Auth-Type := Accept`) is baked into the image. Config bind mounts overlay `clients.conf` and a log snippet at runtime — see [docs/radius.md](docs/radius.md).
 
@@ -178,7 +178,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 |-----------|-------|-----------------|
 | cEOS tarball | `download/cEOS64-lab-4.36.1F.tar.xz` | `download/cEOSarm-lab-4.36.1F.tar.xz` (EFT suffix OK) |
 | cEOS Docker tag | `ceos:4.36.1F` | `ceos:4.36.1F` |
-| FreeRADIUS base | Official Hub image | Alpine 3.20 packages |
+| FreeRADIUS | 3.2.6 + OpenSSL 3.5.7 (PQC groups) | Same |
 | Devcontainer dind | `ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0` (inner Moby Docker) | Docker CE (latest) |
 
 `make check-ceos-image` fails with a clear message if the imported cEOS architecture does not match the host.

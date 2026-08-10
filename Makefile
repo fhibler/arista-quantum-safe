@@ -11,7 +11,7 @@ CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
 CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
 CLAB_NAME     := qkd-macsec-radius
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos2-client.pem ceos2-client.key)
 RADIUS_IMAGE  := qkd-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -26,7 +26,7 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1.cfg.in configs/ceos/ceos2.cfg.in configs/radius/raddb/clients.conf.in
+$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1.cfg.in configs/ceos/ceos2.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
@@ -158,8 +158,23 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-radius: lab/.gen/clients.conf ## Build qkd-radius:latest for the host architecture (buildx --load)
+build-radius: $(GEN_CONFIGS) ## Build qkd-radius:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
+	@$(MAKE) --no-print-directory test-radius-image
+
+test-radius-image: ## Verify qkd-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
+	@set -euo pipefail; \
+	echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
+	echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
+	groups=$$(docker run --rm $(RADIUS_IMAGE) openssl list -tls-groups); \
+	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
+		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
+		echo "PQC group:  $$g present"; \
+	done; \
+	docker run --rm $(RADIUS_IMAGE) test -L /etc/raddb/sites-enabled/tls; \
+	echo "RadSec:     tls site enabled"; \
+	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
+	echo "RadSec:     radiusd config OK"
 
 deploy: gen-topo build-radius check-ceos-image ## Deploy lab (gen-topo → build-radius → check-ceos-image → clab deploy)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
@@ -181,13 +196,23 @@ ssh-ceos1: ## Open cEOS CLI on ceos1
 ssh-ceos2: ## Open cEOS CLI on ceos2
 	docker exec -it clab-$(CLAB_NAME)-ceos2 Cli
 
-test-radius: ## Ping and RADIUS auth test from both switches
+test-radius: ## RadSec auth test from both switches (requires deployed lab)
 	@set -euo pipefail; \
+	docker exec clab-$(CLAB_NAME)-radius netstat -ltn | grep -q ':2083'; \
 	for node in ceos1 ceos2; do \
 		printf 'enable\nping vrf MGMT $(MGMT_IP_RADIUS) repeat 3\n' \
 			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
 			| grep -q '0% packet loss'; \
-		printf 'enable\ntest aaa group RADIUS server $(MGMT_IP_RADIUS) vrf MGMT key testing123\n' \
+		printf 'enable\nshow management security ssl profile RADSEC\n' \
+			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
+			| grep -q 'valid'; \
+		printf 'enable\nshow management security ssl profile RADSEC detail\n' \
+			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
+			| grep -q 'X25519MLKEM768'; \
+		printf 'enable\nshow running-config | section radius\n' \
+			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
+			| grep -q 'tls ssl-profile RADSEC'; \
+		printf 'enable\ntest aaa group RADIUS server $(MGMT_IP_RADIUS) tls port 2083 vrf MGMT\n' \
 			| docker exec -i clab-$(CLAB_NAME)-$$node Cli \
 			| grep -q 'successfully authenticated'; \
 	done

@@ -1,17 +1,3 @@
-client ceos1 {
-    ipaddr  = ${MGMT_IP_CEOS1}
-    secret  = testing123
-    require_message_authenticator = no
-    nas_type = other
-}
-
-client ceos2 {
-    ipaddr  = ${MGMT_IP_CEOS2}
-    secret  = testing123
-    require_message_authenticator = no
-    nas_type = other
-}
-
 client dockernet {
     ipaddr  = 172.17.0.0/16
     secret  = testing123

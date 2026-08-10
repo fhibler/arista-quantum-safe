@@ -11,7 +11,7 @@ from lab.topology_contract import (
     DEFAULT_MGMT_SUBNET,
     HOST_DATA_PLANE,
     MGMT_IPS,
-    RADIUS_SECRET,
+    RADSEC_SECRET,
     RADIUS_SERVER_IP,
     validate_ceos_configs,
     validate_radius_configs,
@@ -51,11 +51,19 @@ def test_ceos_no_todo_stub_markers(repo_root: Path, ceos: str, spec: dict) -> No
     assert spec["mgmt_ip"] in text
 
 
-def test_clients_conf_ceos_entries(repo_root: Path) -> None:
+def test_clients_conf_dockernet_only(repo_root: Path) -> None:
     clients = (repo_root / "lab" / ".gen" / "clients.conf").read_text(encoding="utf-8")
-    assert RADIUS_SECRET in clients
+    assert "172.17.0.0/16" in clients
+    assert "client ceos1" not in clients
+    assert "client ceos2" not in clients
+
+
+def test_clients_radsec_conf_ceos_entries(repo_root: Path) -> None:
+    clients = (repo_root / "lab" / ".gen" / "clients-radsec.conf").read_text(encoding="utf-8")
+    assert RADSEC_SECRET in clients
     assert MGMT_IPS["ceos1"] in clients
     assert MGMT_IPS["ceos2"] in clients
+    assert "proto   = tls" in clients
 
 
 def test_radiusd_conf_logs_to_bind_mount(repo_root: Path) -> None:

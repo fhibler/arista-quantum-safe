@@ -6,37 +6,54 @@ import json
 import re
 from pathlib import Path
 
+from lab.sync_devcontainer import read_clab_version_from_devcontainer, read_clab_version_from_makefile
 from tests.scaffold_contract import REPO_ROOT
 
 DEVCONTAINER_JSON = REPO_ROOT / ".devcontainer" / "devcontainer.json"
+DEVCONTAINER_DOCKERFILE = REPO_ROOT / ".devcontainer" / "Dockerfile"
 DEVCONTAINER_LOCK = REPO_ROOT / ".devcontainer" / "devcontainer-lock.json"
+MAKEFILE = REPO_ROOT / "Makefile"
 
-CLAB_DIND_IMAGE = "ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0"
+TRIXIE_BASE = "mcr.microsoft.com/devcontainers/python:3.11-trixie"
 
 
 def _devcontainer_text() -> str:
     return DEVCONTAINER_JSON.read_text(encoding="utf-8")
 
 
-def _devcontainer_feature_options(feature: str) -> dict:
-    """Extract JSON object for a devcontainer feature block (JSONC-tolerant)."""
-    pattern = rf'"{re.escape(feature)}":\s*(\{{[^}}]+\}})'
-    match = re.search(pattern, _devcontainer_text(), re.DOTALL)
-    assert match, f"missing feature block: {feature}"
-    return json.loads(match.group(1))
+def _makefile_clab_version() -> str:
+    return read_clab_version_from_makefile(MAKEFILE)
+
+
+def _devcontainer_clab_version() -> str:
+    return read_clab_version_from_devcontainer(DEVCONTAINER_JSON)
 
 
 def test_devcontainer_json_exists() -> None:
     assert DEVCONTAINER_JSON.is_file()
 
 
+def test_devcontainer_dockerfile_exists() -> None:
+    assert DEVCONTAINER_DOCKERFILE.is_file()
+
+
 def test_devcontainer_lock_exists() -> None:
     assert DEVCONTAINER_LOCK.is_file()
 
 
-def test_devcontainer_uses_containerlab_dind_slim_image() -> None:
+def test_devcontainer_builds_trixie_dind_slim_fork() -> None:
     text = _devcontainer_text()
-    assert f'"image": "{CLAB_DIND_IMAGE}"' in text
+    version = _makefile_clab_version()
+    assert '"build"' in text
+    assert '"dockerfile": "Dockerfile"' in text
+    assert f'"CLAB_VERSION": "{version}"' in text
+    dockerfile = DEVCONTAINER_DOCKERFILE.read_text(encoding="utf-8")
+    assert f"FROM {TRIXIE_BASE}" in dockerfile
+    assert "COPY" not in dockerfile or "dclab" not in dockerfile.split("COPY", 1)[-1]
+
+
+def test_devcontainer_clab_version_matches_makefile() -> None:
+    assert _makefile_clab_version() == _devcontainer_clab_version()
 
 
 def test_devcontainer_remote_user_root() -> None:
@@ -47,8 +64,8 @@ def test_devcontainer_remote_user_root() -> None:
 
 def test_devcontainer_preserves_ansible_features() -> None:
     text = _devcontainer_text()
-    assert "ghcr.io/devcontainers-extra/features/ansible:2" in text
-    assert "ghcr.io/hspaans/devcontainer-features/ansible-lint:2" in text
+    assert "ghcr.io/devcontainers-extra/features/ansible:2" not in text
+    assert "ghcr.io/hspaans/devcontainer-features/ansible-lint:2" not in text
 
 
 def test_devcontainer_ansible_config_env() -> None:
@@ -78,19 +95,18 @@ def test_devcontainer_post_create_command() -> None:
 
 def test_devcontainer_uses_dind_not_dood() -> None:
     text = _devcontainer_text()
-    assert "devcontainer-dind-slim" in text
+    assert "ghcr.io/devcontainers/features/docker-in-docker:2" in text
     assert "docker-outside-of-docker" not in text
-    assert "docker-in-docker" not in text
     assert "runArgs" not in text
     assert "LOCAL_WORKSPACE_FOLDER" not in text
     assert "mcr.microsoft.com/devcontainers/base:noble" not in text
 
 
-def test_devcontainer_lock_has_no_dood_or_dind_features() -> None:
+def test_devcontainer_lock_has_dind_not_dood() -> None:
     lock = json.loads(DEVCONTAINER_LOCK.read_text(encoding="utf-8"))
     features = lock.get("features", {})
+    assert "ghcr.io/devcontainers/features/docker-in-docker:2" in features
     assert "ghcr.io/devcontainers/features/docker-outside-of-docker:1" not in features
-    assert "ghcr.io/devcontainers/features/docker-in-docker:2" not in features
 
 
 def test_dood_backup_preserved_under_tmp() -> None:

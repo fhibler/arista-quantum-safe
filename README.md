@@ -20,9 +20,9 @@ No MACsec or QKD configuration is included (Scope B).
 
 | Requirement | Notes |
 |-------------|-------|
-| Devcontainer rebuild | DinD devcontainer (`devcontainer-dind-slim:0.77.0`) — see [docs/devcontainer.md](docs/devcontainer.md) |
+| Devcontainer rebuild | DinD devcontainer (trixie fork of `devcontainer-dind-slim`, CLAB **0.78.0**) — see [docs/devcontainer.md](docs/devcontainer.md) |
 | RAM | ~8 GB minimum (two cEOS containers are memory-heavy) |
-| Containerlab CLI | Installed by devcontainer `postCreateCommand`; verify with `containerlab version` |
+| Containerlab CLI | Installed at devcontainer build time (`CLAB_VERSION` in Makefile); verify with `containerlab version` |
 | Docker (dind) | Inner daemon must match host arch (amd64 or aarch64) |
 | cEOS image | **Required for deploy** — import manually or via optional `make download-ceos` |
 | Mgmt subnet | Default `172.20.127.0/24`; override with `MGMT_SUBNET=…` if host NIC overlaps (see [docs/makefile.md](docs/makefile.md)) |
@@ -181,7 +181,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | cEOS tarball | `download/cEOS64-lab-4.36.1F.tar.xz` | `download/cEOSarm-lab-4.36.1F.tar.xz` (EFT suffix OK) |
 | cEOS Docker tag | `ceos:4.36.1F` | `ceos:4.36.1F` |
 | FreeRADIUS | 3.2.6 + OpenSSL 3.5.7 (PQC groups) | Same |
-| Devcontainer dind | `ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0` (inner Moby Docker) | Docker CE (latest) |
+| Devcontainer dind | Local build from `.devcontainer/Dockerfile` (trixie + DinD feature, CLAB **0.78.0**) | Docker CE (latest) |
 
 `make check-ceos-image` fails with a clear message if the imported cEOS architecture does not match the host.
 

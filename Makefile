@@ -3,6 +3,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+CLAB_VERSION  ?= 0.78.0
 CEOS_IMAGE ?= ceos:4.36.1F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
@@ -18,7 +19,7 @@ HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
 
-.PHONY: help gen-topo validate-topo test check-ceos-image import-ceos import-ceos-help \
+.PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius deploy destroy redeploy \
         inspect graph ssh-ceos1 ssh-ceos2 test-radius test-pqc test-hosts
 
@@ -32,6 +33,10 @@ $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1.cfg.in conf
 gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 	@$(MAKE) --no-print-directory validate-topo
+	@$(MAKE) --no-print-directory sync-devcontainer
+
+sync-devcontainer: ## Sync CLAB_VERSION from Makefile into .devcontainer/devcontainer.json
+	@$(PYTHON) -m lab.sync_devcontainer --clab-version '$(CLAB_VERSION)'
 
 validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
 	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'

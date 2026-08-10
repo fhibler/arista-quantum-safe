@@ -43,6 +43,7 @@ def test_makefile_exists() -> None:
     [
         "help",
         "gen-topo",
+        "sync-devcontainer",
         "validate-topo",
         "test",
         "check-ceos-image",

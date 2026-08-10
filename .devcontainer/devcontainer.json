@@ -1,13 +1,20 @@
 {
     "name": "QKD-MACsec-RADIUS (Containerlab DinD)",
-    "image": "ghcr.io/srl-labs/containerlab/devcontainer-dind-slim:0.77.0",
-
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+            "CLAB_VERSION": "0.78.0"
+        }
+    },
     "features": {
-        "ghcr.io/devcontainers-extra/features/ansible:2": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
             "version": "latest",
-            "injections": "requests"
+            "dockerDashComposeVersion": "none",
+            "installDockerComposeSwitch": "false",
+            "moby": false
         },
-        "ghcr.io/hspaans/devcontainer-features/ansible-lint:2": {
+        "ghcr.io/devcontainers/features/sshd:1": {
             "version": "latest"
         },
         "ghcr.io/devcontainers/features/node:2.0.0": {}
@@ -16,9 +23,9 @@
     "remoteUser": "root",
     "containerUser": "root",
 
-    "containerEnv": {
-        "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"
-    },
+    // "containerEnv": {
+    //     "ANSIBLE_CONFIG": "${containerWorkspaceFolder}/ansible.cfg"
+    // },
 
     "customizations": {
         "vscode": {

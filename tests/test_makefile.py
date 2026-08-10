@@ -258,6 +258,13 @@ def test_test_radius_recipe_uses_ceos_cli_enable_and_repeat() -> None:
 def test_test_pqc_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "test-pqc:" in content
-    pqc = content.split("test-pqc:")[1].split("test-hosts:")[0]
+    pqc = content.split("test-pqc:")[1].split("test-macsec:")[0]
     assert "lab.test_pqc_connections" in pqc
     assert "successfully authenticated" not in pqc
+
+
+def test_test_macsec_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-macsec:" in content
+    macsec = content.split("test-macsec:")[1].split("test-hosts:")[0]
+    assert "lab.test_macsec" in macsec

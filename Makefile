@@ -21,7 +21,7 @@ MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ip
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius deploy destroy redeploy \
-        inspect graph ssh-ceos1 ssh-ceos2 test-radius test-pqc test-hosts
+        inspect graph ssh-ceos1 ssh-ceos2 test-radius test-pqc test-macsec test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -224,6 +224,9 @@ test-radius: ## RadSec auth test from both switches (requires deployed lab)
 
 test-pqc: ## TLS 1.3 + PQC: per-node [config] and [live] checks (requires deployed lab)
 	@$(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)'
+
+test-macsec: ## Dynamic MACsec: 802.1X EAP-TLS + MKA on inter-switch link (requires deployed lab)
+	@$(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 test-hosts: ## host1 ping host2 across routed segments
 	@set -euo pipefail; \

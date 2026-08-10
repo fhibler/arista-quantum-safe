@@ -1,20 +1,20 @@
 # QKD-MACsec-RADIUS Lab
 
-Containerlab topology for a cEOS + FreeRADIUS management-plane lab (Scope B: no MACsec).
+Containerlab topology for a cEOS + FreeRADIUS lab with PQC-hybrid management-plane security and **dynamic MACsec** on the inter-switch link.
 
-Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link. Each switch serves an Alpine Linux host on a separate routed subnet. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RADIUS traffic; hosts reach each other via static routes on the switches.
+Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link protected by 802.1X EAP-TLS and MKA-derived keys. Each switch serves an Alpine Linux host on a separate routed subnet. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
 
 ## Overview
 
-Five Containerlab nodes exercise management-plane RADIUS authentication and L3 host routing:
+Five Containerlab nodes exercise management-plane RADIUS authentication, L3 host routing, and switch-to-switch MACsec:
 
 | Node | Role |
 |------|------|
-| ceos1, ceos2 | Arista cEOS switches with MGMT VRF and RADIUS client |
+| ceos1, ceos2 | Arista cEOS switches — MGMT VRF, RadSec client, **ceos1 dot1x authenticator / ceos2 EAP-TLS supplicant** on Ethernet1 |
 | host1, host2 | Alpine 3.20 hosts on routed data segments |
-| radius | FreeRADIUS server on the mgmt network |
+| radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
 
-No MACsec or QKD configuration is included (Scope B).
+QKD integration is not included in this lab.
 
 ## Prerequisites
 
@@ -100,6 +100,7 @@ make deploy
 make inspect
 make test-radius
 make test-pqc
+make test-macsec
 make test-hosts
 make destroy
 ```
@@ -143,7 +144,7 @@ flowchart LR
     h2["host2<br/>10.0.2.1"]
   end
 
-  ceos1 ---|"eth1 10.255.0.1/30"| ceos2
+  ceos1 ---|"eth1 10.255.0.1/30 MACsec"| ceos2
   ceos1 ---|"eth2 10.0.1.254/24"| h1
   ceos2 ---|"eth2 10.0.2.254/24"| h2
   ceos1 -.->|"RADIUS vrf MGMT"| radius
@@ -170,7 +171,8 @@ Full contract: [docs/topology.md](docs/topology.md).
 | 4 | FreeRADIUS listening | `docker logs clab-qkd-macsec-radius-radius` |
 | 5 | RADIUS auth | `make test-radius` |
 | 6 | TLS 1.3 PQC (eAPI + RadSec + SSH) | `make test-pqc` |
-| 7 | Host routing | `make test-hosts` |
+| 7 | Dynamic MACsec (802.1X + MKA) | `make test-macsec` |
+| 8 | Host routing | `make test-hosts` |
 
 Details and troubleshooting: [docs/verification.md](docs/verification.md).
 

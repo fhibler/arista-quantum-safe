@@ -31,7 +31,16 @@ RUN bash -c 'ARCH=$(uname -m | sed "s/x86_64/amd64/" | sed "s/aarch64/arm64/") &
     chmod +x /usr/local/bin/gh && \
     rm -rf /tmp/gh_${CLEAN_VERSION}_linux_${ARCH}'
 
-RUN mkdir -p /root/.docker && echo "{}" > /root/.docker/config.json
+# Inner DinD: skip credential helpers for Docker Hub (avoids macOS Keychain prompts on
+# anonymous base-image pulls during make deploy; see docs/devcontainer.md).
+RUN mkdir -p /root/.docker && cat > /root/.docker/config.json <<'EOF'
+{
+  "credHelpers": {
+    "https://index.docker.io/v1/": "",
+    "docker.io": ""
+  }
+}
+EOF
 
 RUN mkdir -p /etc/sudoers.d && echo 'Defaults env_keep += "SSH_AUTH_SOCK"' > /etc/sudoers.d/ssh_auth_sock
 

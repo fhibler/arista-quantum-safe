@@ -27,18 +27,21 @@ RUN ARCH="${TARGETARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}" \
  && cd "/tmp/openssl-openssl-${OPENSSL_VERSION#openssl-}" \
  && ./Configure "${OPENSSL_TARGET}" no-shared --prefix=/opt/openssl --openssldir=/opt/openssl \
  && make -j"$(nproc)" \
- && make install_sw
+ && make install_sw \
+ && test -f /opt/openssl/lib64/libcrypto.a || test -f /opt/openssl/lib/libcrypto.a
 
 FROM alpine:${ALPINE_VERSION} AS syslog-ng-build
 ARG SYSLOG_NG_VERSION
 
 COPY --from=openssl-build /opt/openssl /opt/openssl
 
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
 ENV PATH=/opt/openssl/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openssl/lib
-ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
+ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig:/opt/openssl/lib64/pkgconfig
 ENV CPPFLAGS="-I/opt/openssl/include"
-ENV LDFLAGS="-L/opt/openssl/lib -Wl,-rpath,/opt/openssl/lib"
+ENV LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib"
 
 RUN apk add --no-cache build-base wget tar glib-dev curl-dev flex bison json-c-dev pcre2-dev
 
@@ -71,7 +74,7 @@ COPY --from=openssl-build /opt/openssl /opt/openssl
 COPY --from=syslog-ng-build /opt/syslog-ng /opt/syslog-ng
 
 ENV PATH=/opt/syslog-ng/sbin:/opt/openssl/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/syslog-ng/lib
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64:/opt/syslog-ng/lib
 ENV OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf
 
 RUN mkdir -p /etc/syslog-ng/certs /var/log/syslog

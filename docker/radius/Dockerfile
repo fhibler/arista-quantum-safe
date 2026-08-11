@@ -27,28 +27,37 @@ RUN ARCH="${TARGETARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}" \
  && cd "/tmp/openssl-openssl-${OPENSSL_VERSION#openssl-}" \
  && ./Configure "${OPENSSL_TARGET}" no-shared --prefix=/opt/openssl --openssldir=/opt/openssl \
  && make -j"$(nproc)" \
- && make install_sw
+ && make install_sw \
+ && test -f /opt/openssl/lib64/libcrypto.a || test -f /opt/openssl/lib/libcrypto.a
 
 FROM alpine:${ALPINE_VERSION} AS freeradius-build
 ARG FREERADIUS_VERSION
 
 COPY --from=openssl-build /opt/openssl /opt/openssl
 
+# curl-dev pulls Alpine openssl-dev (3.3); pin FreeRADIUS to our OpenSSL 3.5 static libs.
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
 ENV PATH=/opt/openssl/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openssl/lib
-ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
+ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig:/opt/openssl/lib64/pkgconfig
 ENV CPPFLAGS="-I/opt/openssl/include"
-ENV LDFLAGS="-L/opt/openssl/lib -Wl,-rpath,/opt/openssl/lib"
+ENV LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib"
 
 RUN apk add --no-cache \
     git gcc g++ make musl-dev linux-headers \
-    talloc-dev openssl openssl-dev pcre-dev curl-dev json-c-dev perl
+    talloc-dev pcre-dev curl-dev json-c-dev perl
 
 RUN git clone --depth 1 --branch "${FREERADIUS_VERSION}" \
     https://github.com/FreeRADIUS/freeradius-server.git /src
 
 WORKDIR /src
-RUN ./configure --prefix=/opt/freeradius \
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then OSSL_LIB=/opt/openssl/lib64; \
+    elif [ -f /opt/openssl/lib/libcrypto.a ]; then OSSL_LIB=/opt/openssl/lib; \
+    else echo "OpenSSL static libs not found under /opt/openssl" >&2; exit 1; fi \
+ && ./configure --prefix=/opt/freeradius \
+      --with-openssl-include-dir=/opt/openssl/include \
+      --with-openssl-lib-dir="${OSSL_LIB}" \
  && make -j"$(nproc)" \
  && make install \
  && rm -f /opt/freeradius/lib/*.a
@@ -61,7 +70,7 @@ COPY --from=openssl-build /opt/openssl /opt/openssl
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius
 
 ENV PATH=/opt/openssl/bin:/opt/freeradius/sbin:/opt/freeradius/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/openssl/lib
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
 ENV OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf
 
 RUN ln -sf /opt/freeradius/etc/raddb /etc/raddb \

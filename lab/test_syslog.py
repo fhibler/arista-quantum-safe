@@ -17,6 +17,7 @@ from lab.syslog_checks import (
     check_syslog_collector_listeners,
     probe_syslog_delivery_no_cleartext,
     probe_syslog_tls_pqc,
+    wait_for_syslog_healthy,
 )
 from lab.topology_contract import (
     IP_FAMILIES,
@@ -80,6 +81,7 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     if not skip_live:
+        wait_for_syslog_healthy(syslog_container)
         print_check_group("Collector TLS")
         for family in IP_FAMILIES:
             addr = ips["syslog"] if family == IP_FAMILY_IPV4 else ips6["syslog"]

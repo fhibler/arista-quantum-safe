@@ -81,5 +81,11 @@ COPY configs/syslog/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf
 COPY lab/.gen/pki/syslog-server.pem /etc/syslog-ng/certs/server.pem
 COPY lab/.gen/pki/syslog-server.key /etc/syslog-ng/certs/server.key
 COPY lab/.gen/pki/ca.pem /etc/syslog-ng/certs/ca.pem
+COPY docker/syslog/entrypoint.sh /entrypoint.sh
+COPY docker/syslog/healthcheck.sh /usr/local/bin/syslog-healthcheck.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/syslog-healthcheck.sh
 
-CMD ["/opt/syslog-ng/sbin/syslog-ng", "-F", "-f", "/etc/syslog-ng/syslog-ng.conf"]
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+	CMD ["/usr/local/bin/syslog-healthcheck.sh"]
+
+ENTRYPOINT ["/entrypoint.sh"]

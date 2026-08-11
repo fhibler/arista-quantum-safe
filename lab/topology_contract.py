@@ -221,6 +221,8 @@ TLS_PQC_EOS_GROUPS = TLS_PQC_GROUP
 # Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.1F syslog client gap on PQC-only).
 SYSLOG_TLS_PQC_SAFE_EOS_GROUPS = "X25519MLKEM768:ecdh_x25519:secp256r1"
 SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
+# 3 cEOS × dual-stack TLS logging hosts hold long-lived sessions; default max-connections(10) is too low.
+SYSLOG_MAX_CONNECTIONS = 32
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
@@ -1072,6 +1074,11 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
             errors.append("syslog-ng.conf must set ip-protocol(6) for dual-stack TLS syslog")
         if re.search(r"port\((514|601)\)", syslog_conf):
             errors.append("syslog-ng.conf must not listen on cleartext syslog ports 514/601")
+        if f"max-connections({SYSLOG_MAX_CONNECTIONS})" not in syslog_conf.replace(" ", ""):
+            errors.append(
+                f"syslog-ng.conf must set max-connections({SYSLOG_MAX_CONNECTIONS}) "
+                f"(3 cEOS dual-stack TLS sessions exceed default 10)"
+            )
 
     if openssl_cnf_path.is_file():
         openssl_cnf = openssl_cnf_path.read_text(encoding="utf-8")
@@ -1093,6 +1100,9 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
             "openssl-pqc.cnf",
             "OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf",
             "syslog-ng.conf",
+            "entrypoint.sh",
+            "syslog-healthcheck.sh",
+            "HEALTHCHECK",
         ):
             if fragment not in dockerfile:
                 errors.append(f"syslog Dockerfile must contain: {fragment!r}")

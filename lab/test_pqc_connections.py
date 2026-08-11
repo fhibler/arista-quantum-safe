@@ -24,6 +24,7 @@ from lab.syslog_checks import (
     check_syslog_collector_listeners,
     probe_syslog_delivery_no_cleartext,
     probe_syslog_tls_pqc,
+    wait_for_syslog_healthy,
 )
 from lab.topology_contract import (
     EOSSDKRPC_SSL_PROFILE,
@@ -723,6 +724,7 @@ def run_live_checks(
     print_device("syslog")
     if not skip_config:
         check_syslog_collector_config(targets, verbose=verbose)
+    wait_for_syslog_healthy(targets.syslog_container)
     print_check_group("Collector TLS")
     for family in IP_FAMILIES:
         probe_syslog_tls(targets, family=family, verbose=verbose)

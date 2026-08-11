@@ -210,9 +210,24 @@ test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5
 		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
 		echo "PQC group:  $$g present"; \
 	done; \
-	docker run --rm $(SYSLOG_IMAGE) test -f /etc/syslog-ng/syslog-ng.conf; \
-	docker run --rm $(SYSLOG_IMAGE) /opt/syslog-ng/sbin/syslog-ng -s -f /etc/syslog-ng/syslog-ng.conf; \
-	echo "Syslog:     syslog-ng config OK"
+	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -f /etc/syslog-ng/syslog-ng.conf; \
+	docker run --rm --entrypoint /opt/syslog-ng/sbin/syslog-ng $(SYSLOG_IMAGE) -s -f /etc/syslog-ng/syslog-ng.conf; \
+	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /entrypoint.sh; \
+	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /usr/local/bin/syslog-healthcheck.sh; \
+	cid=$$(docker run -d --name quantum-safe-syslog-image-test $(SYSLOG_IMAGE)); \
+	trap 'docker rm -f quantum-safe-syslog-image-test >/dev/null 2>&1 || true' EXIT; \
+	echo "Syslog:     waiting for TLS healthcheck..."; \
+	for i in $$(seq 1 30); do \
+		status=$$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $$cid 2>/dev/null || echo missing); \
+		if [ "$$status" = healthy ]; then \
+			echo "Syslog:     TLS healthcheck passed"; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "syslog image healthcheck did not become healthy (last status: $$status)"; \
+	docker logs $$cid 2>&1 | tail -20; \
+	exit 1
 
 build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(KME_IMAGE) -f $(KME_DOCKERFILE) .

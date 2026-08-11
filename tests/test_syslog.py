@@ -15,6 +15,7 @@ from lab.syslog_checks import (
     expected_syslog_host_lines,
     negotiated_pqc_group,
     tcpdump_captured_packet,
+    tls_handshake_incomplete,
 )
 from lab.topology_contract import (
     SYSLOG_PORT,
@@ -35,6 +36,12 @@ def test_cleartext_capture_filter_uses_src_host() -> None:
 def test_negotiated_pqc_group() -> None:
     assert negotiated_pqc_group(f"Negotiated group: {PQC_GROUP}")
     assert not negotiated_pqc_group("Negotiated group: ecdh_x25519")
+
+
+def test_tls_handshake_incomplete_detects_eof() -> None:
+    output = "CONNECTED(00000003)\nunexpected eof while reading\nNegotiated TLS1.3 group: <NULL>\n"
+    assert tls_handshake_incomplete(output)
+    assert not negotiated_pqc_group(output)
 
 
 def test_syslog_contract_constants() -> None:

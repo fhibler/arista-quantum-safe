@@ -25,6 +25,32 @@ class SyslogCheckError(RuntimeError):
     """Raised when a syslog PQC or encryption check fails."""
 
 
+def wait_for_syslog_healthy(container: str, *, timeout_sec: int = 90) -> None:
+    """Wait until Docker reports the syslog collector container as healthy."""
+    deadline = time.time() + timeout_sec
+    last_status = "unknown"
+    while time.time() < deadline:
+        result = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
+                container,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        last_status = result.stdout.strip() or "missing"
+        if last_status == "healthy":
+            return
+        time.sleep(2)
+    raise SyslogCheckError(
+        f"{container} not healthy after {timeout_sec}s (last status: {last_status})"
+    )
+
+
 def tcpdump_captured_packet(output: str) -> bool:
     """Return True only when tcpdump stderr confirms a packet was captured."""
     return bool(re.search(r"\b1 packet captured\b", output))
@@ -32,6 +58,18 @@ def tcpdump_captured_packet(output: str) -> bool:
 
 def negotiated_pqc_group(output: str) -> bool:
     return PQC_GROUP in output
+
+
+def tls_handshake_incomplete(output: str) -> bool:
+    if negotiated_pqc_group(output):
+        return False
+    if "unexpected eof while reading" in output.lower():
+        return True
+    if "Negotiated TLS1.3 group: <NULL>" in output:
+        return True
+    if "no peer certificate available" in output and "Cipher is (NONE)" in output:
+        return True
+    return False
 
 
 def cleartext_syslog_lines(logging_config: str) -> list[str]:
@@ -139,6 +177,12 @@ def probe_syslog_tls_pqc(
     output = result.stdout + result.stderr
     if "CONNECTED" not in output and "CONNECTION ESTABLISHED" not in output:
         raise SyslogCheckError(f"syslog TLS handshake failed:\n{output[-800:]}")
+    if tls_handshake_incomplete(output):
+        raise SyslogCheckError(
+            "syslog TLS handshake incomplete (TCP connected but no TLS response); "
+            f"collector may still be starting — retry or check "
+            f"'docker inspect --format={{.State.Health.Status}} {syslog_container}'"
+        )
     if not negotiated_pqc_group(output):
         raise SyslogCheckError(f"syslog TLS: expected PQC group {PQC_GROUP!r}")
     return output

@@ -254,14 +254,16 @@ def run_macsec_checks(
     verify_reauth: bool = False,
     verbose: bool | None = None,
 ) -> None:
-    from lab.topology_contract import mgmt_ips_for_subnet
+    from lab.topology_contract import mgmt_ips_for_subnet, mgmt_ipv6_ips_for_subnet
 
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet()
     targets = LabTargets(
         clab_name=clab_name,
-        radius_ip=ips["radius"],
-        syslog_ip=ips["syslog"],
+        mgmt_ips=ips,
+        mgmt_ips6=ips6,
         ceos_ips={AUTHENTICATOR: ips[AUTHENTICATOR], SUPPLICANT: ips[SUPPLICANT]},
+        ceos_ips6={AUTHENTICATOR: ips6[AUTHENTICATOR], SUPPLICANT: ips6[SUPPLICANT]},
     )
     auth_container = targets.ceos_container(AUTHENTICATOR)
     supp_container = targets.ceos_container(SUPPLICANT)

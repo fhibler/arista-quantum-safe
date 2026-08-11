@@ -5,11 +5,18 @@ from __future__ import annotations
 from lab.syslog_checks import (
     PQC_GROUP,
     check_switch_syslog_ssl_profile_detail,
+    cleartext_capture_filter,
     cleartext_syslog_lines,
     expected_syslog_host_line,
     negotiated_pqc_group,
 )
-from lab.topology_contract import SYSLOG_PORT, SYSLOG_SSL_PROFILE
+from lab.topology_contract import SYSLOG_PORT, SYSLOG_SSL_PROFILE, SYSLOG_SERVER_IPV6
+
+
+def test_cleartext_capture_filter_uses_src_host() -> None:
+    filt = cleartext_capture_filter("172.20.127.11")
+    assert filt.startswith("src host 172.20.127.11")
+    assert "udp port 514" in filt
 
 
 def test_negotiated_pqc_group() -> None:
@@ -32,8 +39,9 @@ def test_cleartext_syslog_lines_detects_plain_tcp() -> None:
     assert cleartext_syslog_lines(cfg) == [cfg]
 
 
-def test_cleartext_syslog_lines_allows_tls() -> None:
-    cfg = expected_syslog_host_line("172.20.127.53")
+def test_cleartext_syslog_lines_allows_tls(ip_family: str) -> None:
+    syslog_ip = SYSLOG_SERVER_IPV6 if ip_family == "ipv6" else "172.20.127.53"
+    cfg = expected_syslog_host_line(syslog_ip)
     assert cleartext_syslog_lines(cfg) == []
 
 
@@ -42,10 +50,12 @@ def test_cleartext_syslog_lines_detects_host_without_protocol() -> None:
     assert cleartext_syslog_lines(cfg) == [cfg]
 
 
-def test_expected_syslog_host_line() -> None:
-    line = expected_syslog_host_line("172.20.127.53")
+def test_expected_syslog_host_line(ip_family: str) -> None:
+    syslog_ip = SYSLOG_SERVER_IPV6 if ip_family == "ipv6" else "172.20.127.53"
+    line = expected_syslog_host_line(syslog_ip)
     assert "protocol tls ssl-profile SYSLOG" in line
     assert str(SYSLOG_PORT) in line
+    assert syslog_ip in line
 
 
 def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:

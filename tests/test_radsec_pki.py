@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from lab.gen_pki import generate_radsec_pki
-from lab.topology_contract import PKI_FILES, RADSEC_PORT
+from lab.topology_contract import MGMT_IPV6_IPS, PKI_FILES, RADSEC_PORT
 
 
 @pytest.fixture
@@ -13,11 +13,17 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def test_generate_radsec_pki_files(tmp_path: Path) -> None:
+def test_generate_radsec_pki_files(tmp_path: Path, ip_family: str) -> None:
+    radius_ip = (
+        MGMT_IPV6_IPS["radius"] if ip_family == "ipv6" else "172.20.127.50"
+    )
+    syslog_ip = (
+        MGMT_IPV6_IPS["syslog"] if ip_family == "ipv6" else "172.20.127.53"
+    )
     out = generate_radsec_pki(
         repo_root=tmp_path,
-        radius_ip="172.20.127.50",
-        syslog_ip="172.20.127.53",
+        radius_ip=radius_ip,
+        syslog_ip=syslog_ip,
         ceos_mgmt_ips={
             "ceos1-both": "172.20.127.11",
             "ceos2-pqc": "172.20.127.12",

@@ -58,6 +58,11 @@ def print_device(name: str) -> None:
     print_section_header(f"=== {name} ===")
 
 
+def print_check_group(name: str) -> None:
+    """Print a check-type subsection header (e.g. eAPI, SSH)."""
+    print(f"--- {name} ---")
+
+
 def status_marker(status: CheckStatus, *, use_colors: bool | None = None) -> str:
     icon = _STATUS_ICONS[status]
     use = colors_enabled() if use_colors is None else use_colors

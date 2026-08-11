@@ -13,6 +13,11 @@ CA_SUBJECT = "/CN=quantum-safe-radsec-ca/O=Lab/C=US"
 CERT_DAYS = 825
 
 
+def _san_ip(ip: str) -> str:
+    """Return an OpenSSL subjectAltName IP entry for IPv4 or IPv6."""
+    return f"IP:{ip}"
+
+
 def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
@@ -58,7 +63,7 @@ def _generate_server_cert(
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = IP:{mgmt_ip},DNS:{name},DNS:{container_name(name)}",
+                f"subjectAltName = {_san_ip(mgmt_ip)},DNS:{name},DNS:{container_name(name)}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -124,7 +129,7 @@ def _generate_syslog_server_cert(
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = IP:{syslog_ip},DNS:syslog,DNS:{container_name('syslog')}",
+                f"subjectAltName = {_san_ip(syslog_ip)},DNS:syslog,DNS:{container_name('syslog')}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -199,7 +204,14 @@ def generate_radsec_pki(
     server_key = work / "server.key"
     server_csr = work / "server.csr"
     server_crt = work / "server.crt"
-    if not server_crt.is_file():
+    server_marker = work / "server-san"
+    if (
+        server_marker.is_file()
+        and server_crt.is_file()
+        and server_marker.read_text(encoding="utf-8").strip() == radius_ip
+    ):
+        pass
+    else:
         _run(
             [
                 "openssl",
@@ -219,7 +231,7 @@ def generate_radsec_pki(
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = IP:{radius_ip},DNS:radius,DNS:{container_name('radius')}",
+                f"subjectAltName = {_san_ip(radius_ip)},DNS:radius,DNS:{container_name('radius')}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -244,6 +256,7 @@ def generate_radsec_pki(
                 str(server_ext),
             ]
         )
+        server_marker.write_text(f"{radius_ip}\n", encoding="utf-8")
 
     for name, cn in hosts.items():
         client_key = work / f"{name}-client.key"

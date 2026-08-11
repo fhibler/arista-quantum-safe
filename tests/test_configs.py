@@ -10,9 +10,11 @@ from lab.topology_contract import (
     CONFIG_PATHS,
     DEFAULT_MGMT_SUBNET,
     HOST_DATA_PLANE,
+    MGMT_IPV6_IPS,
     MGMT_IPS,
     RADSEC_SECRET,
     RADIUS_SERVER_IP,
+    RADIUS_SERVER_IPV6,
     validate_ceos_configs,
     validate_radius_configs,
     validate_syslog_configs,
@@ -67,9 +69,11 @@ def test_clients_conf_dockernet_only(repo_root: Path) -> None:
 def test_clients_radsec_conf_ceos_entries(repo_root: Path) -> None:
     clients = (repo_root / "lab" / ".gen" / "clients-radsec.conf").read_text(encoding="utf-8")
     assert RADSEC_SECRET in clients
-    assert MGMT_IPS["ceos1-both"] in clients
-    assert MGMT_IPS["ceos2-pqc"] in clients
-    assert MGMT_IPS["ceos3-qkd"] in clients
+    assert MGMT_IPV6_IPS["ceos1-both"] in clients
+    assert MGMT_IPV6_IPS["ceos2-pqc"] in clients
+    assert MGMT_IPV6_IPS["ceos3-qkd"] in clients
+    assert "ipv6addr" in clients
+    assert "ipaddr" not in clients
     assert "proto   = tls" in clients
 
 
@@ -101,7 +105,8 @@ def test_data_plane_constants_match_host_exec() -> None:
     assert HOST_DATA_PLANE["host1"]["gateway"] == CEOS_DATA_PLANE["ceos1-both"]["eth8"].split("/")[0]
     assert HOST_DATA_PLANE["host2"]["gateway"] == CEOS_DATA_PLANE["ceos2-pqc"]["eth8"].split("/")[0]
     assert HOST_DATA_PLANE["host3"]["gateway"] == CEOS_DATA_PLANE["ceos3-qkd"]["eth8"].split("/")[0]
-    assert RADIUS_SERVER_IP == MGMT_IPS["radius"]
+    assert RADIUS_SERVER_IP == RADIUS_SERVER_IPV6
+    assert RADIUS_SERVER_IPV6 == MGMT_IPV6_IPS["radius"]
 
 
 def test_custom_mgmt_subnet_render(repo_root: Path) -> None:

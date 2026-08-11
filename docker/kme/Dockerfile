@@ -14,7 +14,7 @@ ARG KME_SIMULATOR_REF
 ARG TARGETARCH
 
 ENV PYTHONUNBUFFERED=1
-ENV HOST=0.0.0.0
+ENV HOST=::
 ENV PORT=8010
 
 RUN apk add --no-cache bash curl git iptables \
@@ -27,6 +27,9 @@ RUN apk add --no-cache bash curl git iptables \
 WORKDIR /opt/next-door-key-simulator
 RUN git clone --depth 1 --branch "${KME_SIMULATOR_REF}" "${KME_SIMULATOR_REPO}" . \
  && pip3 install --no-cache-dir -r requirements.txt
+
+# Upstream scanner holds kme_lock during peer HTTP calls, deadlocking mutual scans.
+COPY docker/kme/scanner.py /opt/next-door-key-simulator/network/scanner.py
 
 COPY docker/kme/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

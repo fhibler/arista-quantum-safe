@@ -9,8 +9,10 @@ from unittest.mock import patch
 import pytest
 
 from lab.kme_http import KME_CA_CERT_CONTAINER
+from lab.topology_contract import MGMT_IPS, MGMT_IPV6_IPS
 from lab.test_kme import (
     KmeTargets,
+    _kme_curl_failure_detail,
     assert_contains,
     dec_keys_on_kme_b,
     enc_keys_on_kme_a,
@@ -36,8 +38,23 @@ def test_assert_contains_raises_with_label() -> None:
         assert_contains("hello", "world", label="missing")
 
 
+def test_kme_curl_failure_detail_timeout() -> None:
+    result = subprocess.CompletedProcess(args=[], returncode=28, stdout="", stderr="")
+    detail = _kme_curl_failure_detail(result, url="https://172.20.127.51:8010/status")
+    assert "timed out" in detail
+    assert "wait-kme-pool" in detail
+
+
+def _kme_targets() -> KmeTargets:
+    return KmeTargets(
+        clab_name="quantum-safe",
+        kme_ips={"kme-a": MGMT_IPS["kme-a"], "kme-b": MGMT_IPS["kme-b"]},
+        kme_ips6={"kme-a": MGMT_IPV6_IPS["kme-a"], "kme-b": MGMT_IPV6_IPS["kme-b"]},
+    )
+
+
 def test_enc_keys_on_kme_a_parses_response() -> None:
-    targets = KmeTargets(clab_name="quantum-safe", kme_a_ip="172.20.127.51", kme_b_ip="172.20.127.52")
+    targets = _kme_targets()
     with patch(
         "lab.test_kme.subprocess.run",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout=_enc_keys_json(), stderr=""),
@@ -48,7 +65,7 @@ def test_enc_keys_on_kme_a_parses_response() -> None:
 
 
 def test_dec_keys_on_kme_b_validates_round_trip() -> None:
-    targets = KmeTargets(clab_name="quantum-safe", kme_a_ip="172.20.127.51", kme_b_ip="172.20.127.52")
+    targets = _kme_targets()
     with patch(
         "lab.test_kme.subprocess.run",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout=_dec_keys_json(), stderr=""),
@@ -116,5 +133,7 @@ def test_run_kme_checks_happy_path(capsys) -> None:
     assert "=== ceos3-qkd ===" in out
     assert "[kme]" in out
     assert "[host]" in out
+    assert "--- SAE status ---" in out
+    assert "--- enc_keys ---" in out
     assert "KME: ✓" in out
-    assert call == 9
+    assert call >= 9

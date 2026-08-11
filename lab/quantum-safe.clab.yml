@@ -6,6 +6,8 @@ mgmt:
   bridge: mgmt-bridge
   ipv4-subnet: ${MGMT_SUBNET}
   ipv4-gw: ${MGMT_GATEWAY}
+  ipv6-subnet: ${MGMT_IPV6_SUBNET}
+  ipv6-gw: ${MGMT_IPV6_GATEWAY}
   external-access: false
 
 topology:
@@ -18,6 +20,7 @@ topology:
     ceos1-both:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS1_BOTH}
+      mgmt-ipv6: ${MGMT_IPV6_CEOS1_BOTH}
       startup-config: ../lab/.gen/ceos1-both.cfg
       binds:
         - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
@@ -39,6 +42,7 @@ topology:
     ceos2-pqc:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS2_PQC}
+      mgmt-ipv6: ${MGMT_IPV6_CEOS2_PQC}
       startup-config: ../lab/.gen/ceos2-pqc.cfg
       binds:
         - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
@@ -53,6 +57,7 @@ topology:
     ceos3-qkd:
       kind: arista_ceos
       mgmt-ipv4: ${MGMT_IP_CEOS3_QKD}
+      mgmt-ipv6: ${MGMT_IPV6_CEOS3_QKD}
       startup-config: ../lab/.gen/ceos3-qkd.cfg
       binds:
         - ../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro
@@ -75,31 +80,41 @@ topology:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: ${MGMT_IP_HOST1}
+      mgmt-ipv6: ${MGMT_IPV6_HOST1}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.1.1/24 dev eth1
         - ip route replace default via 10.0.1.254 dev eth1
+        - ip -6 addr add 2001:db8:1::1/64 dev eth1
+        - ip -6 route replace default via 2001:db8:1::fe dev eth1
     host2:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: ${MGMT_IP_HOST2}
+      mgmt-ipv6: ${MGMT_IPV6_HOST2}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.2.1/24 dev eth1
         - ip route replace default via 10.0.2.254 dev eth1
+        - ip -6 addr add 2001:db8:2::1/64 dev eth1
+        - ip -6 route replace default via 2001:db8:2::fe dev eth1
     host3:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: ${MGMT_IP_HOST3}
+      mgmt-ipv6: ${MGMT_IPV6_HOST3}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.3.1/24 dev eth1
         - ip route replace default via 10.0.3.254 dev eth1
+        - ip -6 addr add 2001:db8:3::1/64 dev eth1
+        - ip -6 route replace default via 2001:db8:3::fe dev eth1
     radius:
       kind: linux
       image: quantum-safe-radius:latest
       startup-delay: 15
       mgmt-ipv4: ${MGMT_IP_RADIUS}
+      mgmt-ipv6: ${MGMT_IPV6_RADIUS}
       binds:
         - ../lab/.gen/clients.conf:/etc/raddb/clients.conf:ro
         - ../lab/.gen/clients-radsec.conf:/etc/raddb/clients-radsec.conf:ro
@@ -119,6 +134,7 @@ topology:
       image: quantum-safe-syslog:latest
       startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_SYSLOG}
+      mgmt-ipv6: ${MGMT_IPV6_SYSLOG}
       binds:
         - ../configs/syslog/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
         - ../docker/syslog/openssl-pqc.cnf:/etc/syslog-ng/openssl-pqc.cnf:ro
@@ -130,10 +146,11 @@ topology:
       kind: linux
       image: quantum-safe-kme:latest
       mgmt-ipv4: ${MGMT_IP_KME_A}
+      mgmt-ipv6: ${MGMT_IPV6_KME_A}
       cap-add:
         - NET_ADMIN
       env:
-        HOST: 0.0.0.0
+        HOST: '::'
         PORT: "8010"
         KME_ID: 9b7703f1-9b6d-403d-b850-18a1b6fd6d8f
         ATTACHED_SAE_ID: 25840139-0dd4-49ae-ba1e-b86731601803
@@ -156,10 +173,11 @@ topology:
       image: quantum-safe-kme:latest
       startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_KME_B}
+      mgmt-ipv6: ${MGMT_IPV6_KME_B}
       cap-add:
         - NET_ADMIN
       env:
-        HOST: 0.0.0.0
+        HOST: '::'
         PORT: "8020"
         KME_ID: ffb23f4d-5d5b-47e5-a8c5-fe9e47d646cd
         ATTACHED_SAE_ID: c565d5aa-8670-4446-8471-b0e53e315d2a

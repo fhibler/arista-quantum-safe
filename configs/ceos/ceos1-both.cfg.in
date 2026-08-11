@@ -17,14 +17,17 @@ vrf instance MGMT
 !
 ! Default gateway for custom mgmt subnet (Containerlab bridge).
 ip route vrf MGMT 0.0.0.0/0 ${MGMT_GATEWAY}
+ipv6 route vrf MGMT ::/0 ${MGMT_IPV6_GATEWAY}
 !
 interface Management0
    vrf MGMT
    ip address ${MGMT_IP_CEOS1_BOTH}/${MGMT_PREFIX}
+   ipv6 address ${MGMT_IPV6_CEOS1_BOTH}/${MGMT_IPV6_PREFIX}
 !
 interface Ethernet1
    no switchport
    ip address 10.255.0.1/30
+   ipv6 address 2001:db8:255:0::1/126
    mac security profile dynamic
    dot1x pae authenticator
    dot1x reauthentication
@@ -34,17 +37,21 @@ interface Ethernet1
 interface Ethernet3
    no switchport
    ip address 10.255.0.5/30
+   ipv6 address 2001:db8:255:0::5/126
    mac security profile quadra-master
 !
 interface Ethernet8
    no switchport
    ip address 10.0.1.254/24
+   ipv6 address 2001:db8:1::fe/64
 !
 ip routing
 ipv6 unicast-routing
 !
 ip route 10.0.2.0/24 10.255.0.2
 ip route 10.0.3.0/24 10.255.0.6
+ipv6 route 2001:db8:2::/64 2001:db8:255:0::2
+ipv6 route 2001:db8:3::/64 2001:db8:255:0::6
 !
 management api gnmi
    transport grpc default

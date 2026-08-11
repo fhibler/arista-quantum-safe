@@ -12,6 +12,7 @@ from lab.gen_kme_pki import generate_kme_pki
 from lab.gen_pki import generate_radsec_pki
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
+    DEFAULT_MGMT_IPV6_SUBNET,
     DEFAULT_MGMT_SUBNET,
     GEN_TOPOLOGY_ANNOTATIONS_PATH,
     GEN_TOPOLOGY_PATH,
@@ -31,6 +32,9 @@ from lab.topology_contract import (
     TOPOLOGY_PATH,
     mgmt_gateway,
     mgmt_ips_for_subnet,
+    mgmt_ipv6_gateway,
+    mgmt_ipv6_ips_for_subnet,
+    mgmt_ipv6_prefix_len,
     mgmt_prefix_len,
 )
 
@@ -55,8 +59,10 @@ def build_substitutions(
     repo_root: Path,
     ceos_image: str,
     mgmt_subnet: str,
+    mgmt_ipv6_subnet: str = DEFAULT_MGMT_IPV6_SUBNET,
 ) -> dict[str, str]:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
     control_plane_acl = (repo_root / "configs/ceos/control-plane-acl.cfg.in").read_text(
         encoding="utf-8",
     )
@@ -94,6 +100,9 @@ def build_substitutions(
         "MGMT_SUBNET": mgmt_subnet,
         "MGMT_GATEWAY": mgmt_gateway(mgmt_subnet),
         "MGMT_PREFIX": str(mgmt_prefix_len(mgmt_subnet)),
+        "MGMT_IPV6_SUBNET": mgmt_ipv6_subnet,
+        "MGMT_IPV6_GATEWAY": mgmt_ipv6_gateway(mgmt_ipv6_subnet),
+        "MGMT_IPV6_PREFIX": str(mgmt_ipv6_prefix_len(mgmt_ipv6_subnet)),
         "MGMT_IP_CEOS1_BOTH": ips["ceos1-both"],
         "MGMT_IP_CEOS2_PQC": ips["ceos2-pqc"],
         "MGMT_IP_CEOS3_QKD": ips["ceos3-qkd"],
@@ -104,9 +113,22 @@ def build_substitutions(
         "MGMT_IP_SYSLOG": ips["syslog"],
         "MGMT_IP_KME_A": ips["kme-a"],
         "MGMT_IP_KME_B": ips["kme-b"],
-        "KME_SAE_CLIENT_IPS": ",".join(ips[node] for node in KME_SAE_CLIENT_NODES),
-        "RADIUS_SERVER_IP": ips["radius"],
-        "SYSLOG_SERVER_IP": ips["syslog"],
+        "MGMT_IPV6_CEOS1_BOTH": ips6["ceos1-both"],
+        "MGMT_IPV6_CEOS2_PQC": ips6["ceos2-pqc"],
+        "MGMT_IPV6_CEOS3_QKD": ips6["ceos3-qkd"],
+        "MGMT_IPV6_HOST1": ips6["host1"],
+        "MGMT_IPV6_HOST2": ips6["host2"],
+        "MGMT_IPV6_HOST3": ips6["host3"],
+        "MGMT_IPV6_RADIUS": ips6["radius"],
+        "MGMT_IPV6_SYSLOG": ips6["syslog"],
+        "MGMT_IPV6_KME_A": ips6["kme-a"],
+        "MGMT_IPV6_KME_B": ips6["kme-b"],
+        "KME_SAE_CLIENT_IPS": ",".join(
+            [ips[node] for node in KME_SAE_CLIENT_NODES]
+            + [ips6[node] for node in KME_SAE_CLIENT_NODES]
+        ),
+        "RADIUS_SERVER_IP": ips6["radius"],
+        "SYSLOG_SERVER_IP": ips6["syslog"],
         "CONTROL_PLANE_ACL": control_plane_acl.rstrip("\n"),
         "QUADRA_MACSEC_MASTER": render_quadra("quadra-macsec-master", quadra_master_ctx),
         "QUADRA_MACSEC_SLAVE": render_quadra("quadra-macsec-slave", quadra_slave_ctx),
@@ -211,10 +233,11 @@ def render_lab(
     root = repo_root or Path(__file__).resolve().parents[1]
     render_config_templates(repo_root=root, mgmt_subnet=mgmt_subnet, ceos_image=ceos_image)
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet()
     generate_radsec_pki(
         repo_root=root,
-        radius_ip=ips["radius"],
-        syslog_ip=ips["syslog"],
+        radius_ip=ips6["radius"],
+        syslog_ip=ips6["syslog"],
         ceos_hosts={"ceos1-both": "ceos1-both", "ceos2-pqc": "ceos2-pqc", "ceos3-qkd": "ceos3-qkd"},
         ceos_mgmt_ips={
             "ceos1-both": ips["ceos1-both"],

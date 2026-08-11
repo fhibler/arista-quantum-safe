@@ -2,8 +2,10 @@ from lab.report import ICON_FAIL, ICON_OK
 from lab.test_lab import (
     format_host_connectivity_matrix,
     host_data_ips,
-    host_ping_pairs,
+    host_data_ips6,
+    host_ping_groups,
 )
+from lab.topology_contract import IP_FAMILY_IPV4, IP_FAMILY_IPV6
 
 
 def test_host_data_ips_match_contract() -> None:
@@ -14,16 +16,25 @@ def test_host_data_ips_match_contract() -> None:
     }
 
 
-def test_host_ping_pairs_cover_all_off_diagonal() -> None:
-    pairs = host_ping_pairs()
-    assert len(pairs) == 6
-    assert ("host1", "host2", "10.0.2.1") in pairs
-    assert ("host2", "host1", "10.0.1.1") in pairs
-    assert ("host3", "host2", "10.0.2.1") in pairs
-    assert all(src != dst for src, dst, _ in pairs)
+def test_host_data_ips6_match_contract() -> None:
+    assert host_data_ips6() == {
+        "host1": "2001:db8:1::1",
+        "host2": "2001:db8:2::1",
+        "host3": "2001:db8:3::1",
+    }
 
 
-def test_format_host_connectivity_matrix_all_ok() -> None:
+def test_host_ping_groups_cover_all_off_diagonal() -> None:
+    groups = host_ping_groups()
+    assert len(groups) == 6
+    host1_host2 = next(group for group in groups if group[0] == "host1" and group[1] == "host2")
+    targets = dict(host1_host2[2])
+    assert targets[IP_FAMILY_IPV4] == "10.0.2.1"
+    assert targets[IP_FAMILY_IPV6] == "2001:db8:2::1"
+    assert all(src != dst for src, dst, _ in groups)
+
+
+def test_format_host_connectivity_matrix_all_ok_ipv4() -> None:
     results = {
         ("host1", "host2"): True,
         ("host1", "host3"): True,
@@ -32,13 +43,29 @@ def test_format_host_connectivity_matrix_all_ok() -> None:
         ("host3", "host1"): True,
         ("host3", "host2"): True,
     }
-    matrix = format_host_connectivity_matrix(results)
-    assert "HOST ROUTING (data-plane ping matrix)" in matrix
+    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV4)
+    assert "HOST ROUTING (data-plane ping matrix — IPv4)" in matrix
     assert "host1" in matrix
     assert "10.0.1.1" in matrix
     assert "host1 →" in matrix
     assert matrix.count(ICON_OK) == 6
-    assert matrix.count("—") == 3
+    assert ICON_FAIL not in matrix
+
+
+def test_format_host_connectivity_matrix_all_ok_ipv6() -> None:
+    results = {
+        ("host1", "host2"): True,
+        ("host1", "host3"): True,
+        ("host2", "host1"): True,
+        ("host2", "host3"): True,
+        ("host3", "host1"): True,
+        ("host3", "host2"): True,
+    }
+    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV6)
+    assert "HOST ROUTING (data-plane ping matrix — IPv6)" in matrix
+    assert "2001:db8:1::1" in matrix
+    assert "2001:db8:2::1" in matrix
+    assert matrix.count(ICON_OK) == 6
     assert ICON_FAIL not in matrix
 
 
@@ -51,6 +78,6 @@ def test_format_host_connectivity_matrix_shows_failures() -> None:
         ("host3", "host1"): True,
         ("host3", "host2"): False,
     }
-    matrix = format_host_connectivity_matrix(results)
+    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV4)
     assert matrix.count(ICON_FAIL) == 2
     assert matrix.count(ICON_OK) == 4

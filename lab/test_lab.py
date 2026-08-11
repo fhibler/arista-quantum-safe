@@ -10,14 +10,24 @@ import subprocess
 import sys
 from typing import Sequence
 
-from lab.ceos_json import assert_json_contains as _json_contains
-from lab.test_pqc_connections import PqcConnectionError, ceos_cli, ceos_show_json
-from lab.report import CheckStatus, ICON_FAIL, ICON_OK, align_right, bold, print_device, report_summary, status_marker, visible_len
+from lab.test_pqc_connections import (
+    PqcConnectionError,
+    LabTargets,
+    RADSEC_PORT,
+    check_radsec_config,
+    check_radius_config,
+)
+from lab.report import CheckStatus, ICON_FAIL, ICON_OK, align_right, bold, print_device, report_check, report_ok, report_summary, status_marker, visible_len
 from lab.topology_contract import (
     HOST_DATA_PLANE,
+    IP_FAMILIES,
+    IP_FAMILY_IPV4,
+    IP_FAMILY_IPV6,
     LAB_NAME,
     container_name,
+    family_label,
     mgmt_ips_for_subnet,
+    mgmt_ipv6_ips_for_subnet,
 )
 
 ALL_SECTIONS = ("inspect", "radius", "kme", "pqc", "macsec", "hosts")
@@ -76,7 +86,10 @@ def run_step(
 
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
-        raise LabTestError(f"{title} failed (exit {result.returncode}){': ' + detail if detail else ''}")
+        message = f"{title} failed (exit {result.returncode}){': ' + detail if detail else ''}"
+        if not verbose:
+            report_check("[live]", message, CheckStatus.FAIL)
+        raise LabTestError(message)
     return result
 
 
@@ -92,51 +105,70 @@ def run_inspect(clab_topo_gen: str, *, verbose: bool) -> None:
     run_step("containerlab inspect", ["containerlab", "inspect", "-t", clab_topo_gen], verbose=verbose)
 
 
-def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
+def run_radius_checks(
+    *,
+    clab_name: str,
+    mgmt_ips: dict[str, str],
+    mgmt_ips6: dict[str, str],
+    verbose: bool,
+) -> None:
     section("RADIUS", verbose=verbose)
-    radius_container = container_name("radius", lab_name=clab_name)
-    listener = run_step(
-        "RadSec listener",
-        ["docker", "exec", radius_container, "netstat", "-ltn"],
-        verbose=verbose,
+    ceos_nodes = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
+    targets = LabTargets(
+        clab_name=clab_name,
+        mgmt_ips=mgmt_ips,
+        mgmt_ips6=mgmt_ips6,
+        ceos_ips={node: mgmt_ips[node] for node in ceos_nodes},
+        ceos_ips6={node: mgmt_ips6[node] for node in ceos_nodes},
     )
-    if ":2083" not in listener.stdout:
-        raise LabTestError("RadSec listener not found on port 2083")
+    radius_ip = mgmt_ips["radius"]
+    radius_ipv6 = mgmt_ips6["radius"]
 
-    json_checks = (
-        ("ssl profile RADSEC", "show management security ssl profile RADSEC", "valid"),
-        (
-            "ssl profile RADSEC detail (PQC groups)",
-            "show management security ssl profile RADSEC detail",
-            "X25519MLKEM768",
-        ),
-    )
-    text_checks = (
-        ("ping radius (MGMT VRF)", f"ping vrf MGMT {radius_ip} repeat 3", "0% packet loss"),
-        ("RadSec client config", "show running-config | section radius", "tls ssl-profile RADSEC"),
-        (
-            "RadSec AAA test",
-            f"test aaa group RADIUS server {radius_ip} tls port 2083 vrf MGMT",
-            "successfully authenticated",
-        ),
-    )
-    for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
-        container = container_name(node, lab_name=clab_name)
-        for label, show_command, expect in json_checks:
-            try:
-                payload = ceos_show_json(container, show_command, verbose=verbose)
-                _json_contains(payload, expect, label=f"{node} {label}")
-            except PqcConnectionError as exc:
-                raise LabTestError(str(exc)) from exc
-        for label, command, expect in text_checks:
+    print_device("radius")
+    try:
+        check_radius_config(targets, verbose=verbose)
+    except PqcConnectionError as exc:
+        raise LabTestError(str(exc)) from exc
+
+    for node in ceos_nodes:
+        container = targets.ceos_container(node)
+        print_device(node)
+        for family in IP_FAMILIES:
+            addr = radius_ip if family == IP_FAMILY_IPV4 else radius_ipv6
             result = run_step(
-                f"{node} {label}",
+                f"{node} ping radius {family} (MGMT VRF)",
                 ["docker", "exec", "-i", container, "Cli"],
-                input_text=f"enable\n{command}\n",
+                input_text=f"enable\nping vrf MGMT {addr} repeat 3\n",
                 verbose=verbose,
             )
-            if expect not in result.stdout:
-                raise LabTestError(f"{node} {label}: expected {expect!r}")
+            if "0% packet loss" not in result.stdout:
+                raise LabTestError(
+                    f"{node} ping radius {family} ({addr}): expected 0% packet loss"
+                )
+            report_ok("[live]", f"{node} ping radius {family} ({addr})")
+        try:
+            check_radsec_config(targets, node, verbose=verbose)
+        except PqcConnectionError as exc:
+            raise LabTestError(str(exc)) from exc
+        for family in IP_FAMILIES:
+            addr = radius_ip if family == IP_FAMILY_IPV4 else radius_ipv6
+            result = run_step(
+                f"{node} RadSec AAA test ({family})",
+                ["docker", "exec", "-i", container, "Cli"],
+                input_text=(
+                    "enable\n"
+                    f"test aaa group RADIUS server {addr} tls port {RADSEC_PORT} vrf MGMT\n"
+                ),
+                verbose=verbose,
+            )
+            if "successfully authenticated" not in result.stdout:
+                raise LabTestError(
+                    f"{node} RadSec AAA test ({family}): expected authentication success"
+                )
+            report_ok(
+                "[live]",
+                f"{node} RadSec AAA via test aaa ({family}) → radius:{RADSEC_PORT}",
+            )
 
     if not verbose:
         report_summary("RADIUS", "all checks passed")
@@ -149,7 +181,7 @@ def run_python_module(title: str, module: str, *args: str, verbose: bool = False
         argv.append("--verbose")
         print(f"\n--- {title} ---")
         print(f"$ {shlex.join(argv)}")
-    env = {**os.environ, "VERBOSE": "1"} if verbose else None
+    env = {**os.environ, "VERBOSE": "1"} if verbose else {k: v for k, v in os.environ.items() if k != "VERBOSE"}
     result = subprocess.run(argv, check=False, env=env)
     if verbose:
         print(f"--- exit {result.returncode} ---")
@@ -158,26 +190,46 @@ def run_python_module(title: str, module: str, *args: str, verbose: bool = False
 
 
 def host_data_ips() -> dict[str, str]:
-    """Return host name → data-plane IP (without prefix)."""
+    """Return host name → data-plane IPv4 (without prefix)."""
     return {host: spec["addr"].split("/")[0] for host, spec in HOST_DATA_PLANE.items()}
 
 
-def host_ping_pairs() -> tuple[tuple[str, str, str], ...]:
-    """Return (src_host, dst_host, dst_ip) for every off-diagonal pair."""
+def host_data_ips6() -> dict[str, str]:
+    """Return host name → data-plane IPv6 (without prefix)."""
+    return {host: spec["addr6"].split("/")[0] for host, spec in HOST_DATA_PLANE.items()}
+
+
+def host_ping_groups() -> tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]:
+    """Return (src, dst, [(family, target_ip), ...]) for off-diagonal pairs."""
     ips = host_data_ips()
+    ips6 = host_data_ips6()
     hosts = tuple(HOST_DATA_PLANE)
-    return tuple(
-        (src, dst, ips[dst])
-        for src in hosts
-        for dst in hosts
-        if src != dst
-    )
+    groups: list[tuple[str, str, tuple[tuple[str, str], ...]]] = []
+    for src in hosts:
+        for dst in hosts:
+            if src == dst:
+                continue
+            groups.append(
+                (
+                    src,
+                    dst,
+                    (
+                        (IP_FAMILY_IPV4, ips[dst]),
+                        (IP_FAMILY_IPV6, ips6[dst]),
+                    ),
+                )
+            )
+    return tuple(groups)
 
 
-def format_host_connectivity_matrix(results: dict[tuple[str, str], bool]) -> str:
+def format_host_connectivity_matrix(
+    results: dict[tuple[str, str], bool],
+    *,
+    family: str,
+) -> str:
     """Return an ASCII ping matrix for host-to-host data-plane reachability."""
     hosts = tuple(HOST_DATA_PLANE)
-    ips = host_data_ips()
+    ips = host_data_ips() if family == IP_FAMILY_IPV4 else host_data_ips6()
     ok_cell = status_marker(CheckStatus.OK)
     fail_cell = status_marker(CheckStatus.FAIL)
     cell_width = max(
@@ -191,7 +243,7 @@ def format_host_connectivity_matrix(results: dict[tuple[str, str], bool]) -> str
     cell_gap = 2
 
     lines = [
-        bold("HOST ROUTING (data-plane ping matrix)"),
+        bold(f"HOST ROUTING (data-plane ping matrix — {family_label(family)})"),
         "",
         f"{'':>{label_width}}" + "".join(f"{host:>{cell_width + cell_gap}}" for host in hosts),
         f"{'':>{label_width}}" + "".join(f"{ips[host]:>{cell_width + cell_gap}}" for host in hosts),
@@ -218,8 +270,10 @@ def _ping_host(
     target_ip: str,
     clab_name: str,
     verbose: bool,
+    family: str = "",
 ) -> bool:
-    title = f"{src_host} ping {dst_host} ({target_ip})"
+    family_suffix = f" {family_label(family)}" if family else ""
+    title = f"{src_host} ping {dst_host}{family_suffix} ({target_ip})"
     argv = [
         "docker",
         "exec",
@@ -227,11 +281,14 @@ def _ping_host(
         "ping",
         "-c3",
         "-W2",
-        target_ip,
     ]
+    if ":" in target_ip:
+        argv.append("-6")
+    argv.append(target_ip)
     if verbose:
         try:
             run_step(title, argv, verbose=True)
+            report_ok("[live]", title)
             return True
         except LabTestError:
             return False
@@ -245,33 +302,54 @@ def _ping_host(
             timeout=30,
         )
     except subprocess.TimeoutExpired:
+        report_check("[live]", f"{title} timed out", CheckStatus.FAIL)
         return False
-    return result.returncode == 0
+    ok = result.returncode == 0
+    if ok:
+        report_ok("[live]", title)
+    else:
+        detail = result.stderr.strip() or result.stdout.strip()
+        message = f"{title} failed (exit {result.returncode}){': ' + detail if detail else ''}"
+        report_check("[live]", message, CheckStatus.FAIL)
+    return ok
 
 
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     section("HOST ROUTING", verbose=verbose)
     if not verbose:
         print()
-    results: dict[tuple[str, str], bool] = {}
-    for src_host, dst_host, target_ip in host_ping_pairs():
-        results[(src_host, dst_host)] = _ping_host(
-            src_host=src_host,
-            dst_host=dst_host,
-            target_ip=target_ip,
-            clab_name=clab_name,
-            verbose=verbose,
-        )
+    results: dict[str, dict[tuple[str, str], bool]] = {
+        IP_FAMILY_IPV4: {},
+        IP_FAMILY_IPV6: {},
+    }
+    for src_host, dst_host, targets in host_ping_groups():
+        for family, target_ip in targets:
+            ok = _ping_host(
+                src_host=src_host,
+                dst_host=dst_host,
+                target_ip=target_ip,
+                clab_name=clab_name,
+                verbose=verbose,
+                family=family,
+            )
+            results[family][(src_host, dst_host)] = ok
 
-    print(format_host_connectivity_matrix(results))
+    print(format_host_connectivity_matrix(results[IP_FAMILY_IPV4], family=IP_FAMILY_IPV4))
+    print()
+    print(format_host_connectivity_matrix(results[IP_FAMILY_IPV6], family=IP_FAMILY_IPV6))
     if not verbose:
         print()
 
-    failed = [f"{src} → {dst}" for (src, dst), ok in results.items() if not ok]
+    failed = [
+        f"{src} → {dst} ({family_label(family)})"
+        for family in IP_FAMILIES
+        for (src, dst), ok in results[family].items()
+        if not ok
+    ]
     if failed:
         raise LabTestError(f"host routing failed: {', '.join(failed)}")
     if not verbose:
-        report_summary("HOSTS", "all data-plane ping pairs reachable")
+        report_summary("HOSTS", "all data-plane ping pairs reachable (IPv4 and IPv6)")
 
 
 def run_sections(
@@ -283,13 +361,19 @@ def run_sections(
     verbose: bool,
 ) -> None:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet()
     for index, name in enumerate(sections):
         if index > 0 and not verbose:
             print()
         if name == "inspect":
             run_inspect(clab_topo_gen, verbose=verbose)
         elif name == "radius":
-            run_radius_checks(clab_name=clab_name, radius_ip=ips["radius"], verbose=verbose)
+            run_radius_checks(
+                clab_name=clab_name,
+                mgmt_ips=ips,
+                mgmt_ips6=ips6,
+                verbose=verbose,
+            )
         elif name == "kme":
             run_python_module(
                 "KME",

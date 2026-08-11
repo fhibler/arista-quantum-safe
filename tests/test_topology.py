@@ -20,6 +20,7 @@ from lab.topology_contract import (
     LAB_NAME,
     LINKS,
     MGMT_BRIDGE,
+    MGMT_IPV6_SUBNET_PLACEHOLDER,
     MGMT_LINUX_NODES,
     MGMT_NETWORK,
     MGMT_SUBNET_PLACEHOLDER,
@@ -90,8 +91,10 @@ def test_generated_topology_annotations_copy() -> None:
 
 def test_topology_template_placeholders(topology: dict) -> None:
     assert topology["mgmt"]["ipv4-subnet"] == MGMT_SUBNET_PLACEHOLDER
+    assert topology["mgmt"]["ipv6-subnet"] == MGMT_IPV6_SUBNET_PLACEHOLDER
     assert topology["topology"]["kinds"]["arista_ceos"]["image"] == CEOS_IMAGE_PLACEHOLDER
     assert topology["topology"]["nodes"]["ceos1-both"]["mgmt-ipv4"] == "${MGMT_IP_CEOS1_BOTH}"
+    assert topology["topology"]["nodes"]["ceos1-both"]["mgmt-ipv6"] == "${MGMT_IPV6_CEOS1_BOTH}"
 
 
 def test_generated_topology_contract(generated_topology: dict) -> None:
@@ -220,6 +223,8 @@ def test_host_data_plane_exec(topology: dict, host: str, spec: dict) -> None:
     exec_text = "\n".join(nodes[host]["exec"])
     assert spec["addr"] in exec_text
     assert spec["gateway"] in exec_text
+    assert spec["addr6"] in exec_text
+    assert spec["gateway6"] in exec_text
 
 
 @pytest.mark.parametrize("ceos,spec", CEOS_DATA_PLANE.items())
@@ -230,4 +235,6 @@ def test_ceos_startup_config_paths(generated_topology: dict, ceos: str, spec: di
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert spec["eth1"] in text
+    assert spec["eth1_ipv6"] in text
     assert spec["eth8"] in text
+    assert spec["eth8_ipv6"] in text

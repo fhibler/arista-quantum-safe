@@ -30,6 +30,8 @@ from lab.topology_contract import (
     EOSSDKRPC_PORT,
     GNMI_PORT,
     GNMI_SSL_PROFILE,
+    IP_FAMILIES,
+    IP_FAMILY_IPV4,
     LAB_NAME,
     PROBE_CLIENT_CERT,
     PROBE_CLIENT_KEY,
@@ -38,9 +40,20 @@ from lab.topology_contract import (
     RESTCONF_SSL_PROFILE,
     SYSLOG_SSL_PROFILE,
     container_name,
+    family_label,
+    hostport,
     mgmt_ips_for_subnet,
+    mgmt_ipv6_ips_for_subnet,
 )
-from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary, report_warn
+from lab.report import (
+    CheckStatus,
+    print_check_group,
+    print_device,
+    print_section_header,
+    report_ok,
+    report_summary,
+    report_warn,
+)
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 OPENSSL_PQC_CNF = "/etc/raddb/openssl-pqc.cnf"
@@ -50,14 +63,34 @@ SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_NETNS = "ns-MGMT"
 SSH_PQC_USER = "admin"
 CEOS_PEERS = {"ceos1-both": "ceos2-pqc", "ceos2-pqc": "ceos1-both", "ceos3-qkd": "ceos1-both"}
+CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
 
 
 @dataclass(frozen=True)
 class LabTargets:
     clab_name: str
-    radius_ip: str
-    syslog_ip: str
+    mgmt_ips: dict[str, str]
+    mgmt_ips6: dict[str, str]
     ceos_ips: dict[str, str]
+    ceos_ips6: dict[str, str]
+
+    @property
+    def radius_ip(self) -> str:
+        return self.mgmt_ips6["radius"]
+
+    @property
+    def syslog_ip(self) -> str:
+        return self.mgmt_ips6["syslog"]
+
+    def service_ip(self, service: str, family: str = IP_FAMILY_IPV4) -> str:
+        if family == IP_FAMILY_IPV4:
+            return self.mgmt_ips[service]
+        return self.mgmt_ips6[service]
+
+    def ceos_mgmt_ip(self, node: str, family: str = IP_FAMILY_IPV4) -> str:
+        if family == IP_FAMILY_IPV4:
+            return self.ceos_ips[node]
+        return self.ceos_ips6[node]
 
     @property
     def radius_container(self) -> str:
@@ -316,57 +349,81 @@ def check_eossdkrpc_config(targets: LabTargets, node: str, *, verbose: bool | No
     report_config(f"eos-sdk-rpc ssl profile {EOSSDKRPC_SSL_PROFILE} valid ({PQC_GROUP}), grpc bound")
 
 
-def probe_gnmi_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    ip = targets.ceos_ips[node]
+def probe_gnmi_tls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
     output = openssl_s_client(
         targets.radius_container,
-        connect=f"{ip}:{GNMI_PORT}",
+        connect=hostport(ip, GNMI_PORT),
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
     assert_pqc_hybrid_tls(output, label=f"{node} gNMI TLS")
-    report_live(f"gNMI gRPC TLS handshake (TLS 1.3, {PQC_GROUP})")
+    report_live(f"gNMI gRPC TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
 
 
-def probe_gnmi_mtls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    ip = targets.ceos_ips[node]
+def probe_gnmi_mtls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
     cert_file = PROBE_CLIENT_CERT.format(node=node)
     key_file = PROBE_CLIENT_KEY.format(node=node)
     output = openssl_s_client(
         targets.radius_container,
-        connect=f"{ip}:{GNMI_PORT}",
+        connect=hostport(ip, GNMI_PORT),
         ca_file=RADSEC_CA_IN_RADIUS,
         cert_file=cert_file,
         key_file=key_file,
         verbose=verbose,
     )
     assert_pqc_hybrid_tls(output, label=f"{node} gNMI mTLS")
-    report_live(f"gNMI gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
+    report_live(f"gNMI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
 
 
-def probe_restconf_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    ip = targets.ceos_ips[node]
+def probe_restconf_tls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
     output = openssl_s_client(
         targets.radius_container,
-        connect=f"{ip}:{RESTCONF_PORT}",
+        connect=hostport(ip, RESTCONF_PORT),
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
     assert_pqc_hybrid_tls(output, label=f"{node} RESTCONF TLS")
-    report_live(f"RESTCONF HTTPS handshake (TLS 1.3, {PQC_GROUP})")
+    report_live(f"RESTCONF HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
 
 
-def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+def probe_eossdkrpc_tls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
     """Probe eos-sdk-rpc mTLS.
 
     cEOS 4.36.1F often does not negotiate PQC-hybrid on port 9543 despite the ssl
     profile (EOF with a PQC-only client, or classical KEX with a permissive client).
     Config is still validated; live probe warns instead of failing the suite.
     """
-    ip = targets.ceos_ips[node]
+    ip = targets.ceos_mgmt_ip(node, family)
     cert_file = PROBE_CLIENT_CERT.format(node=node)
     key_file = PROBE_CLIENT_KEY.format(node=node)
-    connect = f"{ip}:{EOSSDKRPC_PORT}"
+    connect = hostport(ip, EOSSDKRPC_PORT)
     pqc_output = openssl_s_client(
         targets.radius_container,
         connect=connect,
@@ -377,7 +434,7 @@ def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None 
         require_tls13=False,
     )
     if tls13_handshake(pqc_output) and negotiated_pqc_group(pqc_output):
-        report_live(f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
+        report_live(f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
         return
 
     classical_output = openssl_s_client(
@@ -393,30 +450,43 @@ def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None 
     if tls13_handshake(classical_output):
         group = extract_negotiated_tls_group(classical_output) or "unknown"
         report_live(
-            f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
             status=CheckStatus.WARN,
         )
         return
 
     report_live(
-        "eos-sdk-rpc gRPC mTLS: no TLS 1.3 handshake on :9543 (cEOS 4.36.1F PQC gap; config OK)",
+        f"eos-sdk-rpc gRPC mTLS ({family_label(family)}): no TLS 1.3 handshake on :9543 "
+        "(cEOS 4.36.1F PQC gap; config OK)",
         status=CheckStatus.WARN,
     )
 
 
-def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    ip = targets.ceos_ips[node]
+def probe_eapi_https(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
     output = openssl_s_client(
         targets.radius_container,
-        connect=f"{ip}:443",
+        connect=hostport(ip, 443),
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
     assert_pqc_hybrid_tls(output, label=f"{node} eAPI HTTPS")
-    report_live(f"eAPI HTTPS handshake (TLS 1.3, {PQC_GROUP})")
+    report_live(f"eAPI HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
 
 
-def probe_eapi_jsonrpc(node: str, switch_ip: str, *, verbose: bool | None = None) -> None:
+def probe_eapi_jsonrpc(
+    node: str,
+    switch_ip: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
     payload = (
         '{"jsonrpc":"2.0","method":"runCmds",'
         '"params":{"version":1,"cmds":["show version"],"format":"json"},"id":1}'
@@ -429,7 +499,7 @@ def probe_eapi_jsonrpc(node: str, switch_ip: str, *, verbose: bool | None = None
         "1.3",
         "-u",
         "admin:",
-        f"https://{switch_ip}:443/command-api",
+        f"https://{hostport(switch_ip, 443)}/command-api",
         "-H",
         "Content-Type: application/json",
         "-d",
@@ -447,17 +517,24 @@ def probe_eapi_jsonrpc(node: str, switch_ip: str, *, verbose: bool | None = None
         raise PqcConnectionError(f"{node} eAPI JSON-RPC: {detail}")
     if "modelName" not in body and "version" not in body.lower():
         raise PqcConnectionError(f"{node} eAPI JSON-RPC: unexpected response: {body[:200]}")
-    report_live("eAPI JSON-RPC command-api")
+    report_live(f"eAPI JSON-RPC command-api ({family_label(family)})")
 
 
 def negotiated_ssh_pqc_kex(output: str) -> bool:
     return f"kex: algorithm: {SSH_PQC_KEX}" in output
 
 
-def probe_ssh_pqc(targets: LabTargets, node: str, peer: str, *, verbose: bool | None = None) -> None:
+def probe_ssh_pqc(
+    targets: LabTargets,
+    node: str,
+    peer: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
     """SSH from node to peer over VRF MGMT using the cEOS PQC netns."""
     container = targets.ceos_container(node)
-    peer_ip = targets.ceos_ips[peer]
+    peer_ip = targets.ceos_mgmt_ip(peer, family)
     command = (
         f"ip netns exec {SSH_PQC_NETNS} ssh -vvv "
         f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -481,23 +558,30 @@ def probe_ssh_pqc(targets: LabTargets, node: str, peer: str, *, verbose: bool | 
             f"{node} SSH to {peer}: expected kex {SSH_PQC_KEX!r} in handshake output"
         )
     assert_contains(output, peer, label=f"{node} SSH to {peer} hostname")
-    report_live(f"SSH to {peer} ({SSH_PQC_KEX})")
+    report_live(f"SSH to {peer} ({family_label(family)}, {SSH_PQC_KEX})")
 
 
-def probe_radsec_from_switch(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+def probe_radsec_from_switch(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
     container = targets.ceos_container(node)
+    radius_addr = targets.service_ip("radius", family)
     output = ceos_cli(
         container,
         "enable\n"
-        f"test aaa group RADIUS server {targets.radius_ip} tls port {RADSEC_PORT} vrf MGMT\n",
+        f"test aaa group RADIUS server {radius_addr} tls port {RADSEC_PORT} vrf MGMT\n",
         verbose=verbose,
     )
     assert_contains(
         output,
         "successfully authenticated",
-        label=f"{node} RadSec AAA test",
+        label=f"{node} RadSec AAA test ({family_label(family)})",
     )
-    report_live(f"RadSec AAA via test aaa → radius:{RADSEC_PORT}")
+    report_live(f"RadSec AAA via test aaa ({family_label(family)}) → radius:{RADSEC_PORT}")
 
 
 def check_syslog_collector_config(targets: LabTargets, *, verbose: bool | None = None) -> None:
@@ -553,21 +637,33 @@ def check_syslog_config(targets: LabTargets, node: str, *, verbose: bool | None 
     )
 
 
-def probe_syslog_tls(targets: LabTargets, *, verbose: bool | None = None) -> None:
+def probe_syslog_tls(
+    targets: LabTargets,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    syslog_ip = targets.service_ip("syslog", family)
     try:
         probe_syslog_tls_pqc(
             docker_exec,
             syslog_container=targets.syslog_container,
-            syslog_ip=targets.syslog_ip,
+            syslog_ip=syslog_ip,
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
-    report_live(f"syslog-ng TLS handshake (TLS 1.3, {SYSLOG_PQC_GROUP})")
+    report_live(f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {SYSLOG_PQC_GROUP})")
 
 
-def probe_syslog_delivery(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+def probe_syslog_delivery(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
     container = targets.ceos_container(node)
-    switch_ip = targets.ceos_ips[node]
+    switch_ip = targets.ceos_mgmt_ip(node, family)
     needle = f"quantum-safe-syslog-probe-{node}"
 
     def send_log() -> None:
@@ -587,7 +683,9 @@ def probe_syslog_delivery(targets: LabTargets, node: str, *, verbose: bool | Non
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
-    report_live(f"{node} TLS syslog delivered, no cleartext packets from {switch_ip}")
+    report_live(
+        f"{node} TLS syslog delivered ({family_label(family)}), no cleartext packets from {switch_ip}"
+    )
 
 
 def run_live_checks(
@@ -599,16 +697,19 @@ def run_live_checks(
 ) -> None:
     show = verbose_enabled(verbose)
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet()
     targets = LabTargets(
         clab_name=clab_name,
-        radius_ip=ips["radius"],
-        syslog_ip=ips["syslog"],
+        mgmt_ips=ips,
+        mgmt_ips6=ips6,
         ceos_ips={"ceos1-both": ips["ceos1-both"], "ceos2-pqc": ips["ceos2-pqc"], "ceos3-qkd": ips["ceos3-qkd"]},
+        ceos_ips6={"ceos1-both": ips6["ceos1-both"], "ceos2-pqc": ips6["ceos2-pqc"], "ceos3-qkd": ips6["ceos3-qkd"]},
     )
 
     print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog\n")
+    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog")
+    print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     print_device("radius")
     if not skip_config:
@@ -618,9 +719,11 @@ def run_live_checks(
     print_device("syslog")
     if not skip_config:
         check_syslog_collector_config(targets, verbose=verbose)
-    probe_syslog_tls(targets, verbose=verbose)
+    print_check_group("Collector TLS")
+    for family in IP_FAMILIES:
+        probe_syslog_tls(targets, family=family, verbose=verbose)
 
-    for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
+    for node in CEOS_NODES:
         print()
         print_device(node)
         if not skip_config:
@@ -631,15 +734,41 @@ def run_live_checks(
             check_radsec_config(targets, node, verbose=verbose)
             check_ssh_pqc_config(targets, node, verbose=verbose)
             check_syslog_config(targets, node, verbose=verbose)
-        probe_eapi_https(targets, node, verbose=verbose)
-        probe_eapi_jsonrpc(node, targets.ceos_ips[node], verbose=verbose)
-        probe_gnmi_tls(targets, node, verbose=verbose)
-        probe_gnmi_mtls(targets, node, verbose=verbose)
-        probe_restconf_tls(targets, node, verbose=verbose)
-        probe_eossdkrpc_tls(targets, node, verbose=verbose)
-        probe_radsec_from_switch(targets, node, verbose=verbose)
-        probe_ssh_pqc(targets, node, CEOS_PEERS[node], verbose=verbose)
-        probe_syslog_delivery(targets, node, verbose=verbose)
+
+        print_check_group("eAPI")
+        for family in IP_FAMILIES:
+            probe_eapi_https(targets, node, family=family, verbose=verbose)
+            probe_eapi_jsonrpc(
+                node,
+                targets.ceos_mgmt_ip(node, family),
+                family=family,
+                verbose=verbose,
+            )
+
+        print_check_group("gNMI")
+        for family in IP_FAMILIES:
+            probe_gnmi_tls(targets, node, family=family, verbose=verbose)
+            probe_gnmi_mtls(targets, node, family=family, verbose=verbose)
+
+        print_check_group("RESTCONF")
+        for family in IP_FAMILIES:
+            probe_restconf_tls(targets, node, family=family, verbose=verbose)
+
+        print_check_group("eos-sdk-rpc")
+        for family in IP_FAMILIES:
+            probe_eossdkrpc_tls(targets, node, family=family, verbose=verbose)
+
+        print_check_group("SSH")
+        for family in IP_FAMILIES:
+            probe_ssh_pqc(targets, node, CEOS_PEERS[node], family=family, verbose=verbose)
+
+        print_check_group("Syslog")
+        for family in IP_FAMILIES:
+            probe_syslog_delivery(targets, node, family=family, verbose=verbose)
+
+        print_check_group("RadSec")
+        for family in IP_FAMILIES:
+            probe_radsec_from_switch(targets, node, family=family, verbose=verbose)
 
     print()
     report_summary(

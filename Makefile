@@ -23,7 +23,8 @@ SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
 KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-VERBOSE       ?=
+# Do not inherit VERBOSE from the environment; use make test-lab VERBOSE=1 explicitly.
+VERBOSE       :=
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
 MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-a'])")
@@ -305,7 +306,7 @@ ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
 ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
 	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
 
-test-lab: ## All live lab checks (requires deployed lab; use VERBOSE=1 for command echo)
+test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
@@ -321,22 +322,22 @@ test-lab: ## All live lab checks (requires deployed lab; use VERBOSE=1 for comma
 	@echo "✓ All lab checks passed."
 
 test-radius: ## RadSec auth test from both switches (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section radius
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section radius
 
 test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-pqc: ## TLS 1.3 + PQC checks incl. syslog-over-TLS (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,) \
 		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
 
@@ -344,4 +345,4 @@ test-macsec-reauth: ## MACsec + periodic 802.1X reauth wait (~75s; requires depl
 	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec
 
 test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section hosts
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section hosts

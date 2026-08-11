@@ -30,6 +30,8 @@ def container_name(node: str, *, lab_name: str | None = None, prefix: str | None
     return f"{prefix or CLAB_PREFIX}-{lab_name or LAB_NAME}-{node}"
 
 DEFAULT_MGMT_SUBNET = "172.20.127.0/24"
+DEFAULT_MGMT_IPV6_SUBNET = "2001:db8:127::/64"
+DOC_PREFIX = "2001:db8"
 MGMT_HOST_SUFFIXES = {
     "ceos1-both": 11,
     "ceos2-pqc": 12,
@@ -68,8 +70,88 @@ def mgmt_ips_for_subnet(subnet: str | None = None) -> dict[str, str]:
     }
 
 
+def mgmt_ipv6_gateway(subnet: str | None = None) -> str:
+    """Return the Containerlab bridge IPv6 gateway (::1) for a mgmt subnet."""
+    network = ipaddress.ip_network(subnet or DEFAULT_MGMT_IPV6_SUBNET, strict=False)
+    return str(network.network_address + 1)
+
+
+def mgmt_ipv6_ip(subnet: str | None, host_suffix: int) -> str:
+    """Return a mgmt IPv6 host address using the same decimal suffix as IPv4 mgmt."""
+    network = ipaddress.ip_network(subnet or DEFAULT_MGMT_IPV6_SUBNET, strict=False)
+    return f"{network.network_address}{host_suffix}"
+
+
+def mgmt_ipv6_prefix_len(subnet: str | None = None) -> int:
+    """Return the prefix length for mgmt IPv6 interface addresses."""
+    return ipaddress.ip_network(subnet or DEFAULT_MGMT_IPV6_SUBNET, strict=False).prefixlen
+
+
+def mgmt_ipv6_ips_for_subnet(subnet: str | None = None) -> dict[str, str]:
+    """Return locked mgmt IPv6 addresses for all lab nodes on the given subnet."""
+    return {
+        host: mgmt_ipv6_ip(subnet, suffix) for host, suffix in MGMT_HOST_SUFFIXES.items()
+    }
+
+
 MGMT_SUBNET = DEFAULT_MGMT_SUBNET
 MGMT_IPS = mgmt_ips_for_subnet(DEFAULT_MGMT_SUBNET)
+MGMT_IPV6_SUBNET = DEFAULT_MGMT_IPV6_SUBNET
+MGMT_IPV6_IPS = mgmt_ipv6_ips_for_subnet(DEFAULT_MGMT_IPV6_SUBNET)
+
+IP_FAMILY_IPV4 = "ipv4"
+IP_FAMILY_IPV6 = "ipv6"
+IP_FAMILIES = (IP_FAMILY_IPV4, IP_FAMILY_IPV6)
+FAMILY_LABELS = {IP_FAMILY_IPV4: "IPv4", IP_FAMILY_IPV6: "IPv6"}
+
+
+def family_label(family: str) -> str:
+    """Return a display label for an address family slug."""
+    return FAMILY_LABELS[family]
+
+
+def is_ipv6_address(addr: str) -> bool:
+    """Return True when addr looks like IPv6 (contains a colon)."""
+    return ":" in addr
+
+
+def bracketed_host(addr: str) -> str:
+    """Return addr wrapped in [] when IPv6 (for URLs and OpenSSL connect strings)."""
+    return f"[{addr}]" if is_ipv6_address(addr) else addr
+
+
+def hostport(addr: str, port: int) -> str:
+    """Return host:port with IPv6 bracket notation when needed."""
+    return f"{bracketed_host(addr)}:{port}"
+
+
+def mgmt_ips_for_family(
+    family: str,
+    *,
+    mgmt_subnet: str | None = None,
+    mgmt_ipv6_subnet: str | None = None,
+) -> dict[str, str]:
+    """Return locked mgmt addresses for all lab nodes in the given address family."""
+    if family == IP_FAMILY_IPV6:
+        return mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
+    if family == IP_FAMILY_IPV4:
+        return mgmt_ips_for_subnet(mgmt_subnet)
+    raise ValueError(f"unsupported address family: {family!r}")
+
+
+def mgmt_node_ip(
+    node: str,
+    family: str,
+    *,
+    mgmt_subnet: str | None = None,
+    mgmt_ipv6_subnet: str | None = None,
+) -> str:
+    """Return a single node's mgmt address for the given address family."""
+    return mgmt_ips_for_family(
+        family,
+        mgmt_subnet=mgmt_subnet,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
+    )[node]
 
 LINKS = [
     ("ceos1-both:eth1", "ceos2-pqc:eth1"),
@@ -111,6 +193,7 @@ QUADRA_KME_BUNDLE = {
 DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
 MGMT_SUBNET_PLACEHOLDER = "${MGMT_SUBNET}"
+MGMT_IPV6_SUBNET_PLACEHOLDER = "${MGMT_IPV6_SUBNET}"
 MGMT_VRF_ENV = "MGMT"
 MGMT_VRF_ENV = "MGMT"
 RADSEC_SECRET = "radsec"
@@ -140,8 +223,13 @@ SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
 )
 SSH_PQC_MACS = "hmac-sha2-256 hmac-sha2-512"
-RADIUS_SERVER_IP = MGMT_IPS["radius"]
-SYSLOG_SERVER_IP = MGMT_IPS["syslog"]
+RADIUS_SERVER_IPV4 = MGMT_IPS["radius"]
+SYSLOG_SERVER_IPV4 = MGMT_IPS["syslog"]
+RADIUS_SERVER_IPV6 = MGMT_IPV6_IPS["radius"]
+SYSLOG_SERVER_IPV6 = MGMT_IPV6_IPS["syslog"]
+# RadSec and syslog-over-TLS use IPv6 mgmt endpoints (dual-stack lab).
+RADIUS_SERVER_IP = RADIUS_SERVER_IPV6
+SYSLOG_SERVER_IP = SYSLOG_SERVER_IPV6
 KME_A_SERVER_IP = MGMT_IPS["kme-a"]
 KME_B_SERVER_IP = MGMT_IPS["kme-b"]
 
@@ -183,51 +271,88 @@ HOST_DATA_PLANE = {
     "host1": {
         "addr": "10.0.1.1/24",
         "gateway": "10.0.1.254",
+        "addr6": f"{DOC_PREFIX}:1::1/64",
+        "gateway6": f"{DOC_PREFIX}:1::fe",
     },
     "host2": {
         "addr": "10.0.2.1/24",
         "gateway": "10.0.2.254",
+        "addr6": f"{DOC_PREFIX}:2::1/64",
+        "gateway6": f"{DOC_PREFIX}:2::fe",
     },
     "host3": {
         "addr": "10.0.3.1/24",
         "gateway": "10.0.3.254",
+        "addr6": f"{DOC_PREFIX}:3::1/64",
+        "gateway6": f"{DOC_PREFIX}:3::fe",
     },
 }
 
-def ceos_data_plane(subnet: str | None = None) -> dict[str, dict[str, Any]]:
+def ceos_data_plane(
+    subnet: str | None = None,
+    *,
+    mgmt_ipv6_subnet: str | None = None,
+) -> dict[str, dict[str, Any]]:
     """Return locked cEOS data-plane expectations for the given mgmt subnet."""
     ips = mgmt_ips_for_subnet(subnet)
+    ips6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
     prefix = mgmt_prefix_len(subnet)
+    prefix6 = mgmt_ipv6_prefix_len(mgmt_ipv6_subnet)
     return {
         "ceos1-both": {
             "mgmt_ip": f"{ips['ceos1-both']}/{prefix}",
             "mgmt_gateway": mgmt_gateway(subnet),
+            "mgmt_ip6": f"{ips6['ceos1-both']}/{prefix6}",
+            "mgmt_gateway6": mgmt_ipv6_gateway(mgmt_ipv6_subnet),
             "eth1": "10.255.0.1/30",
+            "eth1_ipv6": f"{DOC_PREFIX}:255:0::1/126",
             "eth3": "10.255.0.5/30",
+            "eth3_ipv6": f"{DOC_PREFIX}:255:0::5/126",
             "eth8": "10.0.1.254/24",
+            "eth8_ipv6": f"{DOC_PREFIX}:1::fe/64",
             "static_routes": [
                 ("10.0.2.0/24", "10.255.0.2"),
                 ("10.0.3.0/24", "10.255.0.6"),
+            ],
+            "static_routes6": [
+                (f"{DOC_PREFIX}:2::/64", f"{DOC_PREFIX}:255:0::2"),
+                (f"{DOC_PREFIX}:3::/64", f"{DOC_PREFIX}:255:0::6"),
             ],
         },
         "ceos2-pqc": {
             "mgmt_ip": f"{ips['ceos2-pqc']}/{prefix}",
             "mgmt_gateway": mgmt_gateway(subnet),
+            "mgmt_ip6": f"{ips6['ceos2-pqc']}/{prefix6}",
+            "mgmt_gateway6": mgmt_ipv6_gateway(mgmt_ipv6_subnet),
             "eth1": "10.255.0.2/30",
+            "eth1_ipv6": f"{DOC_PREFIX}:255:0::2/126",
             "eth8": "10.0.2.254/24",
+            "eth8_ipv6": f"{DOC_PREFIX}:2::fe/64",
             "static_routes": [
                 ("10.0.1.0/24", "10.255.0.1"),
                 ("10.0.3.0/24", "10.255.0.1"),
+            ],
+            "static_routes6": [
+                (f"{DOC_PREFIX}:1::/64", f"{DOC_PREFIX}:255:0::1"),
+                (f"{DOC_PREFIX}:3::/64", f"{DOC_PREFIX}:255:0::1"),
             ],
         },
         "ceos3-qkd": {
             "mgmt_ip": f"{ips['ceos3-qkd']}/{prefix}",
             "mgmt_gateway": mgmt_gateway(subnet),
+            "mgmt_ip6": f"{ips6['ceos3-qkd']}/{prefix6}",
+            "mgmt_gateway6": mgmt_ipv6_gateway(mgmt_ipv6_subnet),
             "eth1": "10.255.0.6/30",
+            "eth1_ipv6": f"{DOC_PREFIX}:255:0::6/126",
             "eth8": "10.0.3.254/24",
+            "eth8_ipv6": f"{DOC_PREFIX}:3::fe/64",
             "static_routes": [
                 ("10.0.1.0/24", "10.255.0.5"),
                 ("10.0.2.0/24", "10.255.0.5"),
+            ],
+            "static_routes6": [
+                (f"{DOC_PREFIX}:1::/64", f"{DOC_PREFIX}:255:0::5"),
+                (f"{DOC_PREFIX}:2::/64", f"{DOC_PREFIX}:255:0::5"),
             ],
         },
     }
@@ -265,7 +390,7 @@ KME_BINDS = [
 ]
 
 KME_COMMON_ENV = {
-    "HOST": "0.0.0.0",
+    "HOST": "::",
     "DEFAULT_KEY_SIZE": "256",
     "MAX_KEY_COUNT": "100000",
     "MAX_KEYS_PER_REQUEST": "128",
@@ -320,12 +445,24 @@ def kme_other_kmes(peer_ip: str, peer_port: int) -> str:
     return f"https://{peer_ip}:{peer_port}"
 
 
-def kme_sae_client_ips(mgmt_ips: dict[str, str]) -> str:
+def kme_sae_client_ips(
+    mgmt_ips: dict[str, str],
+    *,
+    mgmt_ipv6_ips: dict[str, str] | None = None,
+) -> str:
     """Return comma-separated mgmt IPs allowed to call the KME SAE API."""
-    return ",".join(mgmt_ips[node] for node in KME_SAE_CLIENT_NODES)
+    clients = [mgmt_ips[node] for node in KME_SAE_CLIENT_NODES]
+    if mgmt_ipv6_ips is not None:
+        clients.extend(mgmt_ipv6_ips[node] for node in KME_SAE_CLIENT_NODES)
+    return ",".join(clients)
 
 
-def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
+def kme_env_for_node(
+    node: str,
+    *,
+    mgmt_ips: dict[str, str],
+    mgmt_ipv6_ips: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Return expected KME container env for a lab node."""
     spec = KME_NODES[node]
     peer = spec["peer_node"]
@@ -340,7 +477,7 @@ def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
         "SAE_CERT": spec.get("sae_cert", KME_COMMON_ENV["SAE_CERT"]),
     }
     if spec.get("sae_client_ips"):
-        env["SAE_CLIENT_IPS"] = kme_sae_client_ips(mgmt_ips)
+        env["SAE_CLIENT_IPS"] = kme_sae_client_ips(mgmt_ips, mgmt_ipv6_ips=mgmt_ipv6_ips)
     return env
 
 CEOS_RADSEC_PKI_EXEC = {
@@ -552,6 +689,10 @@ def validate_host_data_plane(nodes: dict[str, Any]) -> list[str]:
             errors.append(f"{host} exec must configure {expected['addr']} on eth1")
         if f"ip route replace default via {expected['gateway']} dev eth1" not in exec_text:
             errors.append(f"{host} exec must use default gateway {expected['gateway']}")
+        if f"ip -6 addr add {expected['addr6']} dev eth1" not in exec_text:
+            errors.append(f"{host} exec must configure {expected['addr6']} on eth1")
+        if f"ip -6 route replace default via {expected['gateway6']} dev eth1" not in exec_text:
+            errors.append(f"{host} exec must use default IPv6 gateway {expected['gateway6']}")
 
     return errors
 
@@ -568,16 +709,18 @@ def validate_ceos_configs(
     repo_root: Path | None = None,
     *,
     mgmt_subnet: str | None = None,
+    mgmt_ipv6_subnet: str | None = None,
 ) -> list[str]:
     """Validate rendered cEOS startup configs against mgmt and data-plane contract."""
     from lab.syslog_checks import cleartext_syslog_lines
 
     errors: list[str] = []
     root = repo_root or REPO_ROOT
-    expected_plane = ceos_data_plane(mgmt_subnet)
+    expected_plane = ceos_data_plane(mgmt_subnet, mgmt_ipv6_subnet=mgmt_ipv6_subnet)
     mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
-    radius_ip = mgmt_ips["radius"]
-    syslog_ip = mgmt_ips["syslog"]
+    mgmt_ipv6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
+    radius_ip = mgmt_ipv6["radius"]
+    syslog_ip = mgmt_ipv6["syslog"]
     kme_a_ip = mgmt_ips["kme-a"]
     kme_b_ip = mgmt_ips["kme-b"]
 
@@ -596,19 +739,36 @@ def validate_ceos_configs(
             errors.append(
                 f"{ceos}.cfg must use mgmt gateway {expected['mgmt_gateway']}"
             )
+        if f"ipv6 address {expected['mgmt_ip6']}" not in text:
+            errors.append(f"{ceos}.cfg Management0 must have {expected['mgmt_ip6']}")
+        if f"ipv6 route vrf MGMT ::/0 {expected['mgmt_gateway6']}" not in text:
+            errors.append(
+                f"{ceos}.cfg must use mgmt IPv6 gateway {expected['mgmt_gateway6']}"
+            )
         if f"ip address {expected['eth1']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1']}")
+        if f"ipv6 address {expected['eth1_ipv6']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1_ipv6']}")
         if "eth3" in expected and f"ip address {expected['eth3']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet3 must have {expected['eth3']}")
+        if "eth3_ipv6" in expected and f"ipv6 address {expected['eth3_ipv6']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet3 must have {expected['eth3_ipv6']}")
         if f"ip address {expected['eth8']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet8 must have {expected['eth8']}")
+        if f"ipv6 address {expected['eth8_ipv6']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet8 must have {expected['eth8_ipv6']}")
 
         for prefix, nexthop in expected["static_routes"]:
             if f"ip route {prefix} {nexthop}" not in text:
                 errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
+        for prefix, nexthop in expected["static_routes6"]:
+            if f"ipv6 route {prefix} {nexthop}" not in text:
+                errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
 
         if f"radius-server host {radius_ip} vrf MGMT tls ssl-profile {SSL_PROFILE}" not in text:
-            errors.append(f"{ceos}.cfg must configure RadSec server in MGMT VRF")
+            errors.append(f"{ceos}.cfg must configure RadSec server in MGMT VRF over IPv6")
+        if f"radius-server host {mgmt_ips['radius']} vrf MGMT" in text:
+            errors.append(f"{ceos}.cfg must not configure legacy IPv4 RadSec server")
         if "ssl profile RADSEC" not in text:
             errors.append(f"{ceos}.cfg must define ssl profile RADSEC")
         if "tls versions 1.3" not in text:
@@ -636,6 +796,8 @@ def validate_ceos_configs(
                 f"{ceos}.cfg must forward syslog to {syslog_ip}:{SYSLOG_PORT} via TLS "
                 f"profile {SYSLOG_SSL_PROFILE}"
             )
+        if f"logging vrf MGMT host {mgmt_ips['syslog']} " in text:
+            errors.append(f"{ceos}.cfg must not configure legacy IPv4 syslog host")
         logging_section = "\n".join(
             line for line in text.splitlines() if line.strip().startswith("logging")
         )
@@ -706,6 +868,10 @@ def validate_ceos_configs(
         if f"ip access-group {CONTROL_PLANE_ACL} vrf MGMT in" not in text:
             errors.append(
                 f"{ceos}.cfg must apply {CONTROL_PLANE_ACL} on system control-plane vrf MGMT"
+            )
+        if f"ipv6 access-group {CONTROL_PLANE_ACL}-v6 vrf MGMT in" not in text:
+            errors.append(
+                f"{ceos}.cfg must apply {CONTROL_PLANE_ACL}-v6 on system control-plane vrf MGMT"
             )
         if "copy flash:" in text:
             errors.append(f"{ceos}.cfg must not use copy flash in startup-config (use containerlab exec)")
@@ -884,6 +1050,10 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
             errors.append(f"syslog-ng.conf must listen on port {SYSLOG_PORT}")
         if 'transport("tls")' not in syslog_conf:
             errors.append("syslog-ng.conf must use TLS transport")
+        if 'ip("::")' not in syslog_conf:
+            errors.append('syslog-ng.conf must listen on all interfaces via ip("::")')
+        if "ip-protocol(6)" not in syslog_conf.replace(" ", ""):
+            errors.append("syslog-ng.conf must set ip-protocol(6) for dual-stack TLS syslog")
         if re.search(r"port\((514|601)\)", syslog_conf):
             errors.append("syslog-ng.conf must not listen on cleartext syslog ports 514/601")
 
@@ -922,11 +1092,12 @@ def validate_radius_configs(
     repo_root: Path | None = None,
     *,
     mgmt_subnet: str | None = None,
+    mgmt_ipv6_subnet: str | None = None,
 ) -> list[str]:
     """Validate FreeRADIUS client and logging configuration."""
     errors: list[str] = []
     root = repo_root or REPO_ROOT
-    mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
+    mgmt_ipv6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
 
     clients_path = root / "lab" / ".gen" / "clients.conf"
     clients_radsec_path = root / "lab" / ".gen" / "clients-radsec.conf"
@@ -939,17 +1110,19 @@ def validate_radius_configs(
     else:
         clients_radsec = clients_radsec_path.read_text(encoding="utf-8")
         for ceos, ip in (
-            ("ceos1-both", mgmt_ips["ceos1-both"]),
-            ("ceos2-pqc", mgmt_ips["ceos2-pqc"]),
-            ("ceos3-qkd", mgmt_ips["ceos3-qkd"]),
+            ("ceos1-both", mgmt_ipv6["ceos1-both"]),
+            ("ceos2-pqc", mgmt_ipv6["ceos2-pqc"]),
+            ("ceos3-qkd", mgmt_ipv6["ceos3-qkd"]),
         ):
             block = re.search(rf"client\s+{ceos}\s*\{{([^}}]+)\}}", clients_radsec, re.DOTALL)
             if block is None:
                 errors.append(f"clients-radsec.conf must define client {ceos}")
                 continue
             body = block.group(1)
-            if f"ipaddr  = {ip}" not in body and f"ipaddr = {ip}" not in body:
-                errors.append(f"clients-radsec.conf {ceos} ipaddr must be {ip}")
+            if f"ipv6addr  = {ip}" not in body and f"ipv6addr = {ip}" not in body:
+                errors.append(f"clients-radsec.conf {ceos} ipv6addr must be {ip}")
+            if "ipaddr" in body:
+                errors.append(f"clients-radsec.conf {ceos} must use ipv6addr, not ipaddr")
             if "proto   = tls" not in body and "proto = tls" not in body:
                 errors.append(f"clients-radsec.conf {ceos} must use proto tls")
             if f"secret  = {RADSEC_SECRET}" not in body and f"secret = {RADSEC_SECRET}" not in body:
@@ -1006,6 +1179,8 @@ def validate_radius_configs(
             errors.append("tls site must set tls_min_version 1.3")
         if f"port = {RADSEC_PORT}" not in tls_site:
             errors.append(f"tls site must listen on port {RADSEC_PORT}")
+        if "ipv6addr = ::" not in tls_site:
+            errors.append("tls site must listen on IPv6 (::) for RadSec")
         if "require_client_cert = yes" not in tls_site:
             errors.append("tls site must require client certificates")
 
@@ -1062,12 +1237,15 @@ def validate_topology(
     *,
     ceos_image: str | None = None,
     mgmt_subnet: str | None = None,
+    mgmt_ipv6_subnet: str | None = None,
 ) -> list[str]:
     """Return a list of contract violations (empty when valid)."""
     errors: list[str] = []
     expected_ceos_image = ceos_image or DEFAULT_CEOS_IMAGE
     expected_mgmt_subnet = mgmt_subnet or DEFAULT_MGMT_SUBNET
+    expected_mgmt_ipv6_subnet = mgmt_ipv6_subnet or DEFAULT_MGMT_IPV6_SUBNET
     expected_mgmt_ips = mgmt_ips_for_subnet(expected_mgmt_subnet)
+    expected_mgmt_ipv6_ips = mgmt_ipv6_ips_for_subnet(expected_mgmt_ipv6_subnet)
 
     if data.get("name") != LAB_NAME:
         errors.append(f"name must be {LAB_NAME}")
@@ -1084,6 +1262,11 @@ def validate_topology(
     expected_gateway = mgmt_gateway(expected_mgmt_subnet)
     if mgmt.get("ipv4-gw") not in (expected_gateway, "${MGMT_GATEWAY}"):
         errors.append(f"mgmt.ipv4-gw must be {expected_gateway}")
+    if mgmt.get("ipv6-subnet") not in (expected_mgmt_ipv6_subnet, MGMT_IPV6_SUBNET_PLACEHOLDER):
+        errors.append(f"mgmt.ipv6-subnet must be {expected_mgmt_ipv6_subnet}")
+    expected_ipv6_gateway = mgmt_ipv6_gateway(expected_mgmt_ipv6_subnet)
+    if mgmt.get("ipv6-gw") not in (expected_ipv6_gateway, "${MGMT_IPV6_GATEWAY}"):
+        errors.append(f"mgmt.ipv6-gw must be {expected_ipv6_gateway}")
 
     topology = data.get("topology", {})
     if MGMT_BRIDGE in topology.get("nodes", {}):
@@ -1107,6 +1290,9 @@ def validate_topology(
             continue
         if node_cfg.get("mgmt-ipv4") != expected_ip:
             errors.append(f"{node} mgmt-ipv4 must be {expected_ip}")
+        expected_ipv6_ip = expected_mgmt_ipv6_ips[node]
+        if node_cfg.get("mgmt-ipv6") != expected_ipv6_ip:
+            errors.append(f"{node} mgmt-ipv6 must be {expected_ipv6_ip}")
         if node in CEOS_MGMT_NODES:
             if node_cfg.get("network-mode") == "none":
                 errors.append(
@@ -1171,7 +1357,11 @@ def validate_topology(
             if expected_bind not in kme_a_binds:
                 errors.append(f"kme-a must bind {expected_bind}")
         kme_a_env = kme_a_cfg.get("env", {})
-        for key, value in kme_env_for_node("kme-a", mgmt_ips=expected_mgmt_ips).items():
+        for key, value in kme_env_for_node(
+            "kme-a",
+            mgmt_ips=expected_mgmt_ips,
+            mgmt_ipv6_ips=expected_mgmt_ipv6_ips,
+        ).items():
             if str(kme_a_env.get(key)) != value:
                 errors.append(f"kme-a env {key} must be {value!r}")
         cap_add = kme_a_cfg.get("cap-add") or kme_a_cfg.get("cap_add") or []
@@ -1193,7 +1383,11 @@ def validate_topology(
             if expected_bind not in kme_b_binds:
                 errors.append(f"kme-b must bind {expected_bind}")
         kme_b_env = kme_b_cfg.get("env", {})
-        for key, value in kme_env_for_node("kme-b", mgmt_ips=expected_mgmt_ips).items():
+        for key, value in kme_env_for_node(
+            "kme-b",
+            mgmt_ips=expected_mgmt_ips,
+            mgmt_ipv6_ips=expected_mgmt_ipv6_ips,
+        ).items():
             if str(kme_b_env.get(key)) != value:
                 errors.append(f"kme-b env {key} must be {value!r}")
 
@@ -1241,8 +1435,16 @@ def validate_topology(
 
     errors.extend(validate_host_data_plane(nodes))
     errors.extend(validate_mgmt_topology_nodes(nodes))
-    errors.extend(validate_ceos_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
-    errors.extend(validate_radius_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
+    errors.extend(validate_ceos_configs(
+        repo_root,
+        mgmt_subnet=expected_mgmt_subnet,
+        mgmt_ipv6_subnet=expected_mgmt_ipv6_subnet,
+    ))
+    errors.extend(validate_radius_configs(
+        repo_root,
+        mgmt_subnet=expected_mgmt_subnet,
+        mgmt_ipv6_subnet=expected_mgmt_ipv6_subnet,
+    ))
     errors.extend(validate_syslog_configs(repo_root))
     errors.extend(validate_topo_host_paths(repo_root))
 

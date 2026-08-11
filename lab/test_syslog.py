@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary
+from lab.report import CheckStatus, print_check_group, print_device, print_section_header, report_ok, report_summary
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
@@ -18,7 +18,16 @@ from lab.syslog_checks import (
     probe_syslog_delivery_no_cleartext,
     probe_syslog_tls_pqc,
 )
-from lab.topology_contract import LAB_NAME, SYSLOG_SSL_PROFILE, container_name, mgmt_ips_for_subnet
+from lab.topology_contract import (
+    IP_FAMILIES,
+    IP_FAMILY_IPV4,
+    LAB_NAME,
+    SYSLOG_SSL_PROFILE,
+    container_name,
+    family_label,
+    mgmt_ips_for_subnet,
+    mgmt_ipv6_ips_for_subnet,
+)
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 
@@ -38,10 +47,10 @@ def docker_exec(
 ) -> subprocess.CompletedProcess[str]:
     argv = ["docker", "exec", "-i", container, "sh", "-c", command]
     if verbose_enabled():
-        echo_command(" ".join(argv))
+        echo_command(f"docker exec {container}", argv)
     result = subprocess.run(argv, text=True, capture_output=True, check=False)
     if verbose_enabled():
-        echo_result(result.stdout, result.stderr, result.returncode)
+        echo_result(result)
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
         raise SyslogCheckError(f"{container}: {detail}")
@@ -56,15 +65,20 @@ def ceos_cli(node: str, clab_name: str, commands: str) -> str:
 
 def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> None:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
-    syslog_ip = ips["syslog"]
+    ips6 = mgmt_ipv6_ips_for_subnet()
+    syslog_ip = ips6["syslog"]
     syslog_container = container_name("syslog", lab_name=clab_name)
 
     print_section_header("Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)")
-    print(f"  collector: {syslog_ip}  profile: {SYSLOG_SSL_PROFILE}")
+    print(f"  collector: {syslog_ip} (IPv6 config)  profile: {SYSLOG_SSL_PROFILE}")
+    print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     if not skip_live:
-        probe_syslog_tls_pqc(docker_exec, syslog_container=syslog_container, syslog_ip=syslog_ip)
-        report_live(f"syslog-ng TLS handshake (TLS 1.3, {PQC_GROUP})")
+        print_check_group("Collector TLS")
+        for family in IP_FAMILIES:
+            addr = ips["syslog"] if family == IP_FAMILY_IPV4 else ips6["syslog"]
+            probe_syslog_tls_pqc(docker_exec, syslog_container=syslog_container, syslog_ip=addr)
+            report_live(f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
     else:
         udp = docker_exec(syslog_container, "netstat -lun").stdout
         tcp = docker_exec(syslog_container, "netstat -ltn").stdout
@@ -90,20 +104,24 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
         if skip_live:
             continue
 
-        switch_ip = ips[node]
-        needle = f"quantum-safe-syslog-probe-{node}"
+        print_check_group("Delivery")
+        for family in IP_FAMILIES:
+            switch_ip = ips[node] if family == IP_FAMILY_IPV4 else ips6[node]
+            needle = f"quantum-safe-syslog-probe-{node}-{family}"
 
-        def send_log() -> None:
-            ceos_cli(node, clab_name, f'echo "send log level informational message {needle}"')
+            def send_log(needle: str = needle) -> None:
+                ceos_cli(node, clab_name, f'echo "send log level informational message {needle}"')
 
-        probe_syslog_delivery_no_cleartext(
-            docker_exec,
-            send_log,
-            syslog_container=syslog_container,
-            switch_ip=switch_ip,
-            node=node,
-        )
-        report_live(f"{node} TLS syslog delivered, no cleartext packets from {switch_ip}")
+            probe_syslog_delivery_no_cleartext(
+                docker_exec,
+                send_log,
+                syslog_container=syslog_container,
+                switch_ip=switch_ip,
+                node=node,
+            )
+            report_live(
+                f"{node} TLS syslog delivered ({family_label(family)}), no cleartext from {switch_ip}"
+            )
 
     mode = "config checks only" if skip_live else "config and live delivery (no cleartext)"
     report_summary("Syslog", f"{mode} passed for all cEOS nodes")

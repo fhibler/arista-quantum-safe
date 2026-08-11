@@ -1,7 +1,7 @@
 # RadSec NAS clients (TLS, port 2083). Rendered to lab/.gen/clients-radsec.conf.
 
 client ceos1-both {
-    ipaddr  = ${MGMT_IP_CEOS1_BOTH}
+    ipv6addr = ${MGMT_IPV6_CEOS1_BOTH}
     proto   = tls
     secret  = radsec
     nas_type = other
@@ -10,7 +10,7 @@ client ceos1-both {
 }
 
 client ceos2-pqc {
-    ipaddr  = ${MGMT_IP_CEOS2_PQC}
+    ipv6addr = ${MGMT_IPV6_CEOS2_PQC}
     proto   = tls
     secret  = radsec
     nas_type = other
@@ -19,7 +19,7 @@ client ceos2-pqc {
 }
 
 client ceos3-qkd {
-    ipaddr  = ${MGMT_IP_CEOS3_QKD}
+    ipv6addr = ${MGMT_IPV6_CEOS3_QKD}
     proto   = tls
     secret  = radsec
     nas_type = other

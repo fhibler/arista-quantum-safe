@@ -34,4 +34,34 @@ ip access-list quantum-safe-cp
 !
 system control-plane
    ip access-group quantum-safe-cp vrf MGMT in
+   ipv6 access-group quantum-safe-cp-v6 vrf MGMT in
+!
+ipv6 access-list quantum-safe-cp-v6
+   counters per-entry
+   5 permit tcp any any eq 6020
+   6 permit tcp any any eq 9543
+   10 permit icmp any any
+   20 permit ipv6 any any tracked
+   30 permit udp any any eq bfd
+   70 permit ospf any any
+   80 permit tcp any any eq ssh telnet www snmp bgp https msdp ldp netconf-ssh gnmi
+   90 permit udp any any eq bootps bootpc snmp rip ntp ldp
+   100 permit tcp any any eq mlag
+   110 permit udp any any eq mlag
+   120 permit vrrp any any
+   130 permit ahp any any
+   140 permit pim any any
+   150 permit igmp any any
+   160 permit tcp any any range 5900 5910
+   170 permit tcp any any range 50000 50100
+   180 permit udp any any range 51000 51100
+   190 permit tcp any any eq 3333
+   200 permit tcp any any eq nat
+   210 permit tcp any eq bgp any
+   220 permit rsvp any any
+   230 permit tcp any any eq 9340
+   240 permit tcp any any eq 9559
+   250 permit udp any any eq 8503
+   260 permit udp any any eq lsp-ping
+   270 permit udp any eq lsp-ping any range 51900 51999
 !

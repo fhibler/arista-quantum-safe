@@ -28,6 +28,32 @@ listen {
 	}
 }
 
+listen {
+	ipv6addr = ::
+	port = 2083
+	type = auth+acct
+	proto = tcp
+	virtual_server = default
+	clients = radsec
+
+	limit {
+		max_connections = 16
+		lifetime = 0
+		idle_timeout = 30
+	}
+
+	tls {
+		private_key_file = /etc/raddb/certs/radsec/server.pem
+		certificate_file = /etc/raddb/certs/radsec/server.pem
+		ca_file = /etc/raddb/certs/radsec/ca.pem
+
+		tls_min_version = "1.3"
+		tls_max_version = "1.3"
+		require_client_cert = yes
+		ecdh_curve = ""
+	}
+}
+
 clients radsec {
 	$INCLUDE ${raddbdir}/clients-radsec.conf
 }

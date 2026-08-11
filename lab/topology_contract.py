@@ -133,6 +133,8 @@ DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
 DOT1X_EAP_SSL_PROFILE = "DOT1X"
 DOT1X_EAP_IDENTITY = "ceos2-pqc"
 DOT1X_REAUTH_PERIOD_SEC = 60
+TLS_PQC_GROUP = "X25519MLKEM768"
+TLS_PQC_EOS_GROUPS = TLS_PQC_GROUP
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
@@ -611,8 +613,17 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must define ssl profile RADSEC")
         if "tls versions 1.3" not in text:
             errors.append(f"{ceos}.cfg must restrict ssl profile to TLS 1.3")
-        if "key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1" not in text:
-            errors.append(f"{ceos}.cfg must configure PQC-hybrid key establishment groups")
+        if f"key-establishment-group {TLS_PQC_EOS_GROUPS}" not in text:
+            errors.append(
+                f"{ceos}.cfg must configure PQC-hybrid key establishment group {TLS_PQC_EOS_GROUPS!r} only"
+            )
+        if re.search(
+            r"key-establishment-group\s+\S*(?:ecdh_x25519|secp256r1)",
+            text,
+        ):
+            errors.append(
+                f"{ceos}.cfg must not list classical TLS fallbacks (PQC-hybrid group only)"
+            )
         if f"server {radius_ip} tls vrf MGMT" not in text:
             errors.append(f"{ceos}.cfg aaa group must use RadSec transport in MGMT VRF")
         if "logging vrf MGMT" not in text:
@@ -878,8 +889,12 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
 
     if openssl_cnf_path.is_file():
         openssl_cnf = openssl_cnf_path.read_text(encoding="utf-8")
-        if "X25519MLKEM768" not in openssl_cnf:
-            errors.append("syslog openssl-pqc.cnf must advertise X25519MLKEM768")
+        if TLS_PQC_GROUP not in openssl_cnf:
+            errors.append(f"syslog openssl-pqc.cnf must advertise {TLS_PQC_GROUP}")
+        if re.search(r"Groups\s*=\s*.*(?:secp256r1|ffdhe2048|ecdh_x25519)", openssl_cnf):
+            errors.append(
+                "syslog openssl-pqc.cnf must not list classical TLS fallbacks (PQC-hybrid only)"
+            )
         if "MinProtocol = TLSv1.3" not in openssl_cnf:
             errors.append("syslog openssl-pqc.cnf must require TLS 1.3")
 

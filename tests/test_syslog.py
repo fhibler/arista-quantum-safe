@@ -53,7 +53,7 @@ def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:
         "profileStatus": {
             "SYSLOG": {
                 "profileState": "valid",
-                "keyEstablishmentGroups": "X25519MLKEM768:ecdh_x25519:secp256r1",
+                "keyEstablishmentGroups": "X25519MLKEM768",
             }
         }
     }

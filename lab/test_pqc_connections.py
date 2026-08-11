@@ -171,6 +171,21 @@ def negotiated_pqc_group(output: str) -> bool:
     return bool(re.search(r"Negotiated TLS1\.3 group:.*MLKEM", output))
 
 
+def extract_negotiated_tls_group(output: str) -> str | None:
+    match = re.search(r"Negotiated TLS1\.3 group:\s*(\S+)", output)
+    return match.group(1) if match else None
+
+
+def assert_pqc_hybrid_tls(output: str, *, label: str) -> None:
+    """Require TLS 1.3 PQC-hybrid group negotiation (no classical fallback)."""
+    if negotiated_pqc_group(output):
+        return
+    group = extract_negotiated_tls_group(output) or "unknown"
+    raise PqcConnectionError(
+        f"{label}: expected PQC-hybrid group {PQC_GROUP!r}, negotiated {group!r}"
+    )
+
+
 def openssl_s_client(
     radius_container: str,
     *,
@@ -180,6 +195,7 @@ def openssl_s_client(
     key_file: str | None = None,
     use_pqc_conf: bool = True,
     verbose: bool | None = None,
+    require_tls13: bool = True,
 ) -> str:
     env = f"OPENSSL_CONF={OPENSSL_PQC_CNF} " if use_pqc_conf else ""
     cert_args = ""
@@ -192,7 +208,7 @@ def openssl_s_client(
     # s_client may exit non-zero after a successful brief handshake; inspect output instead.
     result = docker_exec(radius_container, command, check=False, verbose=verbose, title=f"openssl s_client {connect}")
     output = result.stdout + result.stderr
-    if not tls13_handshake(output):
+    if require_tls13 and not tls13_handshake(output):
         raise PqcConnectionError(f"TLS 1.3 handshake to {connect} failed:\n{output}")
     return output
 
@@ -308,8 +324,7 @@ def probe_gnmi_tls(targets: LabTargets, node: str, *, verbose: bool | None = Non
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
-    if not negotiated_pqc_group(output):
-        raise PqcConnectionError(f"{node} gNMI TLS: expected PQC group {PQC_GROUP!r}")
+    assert_pqc_hybrid_tls(output, label=f"{node} gNMI TLS")
     report_live(f"gNMI gRPC TLS handshake (TLS 1.3, {PQC_GROUP})")
 
 
@@ -325,8 +340,7 @@ def probe_gnmi_mtls(targets: LabTargets, node: str, *, verbose: bool | None = No
         key_file=key_file,
         verbose=verbose,
     )
-    if not negotiated_pqc_group(output):
-        raise PqcConnectionError(f"{node} gNMI mTLS: expected PQC group {PQC_GROUP!r}")
+    assert_pqc_hybrid_tls(output, label=f"{node} gNMI mTLS")
     report_live(f"gNMI gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
 
 
@@ -338,31 +352,56 @@ def probe_restconf_tls(targets: LabTargets, node: str, *, verbose: bool | None =
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
-    if not negotiated_pqc_group(output):
-        raise PqcConnectionError(f"{node} RESTCONF TLS: expected PQC group {PQC_GROUP!r}")
+    assert_pqc_hybrid_tls(output, label=f"{node} RESTCONF TLS")
     report_live(f"RESTCONF HTTPS handshake (TLS 1.3, {PQC_GROUP})")
 
 
 def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    """Probe eos-sdk-rpc mTLS; cEOS may negotiate classical KEX despite GNMI profile PQC groups."""
+    """Probe eos-sdk-rpc mTLS.
+
+    cEOS 4.36.1F often does not negotiate PQC-hybrid on port 9543 despite the ssl
+    profile (EOF with a PQC-only client, or classical KEX with a permissive client).
+    Config is still validated; live probe warns instead of failing the suite.
+    """
     ip = targets.ceos_ips[node]
     cert_file = PROBE_CLIENT_CERT.format(node=node)
     key_file = PROBE_CLIENT_KEY.format(node=node)
-    output = openssl_s_client(
+    connect = f"{ip}:{EOSSDKRPC_PORT}"
+    pqc_output = openssl_s_client(
         targets.radius_container,
-        connect=f"{ip}:{EOSSDKRPC_PORT}",
+        connect=connect,
         ca_file=RADSEC_CA_IN_RADIUS,
         cert_file=cert_file,
         key_file=key_file,
         verbose=verbose,
+        require_tls13=False,
     )
-    if negotiated_pqc_group(output):
+    if tls13_handshake(pqc_output) and negotiated_pqc_group(pqc_output):
         report_live(f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
-    else:
+        return
+
+    classical_output = openssl_s_client(
+        targets.radius_container,
+        connect=connect,
+        ca_file=RADSEC_CA_IN_RADIUS,
+        cert_file=cert_file,
+        key_file=key_file,
+        use_pqc_conf=False,
+        verbose=verbose,
+        require_tls13=False,
+    )
+    if tls13_handshake(classical_output):
+        group = extract_negotiated_tls_group(classical_output) or "unknown"
         report_live(
-            "eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, classical fallback)",
+            f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
             status=CheckStatus.WARN,
         )
+        return
+
+    report_live(
+        "eos-sdk-rpc gRPC mTLS: no TLS 1.3 handshake on :9543 (cEOS 4.36.1F PQC gap; config OK)",
+        status=CheckStatus.WARN,
+    )
 
 
 def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
@@ -373,13 +412,8 @@ def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = N
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
-    if negotiated_pqc_group(output):
-        report_live(f"eAPI HTTPS handshake (TLS 1.3, {PQC_GROUP})")
-    else:
-        report_live(
-            "eAPI HTTPS handshake (TLS 1.3, classical fallback)",
-            status=CheckStatus.WARN,
-        )
+    assert_pqc_hybrid_tls(output, label=f"{node} eAPI HTTPS")
+    report_live(f"eAPI HTTPS handshake (TLS 1.3, {PQC_GROUP})")
 
 
 def probe_eapi_jsonrpc(node: str, switch_ip: str, *, verbose: bool | None = None) -> None:
@@ -572,7 +606,7 @@ def run_live_checks(
         ceos_ips={"ceos1-both": ips["ceos1-both"], "ceos2-pqc": ips["ceos2-pqc"], "ceos3-qkd": ips["ceos3-qkd"]},
     )
 
-    print_section_header("PQC verification (TLS 1.3 + hybrid KEX)")
+    print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
     print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog\n")
 

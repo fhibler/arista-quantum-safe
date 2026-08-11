@@ -1,6 +1,6 @@
 # Quantum Safe Lab
 
-Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, syslog, SSH), **dynamic MACsec** on an inter-switch link, **QuaDRA static MACsec + QKD key rotation** on another, and ETSI QKD 014 KME simulators on the mgmt network.
+Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS with **no classical fallback** (RadSec, eAPI, gNMI, syslog, SSH), **dynamic MACsec** on an inter-switch link, **QuaDRA static MACsec + QKD key rotation** on another, and ETSI QKD 014 KME simulators on the mgmt network.
 
 Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology. `ceos1-both` and `ceos2-pqc` connect over an L3 link protected by 802.1X EAP-TLS and MKA-derived keys. `ceos1-both` and `ceos3-qkd` connect over **static SAK MACsec** pre-provisioned for [QuaDRA](docs/quadra.md) (master on `ceos1-both`, slave on `ceos3-qkd`; extension install and agent start are manual). Each switch serves an Alpine Linux host on **Ethernet8**. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
 
@@ -195,7 +195,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 
 ### Known limitation: eos-sdk-rpc
 
-`management api eos-sdk-rpc` (gRPC port **9543**, mTLS, ssl profile `GNMI`) is enabled on all switches and the profile lists hybrid KEX `X25519MLKEM768`. On cEOS **4.36.1F**, live handshakes still negotiate classical **`secp256r1`** — unlike gNMI on the same profile, which negotiates PQC. Session keys for SDK RPC are therefore **not** harvest-now-decrypt-later resistant on this release. `make test-pqc` reports `eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, classical fallback)`. Details: [docs/eos-pqc.md](docs/eos-pqc.md).
+`management api eos-sdk-rpc` (gRPC port **9543**, mTLS, ssl profile `GNMI`) is configured for PQC-hybrid-only like gNMI, but on cEOS **4.36.1F** live handshakes on :9543 typically do not negotiate `X25519MLKEM768` (EOF with a PQC-only client, or classical **`secp256r1`** with a permissive one). `make test-pqc` still validates the ssl profile in `[config]` and reports a **`WARN`** on the live probe rather than failing the suite. Details: [docs/eos-pqc.md](docs/eos-pqc.md).
 
 ## Multi-arch notes
 

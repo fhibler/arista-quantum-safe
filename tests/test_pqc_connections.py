@@ -14,21 +14,24 @@ from lab.test_pqc_connections import (
     SSH_PQC_KEX,
     LabTargets,
     assert_contains,
+    assert_pqc_hybrid_tls,
     negotiated_pqc_group,
     negotiated_ssh_pqc_kex,
     probe_eapi_https,
     probe_eapi_jsonrpc,
+    probe_eossdkrpc_tls,
     probe_radsec_from_switch,
     probe_ssh_pqc,
     run_live_checks,
     tls13_handshake,
 )
+from lab.report import CheckStatus
 
 
 def _ssl_profile_json() -> dict:
     return {
         "state": "valid",
-        "tls13Groups": [PQC_GROUP, "ecdh_x25519"],
+        "tls13Groups": [PQC_GROUP],
         "trustedCertificates": ["radsec-ca.pem"],
     }
 
@@ -69,6 +72,14 @@ def test_tls13_handshake_detects_tlsv13() -> None:
 def test_negotiated_pqc_group() -> None:
     assert negotiated_pqc_group(f"Negotiated TLS1.3 group: {PQC_GROUP}")
     assert not negotiated_pqc_group("Negotiated TLS1.3 group: ecdh_x25519")
+
+
+def test_assert_pqc_hybrid_tls_rejects_classical() -> None:
+    with pytest.raises(Exception, match="expected PQC-hybrid"):
+        assert_pqc_hybrid_tls(
+            "Protocol version: TLSv1.3\nNegotiated TLS1.3 group: secp256r1\n",
+            label="probe",
+        )
 
 
 def test_negotiated_ssh_pqc_kex() -> None:
@@ -226,6 +237,32 @@ def test_probe_radsec_from_switch_requires_auth_success() -> None:
     ):
         with pytest.raises(Exception, match="RadSec AAA test"):
             probe_radsec_from_switch(targets, "ceos1-both")
+
+
+def test_probe_eossdkrpc_tls_warns_when_pqc_handshake_fails(capsys) -> None:
+    targets = LabTargets(
+        clab_name="quantum-safe",
+        radius_ip="172.20.127.50",
+        syslog_ip="172.20.127.53",
+        ceos_ips={"ceos1-both": "172.20.127.11", "ceos2-pqc": "172.20.127.12", "ceos3-qkd": "172.20.127.13"},
+    )
+    calls = {"n": 0}
+
+    def fake_openssl(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "Connecting to 172.20.127.11\nunexpected eof while reading\n"
+        return (
+            "Protocol version: TLSv1.3\n"
+            "Negotiated TLS1.3 group: secp256r1\n"
+        )
+
+    with patch("lab.test_pqc_connections.openssl_s_client", side_effect=fake_openssl):
+        probe_eossdkrpc_tls(targets, "ceos1-both")
+
+    output = capsys.readouterr().out
+    assert "WARN" in output
+    assert "secp256r1" in output
 
 
 def test_probe_eapi_https_requires_tls13() -> None:

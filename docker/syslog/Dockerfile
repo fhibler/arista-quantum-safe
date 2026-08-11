@@ -1,7 +1,7 @@
 # syslog-ng linked against OpenSSL 3.5+ for EOS PQC-hybrid syslog-over-TLS.
 #
 # EOS ssl profile (example):
-#   key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
+#   key-establishment-group X25519MLKEM768
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
 

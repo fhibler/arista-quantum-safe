@@ -156,7 +156,7 @@ def mgmt_node_ip(
 
 LINKS = [
     ("ceos1-both:eth1", "ceos2-pqc:eth1"),
-    ("ceos1-both:eth3", "ceos3-qkd:eth1"),
+    ("ceos1-both:eth2", "ceos3-qkd:eth1"),
     ("ceos1-both:eth8", "host1:eth1"),
     ("ceos2-pqc:eth8", "host2:eth1"),
     ("ceos3-qkd:eth8", "host3:eth1"),
@@ -167,7 +167,7 @@ MGMT_LINUX_NODES = frozenset({"radius", "syslog", "kme-a", "kme-b"})
 CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 CEOS_QUADRA_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
-# QuaDRA static SAK MACsec on ceos1-both:eth3 ↔ ceos3-qkd:eth1 (10.255.0.5/30 ↔ 10.255.0.6/30).
+# QuaDRA static SAK MACsec on ceos1-both:eth2 ↔ ceos3-qkd:eth1 (10.255.0.5/30 ↔ 10.255.0.6/30).
 QUADRA_VERSION = "1.0.10.rel1"
 
 
@@ -242,7 +242,7 @@ def ceos_quadra_exec(arch: str | None = None) -> dict[str, str]:
 QUADRA_MACSEC_PROFILE_MASTER = "quadra-master"
 QUADRA_MACSEC_PROFILE_SLAVE = "quadra-slave"
 QUADRA_MACSEC_INTF = {
-    "ceos1-both": "Ethernet3",
+    "ceos1-both": "Ethernet2",
     "ceos3-qkd": "Ethernet1",
 }
 QUADRA_PEER_IP = {
@@ -380,8 +380,8 @@ def ceos_data_plane(
             "mgmt_gateway6": mgmt_ipv6_gateway(mgmt_ipv6_subnet),
             "eth1": "10.255.0.1/30",
             "eth1_ipv6": f"{DOC_PREFIX}:255:0::1/126",
-            "eth3": "10.255.0.5/30",
-            "eth3_ipv6": f"{DOC_PREFIX}:255:0::5/126",
+            "eth2": "10.255.0.5/30",
+            "eth2_ipv6": f"{DOC_PREFIX}:255:0::5/126",
             "eth8": "10.0.1.254/24",
             "eth8_ipv6": f"{DOC_PREFIX}:1::fe/64",
             "static_routes": [
@@ -824,10 +824,10 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1']}")
         if f"ipv6 address {expected['eth1_ipv6']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1_ipv6']}")
-        if "eth3" in expected and f"ip address {expected['eth3']}" not in text:
-            errors.append(f"{ceos}.cfg Ethernet3 must have {expected['eth3']}")
-        if "eth3_ipv6" in expected and f"ipv6 address {expected['eth3_ipv6']}" not in text:
-            errors.append(f"{ceos}.cfg Ethernet3 must have {expected['eth3_ipv6']}")
+        if "eth2" in expected and f"ip address {expected['eth2']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet2 must have {expected['eth2']}")
+        if "eth2_ipv6" in expected and f"ipv6 address {expected['eth2_ipv6']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet2 must have {expected['eth2_ipv6']}")
         if f"ip address {expected['eth8']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet8 must have {expected['eth8']}")
         if f"ipv6 address {expected['eth8_ipv6']}" not in text:

@@ -197,7 +197,7 @@ topology:
         - ../lab/.gen/kme-pki:/certs:ro
   links:
     - endpoints: ["ceos1-both:eth1", "ceos2-pqc:eth1"]
-    - endpoints: ["ceos1-both:eth3", "ceos3-qkd:eth1"]
+    - endpoints: ["ceos1-both:eth2", "ceos3-qkd:eth1"]
     - endpoints: ["ceos1-both:eth8", "host1:eth1"]
     - endpoints: ["ceos2-pqc:eth8", "host2:eth1"]
     - endpoints: ["ceos3-qkd:eth8", "host3:eth1"]

@@ -12,6 +12,9 @@ username admin nopassword role network-admin privilege 15
 !
 service routing protocols model multi-agent
 !
+platform tfa
+   interface mode relaying
+!
 vrf instance MGMT
 !
 ! Default gateway for custom mgmt subnet (Containerlab bridge).

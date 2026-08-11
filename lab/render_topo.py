@@ -29,6 +29,7 @@ from lab.topology_contract import (
     QUADRA_KEY_TX,
     QUADRA_MACSEC_PROFILE_MASTER,
     QUADRA_MACSEC_PROFILE_SLAVE,
+    QUADRA_MACSEC_INTF,
     QUADRA_SC_RX_ID,
     QUADRA_SC_TX_ID,
     quadra_swix_clab_bind,
@@ -86,7 +87,7 @@ def build_substitutions(
     quadra_master_ctx = {
         **quadra_base,
         "QUADRA_MACSEC_PROFILE": QUADRA_MACSEC_PROFILE_MASTER,
-        "QUADRA_MACSEC_INTF": "Ethernet3",
+        "QUADRA_MACSEC_INTF": QUADRA_MACSEC_INTF["ceos1-both"],
         "QUADRA_PEER_IP": "10.255.0.6",
     }
     quadra_slave_ctx = {

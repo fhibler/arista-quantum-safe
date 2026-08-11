@@ -12,7 +12,7 @@ Nine data-plane nodes plus syslog collector and two KME simulators on the mgmt n
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client, remote syslog (TLS); **ceos1-both/ceos2-pqc dynamic MACsec on eth1**; **ceos1-both/ceos3-qkd QuaDRA static MACsec on eth3/eth1** (see [docs/quadra.md](docs/quadra.md)) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client, remote syslog (TLS); **ceos1-both/ceos2-pqc dynamic MACsec on eth1**; **ceos1-both/ceos3-qkd QuaDRA static MACsec on eth2/eth1** (see [docs/quadra.md](docs/quadra.md)) |
 | host1, host2, host3 | Alpine 3.20 hosts on routed data segments only (no mgmt network) |
 | radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) — see [docs/syslog.md](docs/syslog.md) |
@@ -154,7 +154,7 @@ flowchart LR
   end
 
   ceos1 ---|"eth1 MACsec"| ceos2
-  ceos1 ---|"eth3 QuaDRA MACsec"| ceos3
+  ceos1 ---|"eth2 QuaDRA MACsec"| ceos3
   ceos1 ---|"eth8 10.0.1.254/24"| h1
   ceos2 ---|"eth8 10.0.2.254/24"| h2
   ceos3 ---|"eth8 10.0.3.254/24"| h3
@@ -166,7 +166,7 @@ flowchart LR
 | Link | Addresses |
 |------|-----------|
 | ceos1-both:eth1 ↔ ceos2-pqc:eth1 | `10.255.0.1/30` ↔ `10.255.0.2/30` |
-| ceos1-both:eth3 ↔ ceos3-qkd:eth1 | `10.255.0.5/30` ↔ `10.255.0.6/30` |
+| ceos1-both:eth2 ↔ ceos3-qkd:eth1 | `10.255.0.5/30` ↔ `10.255.0.6/30` |
 | ceos1-both:eth8 ↔ host1:eth1 | `10.0.1.254/24` ↔ `10.0.1.1/24` |
 | ceos2-pqc:eth8 ↔ host2:eth1 | `10.0.2.254/24` ↔ `10.0.2.1/24` |
 | ceos3-qkd:eth8 ↔ host3:eth1 | `10.0.3.254/24` ↔ `10.0.3.1/24` |

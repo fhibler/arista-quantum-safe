@@ -49,6 +49,8 @@ QUADRA_MASTER = AUTHENTICATOR
 QUADRA_SLAVE = "ceos3-qkd"
 QUADRA_INTER_SWITCH_PEER = QUADRA_PEER_IP
 REAUTH_WAIT_BUFFER_SEC = 15
+STATIC_MACSEC_POLL_INTERVAL_SEC = 2
+STATIC_MACSEC_POLL_ATTEMPTS = 15
 
 
 class MacsecCheckError(RuntimeError):
@@ -289,6 +291,11 @@ def check_static_macsec_config(
     report_config(f"static SAK profile {profile} on {interface}")
 
 
+def _static_macsec_operational(output) -> bool:
+    """Static SAK MACsec reports state in summary JSON, not ``… detail | json``."""
+    return json_truthy(output, "controlledPort") and macsec_has_active_key(output)
+
+
 def check_static_macsec_interface(
     container: str,
     node: str,
@@ -296,17 +303,26 @@ def check_static_macsec_interface(
     *,
     verbose: bool | None = None,
 ) -> None:
-    output = ceos_show_json(
-        container,
-        f"show mac security interface {interface} detail",
-        verbose=verbose,
-    )
+    peer_ip = QUADRA_PEER_IP.get(node)
+    output = None
+    for attempt in range(STATIC_MACSEC_POLL_ATTEMPTS):
+        if attempt and peer_ip:
+            time.sleep(STATIC_MACSEC_POLL_INTERVAL_SEC)
+        if peer_ip:
+            ceos_cli(container, f"enable\nping {peer_ip} repeat 1\n", verbose=verbose)
+        output = ceos_show_json(
+            container,
+            f"show mac security interface {interface}",
+            verbose=verbose,
+        )
+        if _static_macsec_operational(output):
+            report_live(f"MACsec controlled port up, traffic encrypted on {interface}")
+            return
+
     _assert_json_contains(output, "True", label=f"{node} controlled port")
-    if not macsec_traffic_protected(output):
-        raise MacsecCheckError(f"{node}: expected protected MACsec traffic on {interface}")
     if not macsec_has_active_key(output):
-        raise MacsecCheckError(f"{node}: expected active SAK (Key in use) on {interface}")
-    report_live(f"MACsec controlled port up, traffic encrypted on {interface}")
+        raise MacsecCheckError(f"{node}: expected active static SAK on {interface}")
+    raise MacsecCheckError(f"{node}: expected protected MACsec traffic on {interface}")
 
 
 def run_quadra_macsec_checks(
@@ -319,7 +335,7 @@ def run_quadra_macsec_checks(
     master_intf = QUADRA_MACSEC_INTF[QUADRA_MASTER]
     slave_intf = QUADRA_MACSEC_INTF[QUADRA_SLAVE]
 
-    print_section_header("QuaDRA static MACsec (ceos1-both:eth3 ↔ ceos3-qkd:eth1)")
+    print_section_header("QuaDRA static MACsec (ceos1-both:eth2 ↔ ceos3-qkd:eth1)")
 
     print_device(QUADRA_MASTER)
     if not skip_config:

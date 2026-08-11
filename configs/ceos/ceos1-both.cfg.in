@@ -14,6 +14,9 @@ username admin nopassword role network-admin privilege 15
 !
 service routing protocols model multi-agent
 !
+platform tfa
+   interface mode relaying
+!
 vrf instance MGMT
 !
 ! Default gateway for custom mgmt subnet (Containerlab bridge).
@@ -35,7 +38,7 @@ interface Ethernet1
    dot1x port-control auto
    dot1x timeout reauth-period 60
 !
-interface Ethernet3
+interface Ethernet2
    no switchport
    ip address 10.255.0.5/30
    ipv6 address 2001:db8:255:0::5/126

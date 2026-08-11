@@ -23,7 +23,7 @@ Uptime: 0:06:41 (Start time: Tue Aug 11 13:10:14 2026)
 Configuration:
 Option         Value
 -------------- -----------------------------------
-macsec-intf    Ethernet3
+macsec-intf    Ethernet2
 peer           10.255.0.6
 peer-mode      slave
 Status:

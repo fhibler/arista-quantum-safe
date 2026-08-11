@@ -90,6 +90,22 @@ def test_macsec_has_active_key() -> None:
     assert macsec_has_active_key({"keyInUse": "deadbeef:1"})
     assert not macsec_has_active_key({"keyInUse": "None"})
     assert macsec_has_active_key({"keyMsgId": "faf6921cce5368e9ddd92eff", "keyNum": 1})
+    assert macsec_has_active_key({"keyMsgId": "static SAK: Rx AN: 0 Tx AN: 0", "keyNum": 0})
+
+
+def test_macsec_traffic_protected_static_sak_summary_is_not_detail() -> None:
+    """Static SAK uses summary JSON; ``… detail | json`` is empty on cEOS."""
+    static_summary = {
+        "interfaces": {
+            "Ethernet2": {
+                "controlledPort": True,
+                "keyMsgId": "static SAK: Rx AN: 0 Tx AN: 0",
+                "keyNum": 0,
+            }
+        }
+    }
+    assert macsec_has_active_key(static_summary)
+    assert not macsec_traffic_protected(static_summary)
 
 
 def test_ping_json_success() -> None:

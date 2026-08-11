@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 
+from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
@@ -22,11 +23,11 @@ from lab.verbose import echo_command, echo_result, verbose_enabled
 
 
 def report_config(detail: str) -> None:
-    print(f"  [config] {detail}")
+    report_ok("[config]", detail)
 
 
 def report_live(detail: str) -> None:
-    print(f"  [live]   {detail}")
+    report_ok("[live]  ", detail)
 
 
 def docker_exec(
@@ -53,16 +54,12 @@ def ceos_cli(node: str, clab_name: str, commands: str) -> str:
     return result.stdout
 
 
-def print_device(name: str) -> None:
-    print(f"=== {name} ===")
-
-
 def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> None:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     syslog_ip = ips["syslog"]
     syslog_container = container_name("syslog", lab_name=clab_name)
 
-    print("Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)")
+    print_section_header("Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)")
     print(f"  collector: {syslog_ip}  profile: {SYSLOG_SSL_PROFILE}")
 
     if not skip_live:
@@ -109,7 +106,7 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
         report_live(f"{node} TLS syslog delivered, no cleartext packets from {switch_ip}")
 
     mode = "config checks only" if skip_live else "config and live delivery (no cleartext)"
-    print(f"\nSyslog: OK — {mode} passed for all cEOS nodes")
+    report_summary("Syslog", f"{mode} passed for all cEOS nodes")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,7 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_checks(clab_name=args.clab_name, mgmt_subnet=mgmt_subnet, skip_live=args.skip_live)
     except (SyslogCheckError, subprocess.CalledProcessError) as exc:
-        print(f"\nSyslog: FAIL — {exc}", file=sys.stderr)
+        report_summary("Syslog", str(exc), CheckStatus.FAIL, file=sys.stderr)
+        print(file=sys.stderr)
         return 1
     return 0
 

@@ -21,12 +21,25 @@ from lab.topology_contract import (
     KME_KEY_SIZE,
     KME_SAE_CLIENT_NODES,
     KME_SAE_ID,
+    QUADRA_KEY_RX,
+    QUADRA_KEY_TX,
+    QUADRA_MACSEC_PROFILE_MASTER,
+    QUADRA_MACSEC_PROFILE_SLAVE,
+    QUADRA_SC_RX_ID,
+    QUADRA_SC_TX_ID,
     TOPOLOGY_ANNOTATIONS_PATH,
     TOPOLOGY_PATH,
     mgmt_gateway,
     mgmt_ips_for_subnet,
     mgmt_prefix_len,
 )
+
+QUADRA_TEMPLATE_PATHS = {
+    "quadra-macsec-master": Path("configs/ceos/quadra-macsec-master.cfg.in"),
+    "quadra-macsec-slave": Path("configs/ceos/quadra-macsec-slave.cfg.in"),
+    "quadra-daemon-master": Path("configs/ceos/quadra-daemon-master.cfg.in"),
+    "quadra-daemon-slave": Path("configs/ceos/quadra-daemon-slave.cfg.in"),
+}
 
 TEMPLATE_PATHS = {
     "ceos1-both.cfg": Path("configs/ceos/ceos1-both.cfg.in"),
@@ -47,6 +60,35 @@ def build_substitutions(
     control_plane_acl = (repo_root / "configs/ceos/control-plane-acl.cfg.in").read_text(
         encoding="utf-8",
     )
+    quadra_base = {
+        "KME_A_PORT": str(KME_A_PORT),
+        "KME_B_PORT": str(KME_B_PORT),
+        "KME_SAE_ID": KME_SAE_ID,
+        "KME_B_SAE_ID": KME_B_SAE_ID,
+        "QUADRA_KEY_RX": QUADRA_KEY_RX,
+        "QUADRA_KEY_TX": QUADRA_KEY_TX,
+        "QUADRA_SC_RX_ID": QUADRA_SC_RX_ID,
+        "QUADRA_SC_TX_ID": QUADRA_SC_TX_ID,
+        "MGMT_IP_KME_A": ips["kme-a"],
+        "MGMT_IP_KME_B": ips["kme-b"],
+    }
+    quadra_master_ctx = {
+        **quadra_base,
+        "QUADRA_MACSEC_PROFILE": QUADRA_MACSEC_PROFILE_MASTER,
+        "QUADRA_MACSEC_INTF": "Ethernet3",
+        "QUADRA_PEER_IP": "10.255.0.6",
+    }
+    quadra_slave_ctx = {
+        **quadra_base,
+        "QUADRA_MACSEC_PROFILE": QUADRA_MACSEC_PROFILE_SLAVE,
+        "QUADRA_MACSEC_INTF": "Ethernet1",
+        "QUADRA_PEER_IP": "10.255.0.5",
+    }
+
+    def render_quadra(name: str, ctx: dict[str, str]) -> str:
+        path = repo_root / QUADRA_TEMPLATE_PATHS[name]
+        return substitute_placeholders(path.read_text(encoding="utf-8"), ctx).rstrip("\n")
+
     return {
         "CEOS_IMAGE": ceos_image,
         "MGMT_SUBNET": mgmt_subnet,
@@ -55,6 +97,9 @@ def build_substitutions(
         "MGMT_IP_CEOS1_BOTH": ips["ceos1-both"],
         "MGMT_IP_CEOS2_PQC": ips["ceos2-pqc"],
         "MGMT_IP_CEOS3_QKD": ips["ceos3-qkd"],
+        "MGMT_IP_HOST1": ips["host1"],
+        "MGMT_IP_HOST2": ips["host2"],
+        "MGMT_IP_HOST3": ips["host3"],
         "MGMT_IP_RADIUS": ips["radius"],
         "MGMT_IP_SYSLOG": ips["syslog"],
         "MGMT_IP_KME_A": ips["kme-a"],
@@ -63,6 +108,10 @@ def build_substitutions(
         "RADIUS_SERVER_IP": ips["radius"],
         "SYSLOG_SERVER_IP": ips["syslog"],
         "CONTROL_PLANE_ACL": control_plane_acl.rstrip("\n"),
+        "QUADRA_MACSEC_MASTER": render_quadra("quadra-macsec-master", quadra_master_ctx),
+        "QUADRA_MACSEC_SLAVE": render_quadra("quadra-macsec-slave", quadra_slave_ctx),
+        "QUADRA_DAEMON_MASTER": render_quadra("quadra-daemon-master", quadra_master_ctx),
+        "QUADRA_DAEMON_SLAVE": render_quadra("quadra-daemon-slave", quadra_slave_ctx),
     }
 
 

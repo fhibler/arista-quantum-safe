@@ -18,8 +18,9 @@ from lab.topology_contract import (
     KME_IMAGE,
     KME_NODES,
     LAB_NAME,
-    MGMT_BRIDGE_NODE,
-    MGMT_LINKS,
+    LINKS,
+    MGMT_BRIDGE,
+    MGMT_LINUX_NODES,
     MGMT_NETWORK,
     MGMT_SUBNET_PLACEHOLDER,
     SYSLOG_IMAGE,
@@ -57,25 +58,34 @@ def test_topology_yaml_parses(topology: dict) -> None:
     assert topology["name"] == LAB_NAME
     assert topology["prefix"] == CLAB_PREFIX
     assert topology["mgmt"]["network"] == MGMT_NETWORK
-    assert topology["mgmt"]["bridge"] == MGMT_BRIDGE_NODE
+    assert topology["mgmt"]["bridge"] == MGMT_BRIDGE
 
 
-def test_topology_mgmt_bridge_links(topology: dict) -> None:
+def test_topology_uses_docker_mgmt_not_bridge_node(topology: dict) -> None:
+    nodes = topology["topology"]["nodes"]
+    assert MGMT_BRIDGE not in nodes
+    for node in MGMT_LINUX_NODES:
+        assert nodes[node].get("network-mode") != "none"
+        exec_cmds = nodes[node].get("exec") or []
+        assert not any("dev eth0" in cmd for cmd in exec_cmds)
+
+
+def test_topology_data_plane_links(topology: dict) -> None:
     actual_links = {
         tuple(link["endpoints"])
         for link in topology["topology"]["links"]
         if "endpoints" in link
     }
-    for endpoints in MGMT_LINKS:
+    for endpoints in LINKS:
         assert endpoints in actual_links or tuple(reversed(endpoints)) in actual_links
-    bridge = topology["topology"]["nodes"][MGMT_BRIDGE_NODE]
-    assert bridge["kind"] == "bridge"
 
 
 def test_generated_topology_annotations_copy() -> None:
     assert GEN_TOPOLOGY_ANNOTATIONS_PATH.is_file()
     annotations = GEN_TOPOLOGY_ANNOTATIONS_PATH.read_text(encoding="utf-8")
-    assert '"id": "mgmt-bridge"' in annotations
+    assert '"id": "ceos1-both"' in annotations
+    assert '"id": "mgmt-net"' not in annotations
+    assert '"id": "mgmt-bridge"' not in annotations
 
 
 def test_topology_template_placeholders(topology: dict) -> None:
@@ -142,10 +152,19 @@ def test_kme_a_sae_client_allowed(topology: dict) -> None:
     kme_a = topology["topology"]["nodes"]["kme-a"]
     assert kme_a["image"] == KME_IMAGE
     assert kme_a["mgmt-ipv4"] == "${MGMT_IP_KME_A}"
+    assert "exec" not in kme_a or not any("dev eth0" in cmd for cmd in kme_a.get("exec", []))
     assert "NET_ADMIN" in kme_a["cap-add"]
     assert kme_a["env"]["OTHER_KMES"] == "https://${MGMT_IP_KME_B}:8020"
     assert kme_a["env"]["SAE_CLIENT_IPS"] == "${KME_SAE_CLIENT_IPS}"
     assert kme_a["env"]["PORT"] == str(KME_A_PORT)
+
+
+@pytest.mark.parametrize("node", sorted(MGMT_LINUX_NODES))
+def test_mgmt_linux_nodes_use_docker_mgmt(topology: dict, node: str) -> None:
+    node_cfg = topology["topology"]["nodes"][node]
+    assert node_cfg.get("network-mode") != "none"
+    exec_cmds = node_cfg.get("exec") or []
+    assert not any("dev eth0" in cmd for cmd in exec_cmds)
 
 
 def test_kme_b_peer_linked(topology: dict) -> None:
@@ -176,6 +195,20 @@ def test_kme_peer_urls_match_contract(generated_topology: dict) -> None:
 def test_ceos_kme_bind_mounts(topology: dict, node: str, expected_bind: str) -> None:
     binds = topology["topology"]["nodes"][node]["binds"]
     assert expected_bind in binds
+
+
+@pytest.mark.parametrize(
+    ("host", "placeholder"),
+    [
+        ("host1", "${MGMT_IP_HOST1}"),
+        ("host2", "${MGMT_IP_HOST2}"),
+        ("host3", "${MGMT_IP_HOST3}"),
+    ],
+)
+def test_host_nodes_use_docker_mgmt(topology: dict, host: str, placeholder: str) -> None:
+    node_cfg = topology["topology"]["nodes"][host]
+    assert node_cfg.get("mgmt-ipv4") == placeholder
+    assert node_cfg.get("network-mode") != "none"
 
 
 @pytest.mark.parametrize("host,spec", HOST_DATA_PLANE.items())

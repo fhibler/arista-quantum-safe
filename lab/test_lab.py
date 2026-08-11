@@ -12,6 +12,7 @@ from typing import Sequence
 
 from lab.ceos_json import assert_json_contains as _json_contains
 from lab.test_pqc_connections import PqcConnectionError, ceos_cli, ceos_show_json
+from lab.report import CheckStatus, ICON_FAIL, ICON_OK, align_right, bold, print_device, report_summary, status_marker, visible_len
 from lab.topology_contract import (
     HOST_DATA_PLANE,
     LAB_NAME,
@@ -30,7 +31,9 @@ def section(title: str, *, verbose: bool) -> None:
     if not verbose:
         return
     bar = "=" * 78
-    print(f"\n{bar}\n  {title}\n{bar}")
+    print(f"\n{bar}")
+    print(bold(f"  {title}"))
+    print(bar)
 
 
 def run_step(
@@ -101,7 +104,6 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
         raise LabTestError("RadSec listener not found on port 2083")
 
     json_checks = (
-        ("ping radius (MGMT VRF)", f"ping vrf MGMT {radius_ip} repeat 3", "0"),
         ("ssl profile RADSEC", "show management security ssl profile RADSEC", "valid"),
         (
             "ssl profile RADSEC detail (PQC groups)",
@@ -110,6 +112,7 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
         ),
     )
     text_checks = (
+        ("ping radius (MGMT VRF)", f"ping vrf MGMT {radius_ip} repeat 3", "0% packet loss"),
         ("RadSec client config", "show running-config | section radius", "tls ssl-profile RADSEC"),
         (
             "RadSec AAA test",
@@ -136,7 +139,7 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
                 raise LabTestError(f"{node} {label}: expected {expect!r}")
 
     if not verbose:
-        print("RADIUS: OK")
+        report_summary("RADIUS", "all checks passed")
 
 
 def run_python_module(title: str, module: str, *args: str, verbose: bool = False) -> None:
@@ -175,14 +178,23 @@ def format_host_connectivity_matrix(results: dict[tuple[str, str], bool]) -> str
     """Return an ASCII ping matrix for host-to-host data-plane reachability."""
     hosts = tuple(HOST_DATA_PLANE)
     ips = host_data_ips()
-    cell_width = max(4, max(len(ip) for ip in ips.values()))
+    ok_cell = status_marker(CheckStatus.OK)
+    fail_cell = status_marker(CheckStatus.FAIL)
+    cell_width = max(
+        4,
+        visible_len(ok_cell),
+        visible_len(fail_cell),
+        len("—"),
+        max(len(ip) for ip in ips.values()),
+    )
     label_width = max(len(host) for host in hosts) + 3
+    cell_gap = 2
 
     lines = [
-        "HOST ROUTING (data-plane ping matrix)",
+        bold("HOST ROUTING (data-plane ping matrix)"),
         "",
-        f"{'':>{label_width}}" + "".join(f"{host:>{cell_width + 2}}" for host in hosts),
-        f"{'':>{label_width}}" + "".join(f"{ips[host]:>{cell_width + 2}}" for host in hosts),
+        f"{'':>{label_width}}" + "".join(f"{host:>{cell_width + cell_gap}}" for host in hosts),
+        f"{'':>{label_width}}" + "".join(f"{ips[host]:>{cell_width + cell_gap}}" for host in hosts),
         "",
     ]
     for src in hosts:
@@ -191,10 +203,10 @@ def format_host_connectivity_matrix(results: dict[tuple[str, str], bool]) -> str
             if src == dst:
                 cell = "—"
             elif results.get((src, dst)):
-                cell = "OK"
+                cell = ok_cell
             else:
-                cell = "FAIL"
-            row += f"{cell:>{cell_width + 2}}"
+                cell = fail_cell
+            row += align_right(cell, cell_width + cell_gap)
         lines.append(row)
     return "\n".join(lines)
 
@@ -239,6 +251,8 @@ def _ping_host(
 
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     section("HOST ROUTING", verbose=verbose)
+    if not verbose:
+        print()
     results: dict[tuple[str, str], bool] = {}
     for src_host, dst_host, target_ip in host_ping_pairs():
         results[(src_host, dst_host)] = _ping_host(
@@ -250,10 +264,14 @@ def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
         )
 
     print(format_host_connectivity_matrix(results))
+    if not verbose:
+        print()
 
     failed = [f"{src} → {dst}" for (src, dst), ok in results.items() if not ok]
     if failed:
         raise LabTestError(f"host routing failed: {', '.join(failed)}")
+    if not verbose:
+        report_summary("HOSTS", "all data-plane ping pairs reachable")
 
 
 def run_sections(
@@ -265,7 +283,9 @@ def run_sections(
     verbose: bool,
 ) -> None:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
-    for name in sections:
+    for index, name in enumerate(sections):
+        if index > 0 and not verbose:
+            print()
         if name == "inspect":
             run_inspect(clab_topo_gen, verbose=verbose)
         elif name == "radius":
@@ -349,11 +369,13 @@ def main(argv: list[str] | None = None) -> int:
             verbose=verbose,
         )
     except (LabTestError, subprocess.CalledProcessError) as exc:
-        print(f"\nLAB: FAIL — {exc}", file=sys.stderr)
+        report_summary("LAB", str(exc), CheckStatus.FAIL, file=sys.stderr)
+        print(file=sys.stderr)
         return 1
 
     if len(sections) > 1 and not verbose:
-        print("All lab checks passed.")
+        print()
+        print(f"{ICON_OK} All lab checks passed.")
     return 0
 
 

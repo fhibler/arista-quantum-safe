@@ -190,7 +190,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
     assert "[config]" in output
     assert "[live]" in output
     assert "no cleartext syslog" in output
-    assert "PQC: OK" in output
+    assert "PQC: ✓" in output
 
 
 def test_probe_ssh_pqc_requires_pqc_kex() -> None:

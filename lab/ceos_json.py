@@ -104,6 +104,32 @@ def extract_ckn_from_json(obj: Any) -> str:
     ckn = json_find_value(obj, "ckn")
     if isinstance(ckn, str) and re.fullmatch(r"[0-9a-f]+", ckn, re.IGNORECASE):
         return ckn
+
+    participants = json_find_value(obj, "participants")
+    if isinstance(participants, dict):
+        successful = [
+            (key, entry)
+            for key, entry in participants.items()
+            if isinstance(entry, dict) and entry.get("success") is True
+        ]
+        if successful:
+            for key, entry in successful:
+                details = entry.get("details")
+                if isinstance(details, dict) and details.get("sakTransmit") is True:
+                    return key
+            return successful[0][0]
+        for key in participants:
+            if isinstance(key, str) and re.fullmatch(r"[0-9a-f]+", key, re.IGNORECASE):
+                return key
+
+    if isinstance(participants, list):
+        for entry in participants:
+            if not isinstance(entry, dict):
+                continue
+            ckn_val = entry.get("ckn") or entry.get("CKN")
+            if isinstance(ckn_val, str) and re.fullmatch(r"[0-9a-f]+", ckn_val, re.IGNORECASE):
+                return ckn_val
+
     raise CeosJsonError("expected CKN in mac security participants detail")
 
 
@@ -126,11 +152,43 @@ def macsec_has_active_key(obj: Any) -> bool:
         return key.lower() not in ("none", "")
     if key is not None:
         return bool(key)
+
+    key_msg_id = json_find_value(obj, "keyMsgId")
+    if isinstance(key_msg_id, str) and key_msg_id:
+        return True
+
+    key_num = json_find_value(obj, "keyNum")
+    if isinstance(key_num, (int, float)) and key_num > 0:
+        return True
+
+    if json_truthy(obj, "oldKeyTransmitting") or json_truthy(obj, "oldKeyReceiving"):
+        return True
+
     return json_tree_contains(obj, "Key in use:") and not json_tree_contains(obj, "Key in use: None")
 
 
+def macsec_traffic_protected(obj: Any) -> bool:
+    """Return True when MACsec interface JSON reports protected/encrypted traffic."""
+    traffic = json_find_value(obj, "traffic")
+    if isinstance(traffic, str):
+        return traffic.lower() in {"protected", "encrypted"}
+    return json_tree_contains(obj, "Protected") or json_tree_contains(obj, "encrypted", case_sensitive=False)
+
+
+_PING_SUCCESS_MARKERS = ("0% packet loss", "Success rate is 100 percent")
+
+
+def ping_text_success(text: str) -> bool:
+    """Return True when plain ``ping`` CLI output reports zero packet loss."""
+    if "100% packet loss" in text:
+        return False
+    if "Success rate is 100 percent" in text:
+        return True
+    return "0% packet loss" in text
+
+
 def ping_json_success(obj: Any) -> bool:
-    """Return True when ``ping … | json`` reports zero packet loss."""
+    """Return True when parsed ``ping … | json`` output reports zero packet loss."""
     for field in ("packetLoss", "packetLossPercent", "lossRate"):
         loss = json_find_value(obj, field)
         if loss is not None:
@@ -138,7 +196,4 @@ def ping_json_success(obj: Any) -> bool:
                 return float(loss) == 0.0
             except (TypeError, ValueError):
                 pass
-    return json_tree_contains(obj, "0% packet loss") or json_tree_contains(
-        obj,
-        "Success rate is 100 percent",
-    )
+    return any(json_tree_contains(obj, marker) for marker in _PING_SUCCESS_MARKERS)

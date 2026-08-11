@@ -14,17 +14,8 @@ LAB_NAME = "quantum-safe"
 CLAB_PREFIX = "arista"
 LAB_DISPLAY_NAME = "Quantum Safe"
 MGMT_NETWORK = "quantum-safe-mgmt"
-MGMT_BRIDGE_NODE = "mgmt-bridge"
-MGMT_BRIDGE_IFACES = {
-    "ceos1-both": "eth1",
-    "ceos2-pqc": "eth2",
-    "ceos3-qkd": "eth3",
-    "radius": "eth4",
-    "syslog": "eth5",
-    "kme-a": "eth6",
-    "kme-b": "eth7",
-}
-MGMT_BRIDGE_NODES = frozenset(MGMT_BRIDGE_IFACES)
+MGMT_BRIDGE = "mgmt-bridge"
+MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd", "radius", "syslog", "kme-a", "kme-b"})
 RADIUS_IMAGE = "quantum-safe-radius:latest"
 SYSLOG_IMAGE = "quantum-safe-syslog:latest"
 TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
@@ -43,6 +34,9 @@ MGMT_HOST_SUFFIXES = {
     "ceos1-both": 11,
     "ceos2-pqc": 12,
     "ceos3-qkd": 13,
+    "host1": 21,
+    "host2": 22,
+    "host3": 23,
     "radius": 50,
     "syslog": 53,
     "kme-a": 51,
@@ -85,12 +79,34 @@ LINKS = [
     ("ceos3-qkd:eth8", "host3:eth1"),
 ]
 
-MGMT_LINKS = [
-    (f"{node}:eth0", f"{MGMT_BRIDGE_NODE}:{bridge_iface}")
-    for node, bridge_iface in MGMT_BRIDGE_IFACES.items()
-]
-
+CEOS_MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd"})
+MGMT_LINUX_NODES = frozenset({"radius", "syslog", "kme-a", "kme-b"})
 CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
+CEOS_QUADRA_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
+
+# QuaDRA static SAK MACsec on ceos1-both:eth3 ↔ ceos3-qkd:eth1 (10.255.0.5/30 ↔ 10.255.0.6/30).
+QUADRA_SWIX = "QuaDRA-1.0.9.rel4.swix"
+QUADRA_SWIX_HOST = REPO_ROOT / "experimental" / "quadra" / QUADRA_SWIX
+QUADRA_MACSEC_PROFILE_MASTER = "quadra-master"
+QUADRA_MACSEC_PROFILE_SLAVE = "quadra-slave"
+QUADRA_MACSEC_INTF = {
+    "ceos1-both": "Ethernet3",
+    "ceos3-qkd": "Ethernet1",
+}
+QUADRA_PEER_IP = {
+    "ceos1-both": "10.255.0.6",
+    "ceos3-qkd": "10.255.0.5",
+}
+QUADRA_SC_RX_ID = "01:02:03:0a:0b:0c::1001"
+QUADRA_SC_TX_ID = "01:02:03:0a:0b:0c::1002"
+# 256-bit placeholder SAKs (64 hex chars); replaced on first QuaDRA rotation.
+QUADRA_KEY_RX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+QUADRA_KEY_TX = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+QUADRA_PEER_PORT = 50100
+QUADRA_KME_BUNDLE = {
+    "ceos1-both": "kme-sae-bundle.pem",
+    "ceos3-qkd": "kme-sae-b-bundle.pem",
+}
 
 DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
@@ -147,6 +163,8 @@ CEOS_KME_BINDS = [
     "../lab/.gen/kme-pki/sae.key.pem:/mnt/flash/kme-sae.key.pem:ro",
     "../lab/.gen/kme-pki/sae-b.crt.pem:/mnt/flash/kme-sae-b.crt.pem:ro",
     "../lab/.gen/kme-pki/sae-b.key.pem:/mnt/flash/kme-sae-b.key.pem:ro",
+    "../lab/.gen/kme-pki/kme-sae-bundle.pem:/mnt/flash/kme-sae-bundle.pem:ro",
+    "../lab/.gen/kme-pki/kme-sae-b-bundle.pem:/mnt/flash/kme-sae-b-bundle.pem:ro",
 ]
 CEOS_KME_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
@@ -290,6 +308,8 @@ KME_PKI_FILES = [
     "sae.key.pem",
     "sae-b.crt.pem",
     "sae-b.key.pem",
+    "kme-sae-bundle.pem",
+    "kme-sae-b-bundle.pem",
 ]
 
 
@@ -496,6 +516,24 @@ def _host_exec_commands(node_cfg: dict[str, Any]) -> list[str]:
     return [str(cmd) for cmd in exec_cmds]
 
 
+def validate_mgmt_topology_nodes(nodes: dict[str, Any]) -> list[str]:
+    """Validate mgmt nodes use docker mgmt (no bridge node or eth0 links)."""
+    errors: list[str] = []
+    if MGMT_BRIDGE in nodes:
+        errors.append(
+            f"topology must not declare {MGMT_BRIDGE} as a node "
+            f"(mgmt.bridge names the host bridge backing docker mgmt)"
+        )
+    for node in MGMT_LINUX_NODES:
+        node_cfg = nodes.get(node, {})
+        if node_cfg.get("network-mode") == "none":
+            errors.append(f"{node} must use default docker mgmt (do not set network-mode: none)")
+        exec_text = "\n".join(_host_exec_commands(node_cfg))
+        if "dev eth0" in exec_text:
+            errors.append(f"{node} must not configure eth0 via exec (docker mgmt assigns it)")
+    return errors
+
+
 def validate_host_data_plane(nodes: dict[str, Any]) -> list[str]:
     """Validate host exec stanzas match the locked data-plane contract."""
     errors: list[str] = []
@@ -535,8 +573,11 @@ def validate_ceos_configs(
     errors: list[str] = []
     root = repo_root or REPO_ROOT
     expected_plane = ceos_data_plane(mgmt_subnet)
-    radius_ip = mgmt_ips_for_subnet(mgmt_subnet)["radius"]
-    syslog_ip = mgmt_ips_for_subnet(mgmt_subnet)["syslog"]
+    mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
+    radius_ip = mgmt_ips["radius"]
+    syslog_ip = mgmt_ips["syslog"]
+    kme_a_ip = mgmt_ips["kme-a"]
+    kme_b_ip = mgmt_ips["kme-b"]
 
     for ceos, expected in expected_plane.items():
         path = root / "lab" / ".gen" / f"{ceos}.cfg"
@@ -728,10 +769,84 @@ def validate_ceos_configs(
                     f"{ceos}.cfg Ethernet1 must enable dot1x supplicant {DOT1X_SUPPLICANT_PROFILE}"
                 )
         elif ceos == "ceos3-qkd":
-            if "mac security profile" in text:
-                errors.append(f"{ceos}.cfg must not configure MACsec (not enabled yet)")
             if "dot1x" in text:
-                errors.append(f"{ceos}.cfg must not configure dot1x (MACsec not enabled yet)")
+                errors.append(f"{ceos}.cfg must not configure dot1x on the QuaDRA link")
+
+        if ceos in CEOS_QUADRA_NODES:
+            profile = (
+                QUADRA_MACSEC_PROFILE_MASTER
+                if ceos == "ceos1-both"
+                else QUADRA_MACSEC_PROFILE_SLAVE
+            )
+            intf = QUADRA_MACSEC_INTF[ceos]
+            if f"profile {profile}" not in text:
+                errors.append(f"{ceos}.cfg must define QuaDRA mac security profile {profile}")
+            if "key source sak static" not in text:
+                errors.append(f"{ceos}.cfg QuaDRA profile must use key source sak static")
+            if "cipher aes256-gcm-xpn" not in text:
+                errors.append(f"{ceos}.cfg QuaDRA profile must use aes256-gcm-xpn cipher")
+            if f"an 0 key {QUADRA_KEY_RX}" not in text:
+                errors.append(f"{ceos}.cfg QuaDRA profile must include rx placeholder key")
+            if f"an 0 key {QUADRA_KEY_TX}" not in text:
+                errors.append(f"{ceos}.cfg QuaDRA profile must include tx placeholder key")
+            if f"mac security profile {profile}" not in text.split(f"interface {intf}", 1)[-1]:
+                errors.append(f"{ceos}.cfg {intf} must apply mac security profile {profile}")
+            if "daemon quadra" not in text:
+                errors.append(f"{ceos}.cfg must define daemon quadra")
+            if "exec /usr/bin/quadra" not in text:
+                errors.append(f"{ceos}.cfg daemon quadra must exec /usr/bin/quadra")
+            quadra_block = text.split("daemon quadra", 1)[-1].split("!", 1)[0]
+            if "no shutdown" in quadra_block:
+                errors.append(f"{ceos}.cfg daemon quadra must remain shutdown until manually enabled")
+            if "shutdown" not in quadra_block:
+                errors.append(f"{ceos}.cfg daemon quadra must be shutdown (agent not auto-started)")
+            if f"option macsec-intf value {intf}" not in text:
+                errors.append(f"{ceos}.cfg daemon quadra must set macsec-intf {intf}")
+            if f"option peer value {QUADRA_PEER_IP[ceos]}" not in text:
+                errors.append(
+                    f"{ceos}.cfg daemon quadra must set peer {QUADRA_PEER_IP[ceos]}"
+                )
+            if "option kme-vrf value MGMT" not in text:
+                errors.append(f"{ceos}.cfg daemon quadra must set kme-vrf MGMT")
+            if "option cacert value /mnt/flash/kme-ca.crt.pem" not in text:
+                errors.append(f"{ceos}.cfg daemon quadra must reference kme-ca.crt.pem")
+            bundle = QUADRA_KME_BUNDLE[ceos]
+            if f"option cert value /mnt/flash/{bundle}" not in text:
+                errors.append(f"{ceos}.cfg daemon quadra must reference /mnt/flash/{bundle}")
+            if ceos == "ceos1-both":
+                if f"option kme value {kme_a_ip}:{KME_A_PORT}" not in text:
+                    errors.append(
+                        f"{ceos}.cfg daemon quadra must point kme at kme-a "
+                        f"({kme_a_ip}:{KME_A_PORT})"
+                    )
+                if f"option peer-sae value {KME_B_SAE_ID}" not in text:
+                    errors.append(f"{ceos}.cfg daemon quadra must set peer-sae {KME_B_SAE_ID}")
+                if "option peer-mode value slave" not in text:
+                    errors.append(
+                        f"{ceos}.cfg daemon quadra must use peer-mode slave (master role)"
+                    )
+                if (
+                    f"option recovery-keys value {QUADRA_KEY_RX},{QUADRA_KEY_TX}"
+                    not in text
+                ):
+                    errors.append(f"{ceos}.cfg daemon quadra must set master recovery-keys")
+            else:
+                if f"option kme value {kme_b_ip}:{KME_B_PORT}" not in text:
+                    errors.append(
+                        f"{ceos}.cfg daemon quadra must point kme at kme-b "
+                        f"({kme_b_ip}:{KME_B_PORT})"
+                    )
+                if f"option peer-sae value {KME_SAE_ID}" not in text:
+                    errors.append(f"{ceos}.cfg daemon quadra must set peer-sae {KME_SAE_ID}")
+                if "option peer-mode value master" not in text:
+                    errors.append(
+                        f"{ceos}.cfg daemon quadra must use peer-mode master (slave role)"
+                    )
+                if (
+                    f"option recovery-keys value {QUADRA_KEY_TX},{QUADRA_KEY_RX}"
+                    not in text
+                ):
+                    errors.append(f"{ceos}.cfg daemon quadra must set slave recovery-keys")
 
     return errors
 
@@ -947,8 +1062,8 @@ def validate_topology(
     mgmt = data.get("mgmt", {})
     if mgmt.get("network") != MGMT_NETWORK:
         errors.append(f"mgmt.network must be {MGMT_NETWORK}")
-    if mgmt.get("bridge") != MGMT_BRIDGE_NODE:
-        errors.append(f"mgmt.bridge must be {MGMT_BRIDGE_NODE}")
+    if mgmt.get("bridge") != MGMT_BRIDGE:
+        errors.append(f"mgmt.bridge must be {MGMT_BRIDGE}")
     if mgmt.get("ipv4-subnet") != expected_mgmt_subnet:
         errors.append(f"mgmt.ipv4-subnet must be {expected_mgmt_subnet}")
     expected_gateway = mgmt_gateway(expected_mgmt_subnet)
@@ -956,11 +1071,11 @@ def validate_topology(
         errors.append(f"mgmt.ipv4-gw must be {expected_gateway}")
 
     topology = data.get("topology", {})
-    bridge_cfg = topology.get("nodes", {}).get(MGMT_BRIDGE_NODE)
-    if bridge_cfg is None:
-        errors.append(f"missing node {MGMT_BRIDGE_NODE}")
-    elif bridge_cfg.get("kind") != "bridge":
-        errors.append(f"{MGMT_BRIDGE_NODE} kind must be bridge")
+    if MGMT_BRIDGE in topology.get("nodes", {}):
+        errors.append(
+            f"topology must not declare {MGMT_BRIDGE} node "
+            f"(mgmt.bridge names the host bridge backing docker mgmt)"
+        )
     kinds = topology.get("kinds", {}).get("arista_ceos", {})
     actual_ceos_image = kinds.get("image")
     if actual_ceos_image not in (expected_ceos_image, CEOS_IMAGE_PLACEHOLDER):
@@ -977,18 +1092,23 @@ def validate_topology(
             continue
         if node_cfg.get("mgmt-ipv4") != expected_ip:
             errors.append(f"{node} mgmt-ipv4 must be {expected_ip}")
-        if node_cfg.get("network-mode") != "none":
-            errors.append(f"{node} network-mode must be none (eth0 wired to {MGMT_BRIDGE_NODE})")
+        if node in CEOS_MGMT_NODES:
+            if node_cfg.get("network-mode") == "none":
+                errors.append(
+                    f"{node} must use default docker mgmt (cEOS eth0 is reserved; "
+                    f"do not set network-mode: none or wire eth0 in links)"
+                )
+        elif node in MGMT_LINUX_NODES:
+            if node_cfg.get("network-mode") == "none":
+                errors.append(f"{node} must use default docker mgmt (do not set network-mode: none)")
 
     for host in HOST_DATA_PLANE:
         host_cfg = nodes.get(host)
         if host_cfg is None:
             errors.append(f"missing node {host}")
             continue
-        if host_cfg.get("mgmt-ipv4"):
-            errors.append(f"{host} must not have mgmt-ipv4 (data-plane only)")
-        if host_cfg.get("network-mode") != "none":
-            errors.append(f"{host} network-mode must be none (data-plane only)")
+        if host_cfg.get("network-mode") == "none":
+            errors.append(f"{host} must use default docker mgmt (do not set network-mode: none)")
 
     radius_cfg = nodes.get("radius")
     if radius_cfg is None:
@@ -1093,11 +1213,19 @@ def validate_topology(
         for link in topology.get("links", [])
         if "endpoints" in link
     }
-    for endpoints in LINKS + MGMT_LINKS:
+    for endpoints in LINKS:
         if endpoints not in actual_links and tuple(reversed(endpoints)) not in actual_links:
             errors.append(f"missing link {endpoints[0]} <-> {endpoints[1]}")
+    for link in topology.get("links", []):
+        for endpoint in link.get("endpoints", []):
+            if endpoint.startswith(f"{MGMT_BRIDGE}:") or endpoint.endswith(":eth0"):
+                if any(endpoint.startswith(f"{node}:") for node in MGMT_NODES):
+                    errors.append(
+                        f"mgmt connectivity must use docker mgmt, not topology link {endpoint!r}"
+                    )
 
     errors.extend(validate_host_data_plane(nodes))
+    errors.extend(validate_mgmt_topology_nodes(nodes))
     errors.extend(validate_ceos_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
     errors.extend(validate_radius_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
     errors.extend(validate_syslog_configs(repo_root))

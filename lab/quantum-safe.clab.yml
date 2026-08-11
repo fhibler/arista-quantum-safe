@@ -15,11 +15,8 @@ topology:
       env:
         CLAB_MGMT_VRF: MGMT
   nodes:
-    mgmt-bridge:
-      kind: bridge
     ceos1-both:
       kind: arista_ceos
-      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS1_BOTH}
       startup-config: ../lab/.gen/ceos1-both.cfg
       binds:
@@ -35,11 +32,12 @@ topology:
         - ../lab/.gen/kme-pki/sae.key.pem:/mnt/flash/kme-sae.key.pem:ro
         - ../lab/.gen/kme-pki/sae-b.crt.pem:/mnt/flash/kme-sae-b.crt.pem:ro
         - ../lab/.gen/kme-pki/sae-b.key.pem:/mnt/flash/kme-sae-b.key.pem:ro
+        - ../lab/.gen/kme-pki/kme-sae-bundle.pem:/mnt/flash/kme-sae-bundle.pem:ro
+        - ../lab/.gen/kme-pki/kme-sae-b-bundle.pem:/mnt/flash/kme-sae-b-bundle.pem:ro
       exec:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-both-client.pem certificate:"; echo "copy flash:ceos1-both-client.key sslkey:"; echo "copy flash:ceos1-both-eapi.pem certificate:"; echo "copy flash:ceos1-both-eapi.key sslkey:"; echo "copy flash:ceos1-both-gnmi.pem certificate:"; echo "copy flash:ceos1-both-gnmi.key sslkey:"; } | Cli'
     ceos2-pqc:
       kind: arista_ceos
-      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS2_PQC}
       startup-config: ../lab/.gen/ceos2-pqc.cfg
       binds:
@@ -54,7 +52,6 @@ topology:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-pqc-client.pem certificate:"; echo "copy flash:ceos2-pqc-client.key sslkey:"; echo "copy flash:ceos2-pqc-eapi.pem certificate:"; echo "copy flash:ceos2-pqc-eapi.key sslkey:"; echo "copy flash:ceos2-pqc-gnmi.pem certificate:"; echo "copy flash:ceos2-pqc-gnmi.key sslkey:"; } | Cli'
     ceos3-qkd:
       kind: arista_ceos
-      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS3_QKD}
       startup-config: ../lab/.gen/ceos3-qkd.cfg
       binds:
@@ -70,12 +67,14 @@ topology:
         - ../lab/.gen/kme-pki/sae.key.pem:/mnt/flash/kme-sae.key.pem:ro
         - ../lab/.gen/kme-pki/sae-b.crt.pem:/mnt/flash/kme-sae-b.crt.pem:ro
         - ../lab/.gen/kme-pki/sae-b.key.pem:/mnt/flash/kme-sae-b.key.pem:ro
+        - ../lab/.gen/kme-pki/kme-sae-bundle.pem:/mnt/flash/kme-sae-bundle.pem:ro
+        - ../lab/.gen/kme-pki/kme-sae-b-bundle.pem:/mnt/flash/kme-sae-b-bundle.pem:ro
       exec:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos3-qkd-client.pem certificate:"; echo "copy flash:ceos3-qkd-client.key sslkey:"; echo "copy flash:ceos3-qkd-eapi.pem certificate:"; echo "copy flash:ceos3-qkd-eapi.key sslkey:"; echo "copy flash:ceos3-qkd-gnmi.pem certificate:"; echo "copy flash:ceos3-qkd-gnmi.key sslkey:"; } | Cli'
     host1:
       kind: linux
       image: alpine:3.20
-      network-mode: none
+      mgmt-ipv4: ${MGMT_IP_HOST1}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.1.1/24 dev eth1
@@ -83,7 +82,7 @@ topology:
     host2:
       kind: linux
       image: alpine:3.20
-      network-mode: none
+      mgmt-ipv4: ${MGMT_IP_HOST2}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.2.1/24 dev eth1
@@ -91,7 +90,7 @@ topology:
     host3:
       kind: linux
       image: alpine:3.20
-      network-mode: none
+      mgmt-ipv4: ${MGMT_IP_HOST3}
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.3.1/24 dev eth1
@@ -99,7 +98,6 @@ topology:
     radius:
       kind: linux
       image: quantum-safe-radius:latest
-      network-mode: none
       startup-delay: 15
       mgmt-ipv4: ${MGMT_IP_RADIUS}
       binds:
@@ -119,7 +117,6 @@ topology:
     syslog:
       kind: linux
       image: quantum-safe-syslog:latest
-      network-mode: none
       startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_SYSLOG}
       binds:
@@ -132,7 +129,6 @@ topology:
     kme-a:
       kind: linux
       image: quantum-safe-kme:latest
-      network-mode: none
       mgmt-ipv4: ${MGMT_IP_KME_A}
       cap-add:
         - NET_ADMIN
@@ -158,7 +154,6 @@ topology:
     kme-b:
       kind: linux
       image: quantum-safe-kme:latest
-      network-mode: none
       startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_KME_B}
       cap-add:
@@ -183,13 +178,6 @@ topology:
       binds:
         - ../lab/.gen/kme-pki:/certs:ro
   links:
-    - endpoints: ["ceos1-both:eth0", "mgmt-bridge:eth1"]
-    - endpoints: ["ceos2-pqc:eth0", "mgmt-bridge:eth2"]
-    - endpoints: ["ceos3-qkd:eth0", "mgmt-bridge:eth3"]
-    - endpoints: ["radius:eth0", "mgmt-bridge:eth4"]
-    - endpoints: ["syslog:eth0", "mgmt-bridge:eth5"]
-    - endpoints: ["kme-a:eth0", "mgmt-bridge:eth6"]
-    - endpoints: ["kme-b:eth0", "mgmt-bridge:eth7"]
     - endpoints: ["ceos1-both:eth1", "ceos2-pqc:eth1"]
     - endpoints: ["ceos1-both:eth3", "ceos3-qkd:eth1"]
     - endpoints: ["ceos1-both:eth8", "host1:eth1"]

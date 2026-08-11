@@ -34,6 +34,7 @@ interface Ethernet1
 interface Ethernet3
    no switchport
    ip address 10.255.0.5/30
+   mac security profile quadra-master
 !
 interface Ethernet8
    no switchport
@@ -129,6 +130,10 @@ dot1x system-auth-control
 mac security
    profile dynamic
       key source dot1x
+!
+${QUADRA_MACSEC_MASTER}
+!
+${QUADRA_DAEMON_MASTER}
 !
 ${CONTROL_PLANE_ACL}
 end

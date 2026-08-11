@@ -17,6 +17,10 @@ REQUIRED_PATHS = [
     "configs/ceos/ceos1-both.cfg.in",
     "configs/ceos/ceos2-pqc.cfg.in",
     "configs/ceos/ceos3-qkd.cfg.in",
+    "configs/ceos/quadra-daemon-master.cfg.in",
+    "configs/ceos/quadra-daemon-slave.cfg.in",
+    "configs/ceos/quadra-macsec-master.cfg.in",
+    "configs/ceos/quadra-macsec-slave.cfg.in",
     "configs/radius/raddb/clients.conf.in",
     "configs/radius/raddb/radiusd.conf",
     "configs/radius/raddb/mods-config/files/authorize",
@@ -25,6 +29,7 @@ REQUIRED_PATHS = [
     "docker/syslog/Dockerfile",
     "docker/kme/Dockerfile",
     "docs/syslog.md",
+    "docs/quadra.md",
     "docs/verification.md",
 ]
 

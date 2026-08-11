@@ -40,6 +40,7 @@ from lab.topology_contract import (
     container_name,
     mgmt_ips_for_subnet,
 )
+from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary, report_warn
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 OPENSSL_PQC_CNF = "/etc/raddb/openssl-pqc.cnf"
@@ -74,19 +75,17 @@ class PqcConnectionError(RuntimeError):
     """Raised when a live PQC connectivity check fails."""
 
 
-def print_device(name: str) -> None:
-    """Print a section header for a lab node."""
-    print(f"=== {name} ===")
-
-
 def report_config(detail: str) -> None:
     """Report a config check (EOS show commands, listener presence)."""
-    print(f"  [config] {detail}")
+    report_ok("[config]", detail)
 
 
-def report_live(detail: str) -> None:
+def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK) -> None:
     """Report a live connectivity check (handshake, API call, AAA test)."""
-    print(f"  [live]   {detail}")
+    if status is CheckStatus.WARN:
+        report_warn("[live]  ", detail)
+    else:
+        report_ok("[live]  ", detail)
 
 
 def docker_exec(
@@ -357,8 +356,13 @@ def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None 
         key_file=key_file,
         verbose=verbose,
     )
-    group = PQC_GROUP if negotiated_pqc_group(output) else "classical fallback"
-    report_live(f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {group})")
+    if negotiated_pqc_group(output):
+        report_live(f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {PQC_GROUP})")
+    else:
+        report_live(
+            "eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, classical fallback)",
+            status=CheckStatus.WARN,
+        )
 
 
 def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
@@ -369,8 +373,13 @@ def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = N
         ca_file=RADSEC_CA_IN_RADIUS,
         verbose=verbose,
     )
-    group = PQC_GROUP if negotiated_pqc_group(output) else "classical fallback"
-    report_live(f"eAPI HTTPS handshake (TLS 1.3, {group})")
+    if negotiated_pqc_group(output):
+        report_live(f"eAPI HTTPS handshake (TLS 1.3, {PQC_GROUP})")
+    else:
+        report_live(
+            "eAPI HTTPS handshake (TLS 1.3, classical fallback)",
+            status=CheckStatus.WARN,
+        )
 
 
 def probe_eapi_jsonrpc(node: str, switch_ip: str, *, verbose: bool | None = None) -> None:
@@ -563,7 +572,7 @@ def run_live_checks(
         ceos_ips={"ceos1-both": ips["ceos1-both"], "ceos2-pqc": ips["ceos2-pqc"], "ceos3-qkd": ips["ceos3-qkd"]},
     )
 
-    print("PQC verification (TLS 1.3 + hybrid KEX)")
+    print_section_header("PQC verification (TLS 1.3 + hybrid KEX)")
     print("  [config] EOS show commands / local listener checks")
     print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog\n")
 
@@ -599,9 +608,10 @@ def run_live_checks(
         probe_syslog_delivery(targets, node, verbose=verbose)
 
     print()
-    print(
-        f"PQC: OK — all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; TLS 1.3, no cleartext syslog)"
+    report_summary(
+        "PQC",
+        f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
+        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; TLS 1.3, no cleartext syslog)",
     )
 
 
@@ -630,7 +640,8 @@ def main(argv: list[str] | None = None) -> int:
             verbose=verbose,
         )
     except (PqcConnectionError, subprocess.CalledProcessError) as exc:
-        print(f"\nPQC: FAIL — {exc}", file=sys.stderr)
+        report_summary("PQC", str(exc), CheckStatus.FAIL, file=sys.stderr)
+        print(file=sys.stderr)
         return 1
     return 0
 

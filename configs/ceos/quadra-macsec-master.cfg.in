@@ -1,0 +1,11 @@
+! QuaDRA static SAK MACsec — master (ceos1-both). Keys are placeholders until the agent runs.
+mac security
+   profile ${QUADRA_MACSEC_PROFILE}
+      cipher aes256-gcm-xpn
+      key source sak static
+      secure channel rx
+         identifier ${QUADRA_SC_RX_ID}
+         an 0 key ${QUADRA_KEY_RX}
+      secure channel tx
+         identifier ${QUADRA_SC_TX_ID}
+         an 0 key ${QUADRA_KEY_TX}

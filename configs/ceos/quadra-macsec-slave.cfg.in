@@ -1,0 +1,11 @@
+! QuaDRA static SAK MACsec — slave (ceos3-qkd). rx/tx keys and SC IDs are reversed vs master.
+mac security
+   profile ${QUADRA_MACSEC_PROFILE}
+      cipher aes256-gcm-xpn
+      key source sak static
+      secure channel rx
+         identifier ${QUADRA_SC_TX_ID}
+         an 0 key ${QUADRA_KEY_TX}
+      secure channel tx
+         identifier ${QUADRA_SC_RX_ID}
+         an 0 key ${QUADRA_KEY_RX}

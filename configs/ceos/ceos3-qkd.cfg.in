@@ -23,6 +23,7 @@ interface Management0
 interface Ethernet1
    no switchport
    ip address 10.255.0.6/30
+   mac security profile quadra-slave
 !
 interface Ethernet8
    no switchport
@@ -112,6 +113,10 @@ radius-server host ${RADIUS_SERVER_IP} vrf MGMT tls ssl-profile RADSEC
 !
 aaa group server radius RADIUS
    server ${RADIUS_SERVER_IP} tls vrf MGMT
+!
+${QUADRA_MACSEC_SLAVE}
+!
+${QUADRA_DAEMON_SLAVE}
 !
 ${CONTROL_PLANE_ACL}
 end

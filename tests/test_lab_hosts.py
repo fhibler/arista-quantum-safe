@@ -1,3 +1,4 @@
+from lab.report import ICON_FAIL, ICON_OK
 from lab.test_lab import (
     format_host_connectivity_matrix,
     host_data_ips,
@@ -36,9 +37,9 @@ def test_format_host_connectivity_matrix_all_ok() -> None:
     assert "host1" in matrix
     assert "10.0.1.1" in matrix
     assert "host1 →" in matrix
-    assert matrix.count("OK") == 6
+    assert matrix.count(ICON_OK) == 6
     assert matrix.count("—") == 3
-    assert "FAIL" not in matrix
+    assert ICON_FAIL not in matrix
 
 
 def test_format_host_connectivity_matrix_shows_failures() -> None:
@@ -51,5 +52,5 @@ def test_format_host_connectivity_matrix_shows_failures() -> None:
         ("host3", "host2"): False,
     }
     matrix = format_host_connectivity_matrix(results)
-    assert matrix.count("FAIL") == 2
-    assert matrix.count("OK") == 4
+    assert matrix.count(ICON_FAIL) == 2
+    assert matrix.count(ICON_OK) == 4

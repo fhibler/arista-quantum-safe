@@ -228,4 +228,15 @@ def generate_kme_pki(
     (out / "sae-b.crt.pem").write_bytes(sae_b_crt.read_bytes())
     (out / "sae-b.key.pem").write_bytes(sae_b_key.read_bytes())
 
+    _write_bundle(out / "kme-sae-bundle.pem", sae_key, sae_crt)
+    _write_bundle(out / "kme-sae-b-bundle.pem", sae_b_key, sae_b_crt)
+
     return out
+
+
+def _write_bundle(path: Path, key: Path, cert: Path) -> None:
+    """Concatenate private key + cert PEM for QuaDRA ``option cert`` (single file)."""
+    path.write_text(
+        key.read_text(encoding="utf-8").rstrip() + "\n" + cert.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )

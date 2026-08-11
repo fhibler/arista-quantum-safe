@@ -116,5 +116,5 @@ def test_run_kme_checks_happy_path(capsys) -> None:
     assert "=== ceos3-qkd ===" in out
     assert "[kme]" in out
     assert "[host]" in out
-    assert "KME: OK" in out
+    assert "KME: ✓" in out
     assert call == 9

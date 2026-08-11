@@ -20,6 +20,7 @@ from lab.kme_http import (
     ceos_kme_curl_exec_argv,
     kme_curl_argv,
 )
+from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary
 from lab.topology_contract import (
     CEOS_KME_NODES,
     KME_B_SAE_ID,
@@ -49,19 +50,14 @@ class KmeCheckError(RuntimeError):
     """Raised when a live KME check fails."""
 
 
-def print_device(name: str) -> None:
-    """Print a section header for a KME node or cEOS host."""
-    print(f"=== {name} ===")
-
-
 def report_kme(detail: str) -> None:
     """Report a check executed inside a KME container."""
-    print(f"  [kme]  {detail}")
+    report_ok("[kme] ", detail)
 
 
 def report_host(detail: str) -> None:
     """Report a check executed from a cEOS host to a KME."""
-    print(f"  [host] {detail}")
+    report_ok("[host]", detail)
 
 
 def run_kme_curl(
@@ -296,7 +292,7 @@ def run_kme_checks(
     )
     hosts = tuple(sorted(host_nodes if host_nodes is not None else CEOS_KME_NODES))
 
-    print("KME verification (ETSI QKD 014)")
+    print_section_header("KME verification (ETSI QKD 014)")
     print("  [kme]  SAE status, peer domain, enc/dec round-trip (inside KME containers)")
     print("  [host] strict TLS chain verify from cEOS SAE clients\n")
 
@@ -328,7 +324,7 @@ def run_kme_checks(
         summary_parts.append(f"KME nodes {', '.join(kme_nodes)}")
     if hosts:
         summary_parts.append(f"hosts {', '.join(hosts)} (lab CA {CEOS_KME_CA_CERT})")
-    print(f"KME: OK — {'; '.join(summary_parts)}")
+    report_summary("KME", "; ".join(summary_parts))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -369,7 +365,8 @@ def main(argv: list[str] | None = None) -> int:
             verbose=verbose,
         )
     except (KmeCheckError, subprocess.CalledProcessError) as exc:
-        print(f"\nKME: FAIL — {exc}", file=sys.stderr)
+        report_summary("KME", str(exc), CheckStatus.FAIL, file=sys.stderr)
+        print(file=sys.stderr)
         return 1
     return 0
 

@@ -1,0 +1,14 @@
+! QuaDRA agent — slave on ceos3-qkd (daemon left shutdown; install extension separately).
+! Note: peer-mode CLI value is inverted — "master" selects the slave role (see docs/quadra.md).
+daemon quadra
+   exec /usr/bin/quadra
+   shutdown
+   option macsec-intf value ${QUADRA_MACSEC_INTF}
+   option peer value ${QUADRA_PEER_IP}
+   option peer-mode value master
+   option kme value ${MGMT_IP_KME_B}:${KME_B_PORT}
+   option kme-vrf value MGMT
+   option cacert value /mnt/flash/kme-ca.crt.pem
+   option cert value /mnt/flash/kme-sae-b-bundle.pem
+   option peer-sae value ${KME_SAE_ID}
+   option recovery-keys value ${QUADRA_KEY_TX},${QUADRA_KEY_RX}

@@ -19,37 +19,33 @@ from lab.test_macsec import (
 from lab.topology_contract import DOT1X_EAP_SSL_PROFILE, DOT1X_REAUTH_PERIOD_SEC, DOT1X_SUPPLICANT_PROFILE, MACSEC_PROFILE
 
 
-def _dot1x_config_json(*, authenticator: bool) -> dict:
+def _dot1x_config_text(*, authenticator: bool) -> tuple[str, str]:
     if authenticator:
-        return {
-            "aaa": {"authentication": {"dot1x": {"default": {"group": "RADIUS"}}}},
-            "interfaces": {
-                "Ethernet1": {
-                    "dot1x": {
-                        "pae": "authenticator",
-                        "reauthentication": True,
-                        "timeout": {"reauthPeriod": DOT1X_REAUTH_PERIOD_SEC},
-                    },
-                    "macSecurity": {"profile": MACSEC_PROFILE},
-                }
-            },
-        }
-    return {
-        "dot1x": {
-            "supplicantProfiles": {
-                DOT1X_SUPPLICANT_PROFILE: {
-                    "identity": DOT1X_EAP_IDENTITY,
-                    "eapMethod": "tls",
-                    "sslProfile": DOT1X_EAP_SSL_PROFILE,
-                }
-            }
-        },
-        "interfaces": {
-            "Ethernet1": {
-                "dot1x": {"pae": {"supplicant": DOT1X_SUPPLICANT_PROFILE}},
-            }
-        },
-    }
+        section = (
+            "aaa authentication dot1x default group RADIUS\n"
+            "dot1x system-auth-control\n"
+        )
+        interface = (
+            f"interface Ethernet1\n"
+            f"   dot1x pae authenticator\n"
+            f"   dot1x reauthentication\n"
+            f"   dot1x timeout reauth-period {DOT1X_REAUTH_PERIOD_SEC}\n"
+            f"   mac security profile {MACSEC_PROFILE}\n"
+        )
+        return section, interface
+    section = (
+        f"dot1x\n"
+        f"   supplicant profile {DOT1X_SUPPLICANT_PROFILE}\n"
+        f"      identity {DOT1X_EAP_IDENTITY}\n"
+        f"      eap-method tls\n"
+        f"      ssl profile {DOT1X_EAP_SSL_PROFILE}\n"
+    )
+    interface = (
+        f"interface Ethernet1\n"
+        f"   dot1x pae supplicant {DOT1X_SUPPLICANT_PROFILE}\n"
+        f"   mac security profile {MACSEC_PROFILE}\n"
+    )
+    return section, interface
 
 
 def _macsec_state_json(*, ckn: str) -> dict:
@@ -94,14 +90,19 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
     state_json = _macsec_state_json(ckn="abcdef0123456789")
 
     def fake_ceos_cli(container: str, commands: str, **kwargs: object) -> str:
-        if "| json" not in commands:
-            raise AssertionError(f"expected | json in commands: {commands!r}")
+        if "show running-config | include dot1x" in commands:
+            section, _interface = _dot1x_config_text(authenticator="ceos1" in container)
+            return section
         if "show running-config | section dot1x" in commands:
-            payload = _dot1x_config_json(authenticator="ceos1" in container)
-            return json.dumps(payload)
+            section, _interface = _dot1x_config_text(authenticator="ceos1" in container)
+            return section
         if "show running-config interface Ethernet1" in commands:
-            payload = _dot1x_config_json(authenticator="ceos1" in container)
-            return json.dumps(payload["interfaces"]["Ethernet1"])
+            _section, interface = _dot1x_config_text(authenticator="ceos1" in container)
+            return interface
+        if "| json" not in commands:
+            if "ping " in commands:
+                return "Success rate is 100 percent"
+            raise AssertionError(f"unexpected plain-text ceos_cli commands: {commands!r}")
         if "show dot1x hosts" in commands:
             return json.dumps(state_json["dot1xHosts"])
         if "show dot1x interface" in commands:
@@ -112,15 +113,16 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
             return json.dumps(state_json["macSecurityInterface"])
         if "show mac security participants" in commands:
             return json.dumps(state_json["macSecurityParticipants"])
-        if "ping " in commands:
-            return json.dumps(state_json["ping"])
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
-    with patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli):
+    with (
+        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+    ):
         run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24")
 
     output = capsys.readouterr().out
-    assert "MACsec: OK" in output
+    assert "MACsec: ✓" in output
     assert AUTHENTICATOR in output
 
 
@@ -143,12 +145,16 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
         if "show mac security interface" in commands:
             return json.dumps(state_json["macSecurityInterface"])
         if "ping " in commands:
-            return json.dumps(state_json["ping"])
+            return "Success rate is 100 percent"
         if "show running-config" in commands:
-            return json.dumps({"dot1x": True, "macSecurity": {"profile": MACSEC_PROFILE}})
+            section, _interface = _dot1x_config_text(authenticator=True)
+            return section
         raise AssertionError(commands)
 
-    with patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli):
+    with (
+        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+    ):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
             run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24", skip_config=True)
 

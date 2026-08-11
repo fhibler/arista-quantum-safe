@@ -1,8 +1,8 @@
 # Quantum Safe Lab
 
-Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, syslog, SSH), **dynamic MACsec** on an inter-switch link, and optional ETSI QKD 014 KME simulators on the mgmt network.
+Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, syslog, SSH), **dynamic MACsec** on an inter-switch link, **QuaDRA static MACsec + QKD key rotation** on another, and ETSI QKD 014 KME simulators on the mgmt network.
 
-Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology. `ceos1-both` and `ceos2-pqc` connect over an L3 link protected by 802.1X EAP-TLS and MKA-derived keys. `ceos3-qkd` attaches to `ceos1-both` over plain L3 (MACsec not configured yet). Each switch serves an Alpine Linux host on **Ethernet8**. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
+Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology. `ceos1-both` and `ceos2-pqc` connect over an L3 link protected by 802.1X EAP-TLS and MKA-derived keys. `ceos1-both` and `ceos3-qkd` connect over **static SAK MACsec** pre-provisioned for [QuaDRA](docs/quadra.md) (master on `ceos1-both`, slave on `ceos3-qkd`; extension install and agent start are manual). Each switch serves an Alpine Linux host on **Ethernet8**. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
 
 Lab identity in Containerlab: `name: quantum-safe`, `prefix: arista` → containers `arista-quantum-safe-<node>`.
 
@@ -12,7 +12,7 @@ Nine data-plane nodes plus syslog collector and two KME simulators on the mgmt n
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client, remote syslog (TLS); **ceos1-both/ceos2-pqc MACsec on eth1**; ceos3-qkd plain L3 to ceos1-both |
+| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client, remote syslog (TLS); **ceos1-both/ceos2-pqc dynamic MACsec on eth1**; **ceos1-both/ceos3-qkd QuaDRA static MACsec on eth3/eth1** (see [docs/quadra.md](docs/quadra.md)) |
 | host1, host2, host3 | Alpine 3.20 hosts on routed data segments only (no mgmt network) |
 | radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) — see [docs/syslog.md](docs/syslog.md) |
@@ -154,7 +154,7 @@ flowchart LR
   end
 
   ceos1 ---|"eth1 MACsec"| ceos2
-  ceos1 ---|"eth3 plain L3"| ceos3
+  ceos1 ---|"eth3 QuaDRA MACsec"| ceos3
   ceos1 ---|"eth8 10.0.1.254/24"| h1
   ceos2 ---|"eth8 10.0.2.254/24"| h2
   ceos3 ---|"eth8 10.0.3.254/24"| h3

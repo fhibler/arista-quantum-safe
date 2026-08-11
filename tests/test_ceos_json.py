@@ -12,9 +12,11 @@ from lab.ceos_json import (
     json_transport_ssl_profile,
     json_tree_contains,
     macsec_has_active_key,
+    macsec_traffic_protected,
     mka_has_live_peers,
     parse_eos_json,
     ping_json_success,
+    ping_text_success,
 )
 
 
@@ -56,17 +58,47 @@ def test_extract_ckn_from_json() -> None:
     assert extract_ckn_from_json(payload) == "e99229621701877766296aa8b76d7a07"
 
 
+def test_extract_ckn_from_json_participant_dict_keys() -> None:
+    payload = {
+        "interfaces": {
+            "Ethernet1": {
+                "participants": {
+                    "deadbeef0123456789": {"success": False},
+                    "ee494ffaffda19d85d223fcf686b7f6e": {
+                        "success": True,
+                        "details": {"sakTransmit": True, "livePeerList": ["peer1"]},
+                    },
+                }
+            }
+        }
+    }
+    assert extract_ckn_from_json(payload) == "ee494ffaffda19d85d223fcf686b7f6e"
+
+
 def test_mka_has_live_peers() -> None:
     assert mka_has_live_peers({"livePeerList": ["peer1"]})
     assert not mka_has_live_peers({"livePeerList": []})
 
 
+def test_macsec_traffic_protected() -> None:
+    assert macsec_traffic_protected({"details": {"traffic": "Protected"}})
+    assert macsec_traffic_protected({"traffic": "encrypted"})
+    assert not macsec_traffic_protected({"traffic": "Unprotected"})
+
+
 def test_macsec_has_active_key() -> None:
     assert macsec_has_active_key({"keyInUse": "deadbeef:1"})
     assert not macsec_has_active_key({"keyInUse": "None"})
+    assert macsec_has_active_key({"keyMsgId": "faf6921cce5368e9ddd92eff", "keyNum": 1})
 
 
 def test_ping_json_success() -> None:
     assert ping_json_success({"packetLoss": 0})
     assert ping_json_success({"results": [{"packetLossPercent": 0.0}]})
     assert not ping_json_success({"packetLoss": 100})
+
+
+def test_ping_text_success() -> None:
+    assert ping_text_success("3 packets transmitted, 3 received, 0% packet loss")
+    assert ping_text_success("Success rate is 100 percent (5/5)")
+    assert not ping_text_success("100% packet loss")

@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -238,3 +239,49 @@ def test_ceos_startup_config_paths(generated_topology: dict, ceos: str, spec: di
     assert spec["eth1_ipv6"] in text
     assert spec["eth8"] in text
     assert spec["eth8_ipv6"] in text
+
+
+def test_generated_topology_includes_quadra_when_swix_present(generated_topology: dict) -> None:
+    from lab.topology_contract import ceos_quadra_binds, ceos_quadra_exec, quadra_swix_available
+
+    if not quadra_swix_available():
+        pytest.skip("QuaDRA swix not present on host")
+
+    for node, expected_binds in ceos_quadra_binds().items():
+        binds = generated_topology["topology"]["nodes"][node]["binds"]
+        for expected_bind in expected_binds:
+            assert expected_bind in binds
+
+    for node, expected_exec in ceos_quadra_exec().items():
+        exec_cmds = generated_topology["topology"]["nodes"][node]["exec"]
+        assert expected_exec in exec_cmds
+
+
+def test_render_topo_omits_quadra_when_swix_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from lab.render_topo import render_topology
+    from lab.topology_contract import ceos_quadra_binds, ceos_quadra_exec, quadra_swix_available
+
+    if not quadra_swix_available():
+        pytest.skip("QuaDRA swix not present on host")
+
+    monkeypatch.setattr(
+        "lab.render_topo.quadra_swix_clab_bind",
+        lambda arch=None: None,
+    )
+    monkeypatch.setattr(
+        "lab.render_topo.quadra_swix_install_exec",
+        lambda arch=None: None,
+    )
+    out = render_topology(
+        repo_root=REPO_ROOT,
+        ceos_image=DEFAULT_CEOS_IMAGE,
+        mgmt_subnet="172.20.127.0/24",
+        dst=tmp_path / "no-quadra.clab.yml",
+    )
+    data = load_topology(out)
+    for node in ("ceos1-both", "ceos3-qkd"):
+        binds = data["topology"]["nodes"][node]["binds"]
+        assert not any("QuaDRA" in bind for bind in binds)
+        exec_cmds = data["topology"]["nodes"][node]["exec"]
+        assert len(exec_cmds) == 1
+        assert all("extension" not in cmd for cmd in exec_cmds)

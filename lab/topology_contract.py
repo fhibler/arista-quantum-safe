@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import platform
 import re
 from pathlib import Path
 from typing import Any
@@ -167,8 +168,77 @@ CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 CEOS_QUADRA_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
 # QuaDRA static SAK MACsec on ceos1-both:eth3 ↔ ceos3-qkd:eth1 (10.255.0.5/30 ↔ 10.255.0.6/30).
-QUADRA_SWIX = "QuaDRA-1.0.9.rel4.swix"
-QUADRA_SWIX_HOST = REPO_ROOT / "experimental" / "quadra" / QUADRA_SWIX
+QUADRA_VERSION = "1.0.10.rel1"
+
+
+def quadra_arch_suffix(arch: str | None = None) -> str:
+    """Return the QuaDRA swix architecture suffix for the given machine name."""
+    machine = (arch or platform.machine()).lower()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    raise ValueError(f"unsupported architecture for QuaDRA swix: {machine}")
+
+
+def quadra_swix_name(arch: str | None = None) -> str:
+    """Return the QuaDRA extension filename for the given machine name."""
+    return f"QuaDRA-{QUADRA_VERSION}-{quadra_arch_suffix(arch)}.swix"
+
+
+def quadra_swix_path(arch: str | None = None) -> Path:
+    """Return the host path to the QuaDRA swix for the given machine name."""
+    return REPO_ROOT / "experimental" / "quadra" / quadra_swix_name(arch)
+
+
+QUADRA_SWIX = quadra_swix_name()
+QUADRA_SWIX_HOST = quadra_swix_path()
+QUADRA_SWIX_CLAB_BIND = "../experimental/quadra/{swix}:/mnt/flash/{swix}:ro"
+
+
+def quadra_swix_available(arch: str | None = None) -> bool:
+    """Return True when the arch-appropriate QuaDRA swix is present on the host."""
+    return quadra_swix_path(arch).is_file()
+
+
+def quadra_swix_clab_bind(arch: str | None = None) -> str | None:
+    """Return the Containerlab bind string for QuaDRA, or None when the swix is absent."""
+    if not quadra_swix_available(arch):
+        return None
+    swix = quadra_swix_name(arch)
+    return QUADRA_SWIX_CLAB_BIND.format(swix=swix)
+
+
+def quadra_swix_install_exec(arch: str | None = None) -> str | None:
+    """Return a containerlab exec command that installs QuaDRA and starts the daemon."""
+    if not quadra_swix_available(arch):
+        return None
+    swix = quadra_swix_name(arch)
+    return (
+        "bash -c '{ "
+        f'S="{swix}"; '
+        '{ echo enable; echo "show extensions"; } | Cli | grep -F "$S" | grep -q ", I," || '
+        '{ echo enable; echo "copy flash:$S extension:"; echo "extension $S"; '
+        'echo "copy installed-extensions boot-extensions"; } | Cli; '
+        '{ echo enable; echo configure; echo "daemon quadra"; echo "no shutdown"; echo end; } | Cli; '
+        "}'"
+    )
+
+
+def ceos_quadra_binds(arch: str | None = None) -> dict[str, list[str]]:
+    """Return optional QuaDRA bind mounts for cEOS nodes when the swix exists."""
+    bind = quadra_swix_clab_bind(arch)
+    if bind is None:
+        return {}
+    return {node: [bind] for node in CEOS_QUADRA_NODES}
+
+
+def ceos_quadra_exec(arch: str | None = None) -> dict[str, str]:
+    """Return optional QuaDRA install exec commands for cEOS nodes when the swix exists."""
+    cmd = quadra_swix_install_exec(arch)
+    if cmd is None:
+        return {}
+    return {node: cmd for node in CEOS_QUADRA_NODES}
 QUADRA_MACSEC_PROFILE_MASTER = "quadra-master"
 QUADRA_MACSEC_PROFILE_SLAVE = "quadra-slave"
 QUADRA_MACSEC_INTF = {
@@ -1443,6 +1513,16 @@ def validate_topology(
             exec_cmds = _host_exec_commands(nodes.get(ceos, {}))
             if expected_exec not in exec_cmds:
                 errors.append(f"{ceos} must exec RadSec PKI install")
+
+    for ceos, quadra_binds in ceos_quadra_binds().items():
+        actual_binds = nodes.get(ceos, {}).get("binds", [])
+        for expected_bind in quadra_binds:
+            if expected_bind not in actual_binds:
+                errors.append(f"{ceos} must bind QuaDRA swix {expected_bind}")
+    for ceos, expected_exec in ceos_quadra_exec().items():
+        exec_cmds = _host_exec_commands(nodes.get(ceos, {}))
+        if expected_exec not in exec_cmds:
+            errors.append(f"{ceos} must exec QuaDRA extension install")
 
     actual_links = {
         tuple(link["endpoints"])

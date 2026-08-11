@@ -8,12 +8,15 @@ import shutil
 import sys
 from pathlib import Path
 
+import yaml
+
 from lab.gen_kme_pki import generate_kme_pki
 from lab.gen_pki import generate_radsec_pki
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
     DEFAULT_MGMT_IPV6_SUBNET,
     DEFAULT_MGMT_SUBNET,
+    CEOS_QUADRA_NODES,
     GEN_TOPOLOGY_ANNOTATIONS_PATH,
     GEN_TOPOLOGY_PATH,
     KME_A_PORT,
@@ -28,6 +31,8 @@ from lab.topology_contract import (
     QUADRA_MACSEC_PROFILE_SLAVE,
     QUADRA_SC_RX_ID,
     QUADRA_SC_TX_ID,
+    quadra_swix_clab_bind,
+    quadra_swix_install_exec,
     TOPOLOGY_ANNOTATIONS_PATH,
     TOPOLOGY_PATH,
     mgmt_gateway,
@@ -138,6 +143,18 @@ def build_substitutions(
     }
 
 
+def inject_quadra_clab_nodes(topology: dict) -> None:
+    """Append QuaDRA bind mounts and install exec when the host swix is present."""
+    bind = quadra_swix_clab_bind()
+    exec_cmd = quadra_swix_install_exec()
+    if bind is None or exec_cmd is None:
+        return
+    nodes = topology["topology"]["nodes"]
+    for node in CEOS_QUADRA_NODES:
+        nodes[node]["binds"].append(bind)
+        nodes[node]["exec"].append(exec_cmd)
+
+
 def substitute_placeholders(content: str, substitutions: dict[str, str]) -> str:
     rendered = content
     for key, value in substitutions.items():
@@ -164,7 +181,10 @@ def render_topology(
     topo_src = src or (repo_root / TOPOLOGY_PATH.relative_to(repo_root))
     topo_dst = dst or (repo_root / GEN_TOPOLOGY_PATH.relative_to(repo_root))
     content = topo_src.read_text(encoding="utf-8")
-    topo_dst.write_text(substitute_placeholders(content, substitutions), encoding="utf-8")
+    rendered = substitute_placeholders(content, substitutions)
+    topology = yaml.safe_load(rendered)
+    inject_quadra_clab_nodes(topology)
+    topo_dst.write_text(yaml.dump(topology, sort_keys=False), encoding="utf-8")
     return topo_dst
 
 

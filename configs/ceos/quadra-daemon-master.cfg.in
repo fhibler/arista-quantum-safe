@@ -1,4 +1,4 @@
-! QuaDRA agent — master on ceos1-both (daemon left shutdown; install extension separately).
+! QuaDRA agent — master on ceos1-both (shutdown in startup-config; post-boot exec starts when swix present).
 ! Note: peer-mode CLI value is inverted — "slave" selects the master role (see docs/quadra.md).
 daemon quadra
    exec /usr/bin/quadra
@@ -6,6 +6,7 @@ daemon quadra
    option macsec-intf value ${QUADRA_MACSEC_INTF}
    option peer value ${QUADRA_PEER_IP}
    option peer-mode value slave
+   option key-rotation value 120s
    option kme value ${MGMT_IP_KME_A}:${KME_A_PORT}
    option kme-vrf value MGMT
    option cacert value /mnt/flash/kme-ca.crt.pem

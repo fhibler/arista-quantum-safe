@@ -97,8 +97,22 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
             section, _interface = _dot1x_config_text(authenticator="ceos1" in container)
             return section
         if "show running-config interface Ethernet1" in commands:
+            if "ceos3-qkd" in container:
+                return "interface Ethernet1\n   mac security profile quadra-slave\n"
             _section, interface = _dot1x_config_text(authenticator="ceos1" in container)
             return interface
+        if "show running-config interface Ethernet3" in commands:
+            return f"interface Ethernet3\n   mac security profile quadra-master\n"
+        if "show running-config | section mac security" in commands:
+            return (
+                "mac security\n"
+                "   profile quadra-master\n"
+                "      cipher aes256-gcm-xpn\n"
+                "      key source sak static\n"
+                "   profile quadra-slave\n"
+                "      cipher aes256-gcm-xpn\n"
+                "      key source sak static\n"
+            )
         if "| json" not in commands:
             if "ping " in commands:
                 return "Success rate is 100 percent"
@@ -109,7 +123,9 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
             return json.dumps(state_json["dot1xInterfaceDetail"])
         if "show dot1x supplicant" in commands:
             return json.dumps(state_json["dot1xSupplicant"])
-        if "show mac security interface" in commands:
+        if "show mac security interface Ethernet1" in commands:
+            return json.dumps(state_json["macSecurityInterface"])
+        if "show mac security interface Ethernet3" in commands:
             return json.dumps(state_json["macSecurityInterface"])
         if "show mac security participants" in commands:
             return json.dumps(state_json["macSecurityParticipants"])

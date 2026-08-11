@@ -30,6 +30,10 @@ from lab.topology_contract import (
     DOT1X_SUPPLICANT_PROFILE,
     LAB_NAME,
     MACSEC_PROFILE,
+    QUADRA_MACSEC_INTF,
+    QUADRA_MACSEC_PROFILE_MASTER,
+    QUADRA_MACSEC_PROFILE_SLAVE,
+    QUADRA_PEER_IP,
 )
 from lab.test_pqc_connections import LabTargets, ceos_cli, ceos_show_json, docker_exec
 
@@ -41,6 +45,9 @@ INTER_SWITCH_PEER = {
     AUTHENTICATOR: CEOS_DATA_PLANE[SUPPLICANT]["eth1"].split("/")[0],
     SUPPLICANT: CEOS_DATA_PLANE[AUTHENTICATOR]["eth1"].split("/")[0],
 }
+QUADRA_MASTER = AUTHENTICATOR
+QUADRA_SLAVE = "ceos3-qkd"
+QUADRA_INTER_SWITCH_PEER = QUADRA_PEER_IP
 REAUTH_WAIT_BUFFER_SEC = 15
 
 
@@ -239,11 +246,130 @@ def check_dot1x_reauth_cycle(
     )
 
 
-def probe_inter_switch_ping(container: str, node: str, peer_ip: str, *, verbose: bool | None = None) -> None:
+def probe_inter_switch_ping(
+    container: str,
+    node: str,
+    peer_ip: str,
+    *,
+    interface: str = MACSEC_INTERFACE,
+    verbose: bool | None = None,
+) -> None:
     output = ceos_cli(container, f"enable\nping {peer_ip} repeat 3\n", verbose=verbose)
     if not ping_text_success(output):
         raise MacsecCheckError(f"{node} ping {peer_ip} over MACsec link: no successful replies")
-    report_live(f"ping {peer_ip} over encrypted {MACSEC_INTERFACE} (0% loss)")
+    report_live(f"ping {peer_ip} over encrypted {interface} (0% loss)")
+
+
+def check_static_macsec_config(
+    container: str,
+    node: str,
+    *,
+    profile: str,
+    interface: str,
+    verbose: bool | None = None,
+) -> None:
+    intf = ceos_cli(
+        container,
+        f"enable\nshow running-config interface {interface}\n",
+        verbose=verbose,
+    )
+    _assert_contains(
+        intf,
+        f"mac security profile {profile}",
+        label=f"{node} {interface} macsec profile",
+    )
+    macsec = ceos_cli(
+        container,
+        "enable\nshow running-config | section mac security\n",
+        verbose=verbose,
+    )
+    _assert_contains(macsec, f"profile {profile}", label=f"{node} macsec profile {profile}")
+    _assert_contains(macsec, "key source sak static", label=f"{node} static SAK profile")
+    _assert_contains(macsec, "cipher aes256-gcm-xpn", label=f"{node} aes256-gcm-xpn cipher")
+    report_config(f"static SAK profile {profile} on {interface}")
+
+
+def check_static_macsec_interface(
+    container: str,
+    node: str,
+    interface: str,
+    *,
+    verbose: bool | None = None,
+) -> None:
+    output = ceos_show_json(
+        container,
+        f"show mac security interface {interface} detail",
+        verbose=verbose,
+    )
+    _assert_json_contains(output, "True", label=f"{node} controlled port")
+    if not macsec_traffic_protected(output):
+        raise MacsecCheckError(f"{node}: expected protected MACsec traffic on {interface}")
+    if not macsec_has_active_key(output):
+        raise MacsecCheckError(f"{node}: expected active SAK (Key in use) on {interface}")
+    report_live(f"MACsec controlled port up, traffic encrypted on {interface}")
+
+
+def run_quadra_macsec_checks(
+    master_container: str,
+    slave_container: str,
+    *,
+    skip_config: bool = False,
+    verbose: bool | None = None,
+) -> None:
+    master_intf = QUADRA_MACSEC_INTF[QUADRA_MASTER]
+    slave_intf = QUADRA_MACSEC_INTF[QUADRA_SLAVE]
+
+    print_section_header("QuaDRA static MACsec (ceos1-both:eth3 ↔ ceos3-qkd:eth1)")
+
+    print_device(QUADRA_MASTER)
+    if not skip_config:
+        check_static_macsec_config(
+            master_container,
+            QUADRA_MASTER,
+            profile=QUADRA_MACSEC_PROFILE_MASTER,
+            interface=master_intf,
+            verbose=verbose,
+        )
+    check_static_macsec_interface(
+        master_container,
+        QUADRA_MASTER,
+        master_intf,
+        verbose=verbose,
+    )
+
+    print()
+    print_device(QUADRA_SLAVE)
+    if not skip_config:
+        check_static_macsec_config(
+            slave_container,
+            QUADRA_SLAVE,
+            profile=QUADRA_MACSEC_PROFILE_SLAVE,
+            interface=slave_intf,
+            verbose=verbose,
+        )
+    check_static_macsec_interface(
+        slave_container,
+        QUADRA_SLAVE,
+        slave_intf,
+        verbose=verbose,
+    )
+
+    print()
+    print_device("QuaDRA link")
+    probe_inter_switch_ping(
+        master_container,
+        QUADRA_MASTER,
+        QUADRA_INTER_SWITCH_PEER[QUADRA_MASTER],
+        interface=master_intf,
+        verbose=verbose,
+    )
+    probe_inter_switch_ping(
+        slave_container,
+        QUADRA_SLAVE,
+        QUADRA_INTER_SWITCH_PEER[QUADRA_SLAVE],
+        interface=slave_intf,
+        verbose=verbose,
+    )
 
 
 def run_macsec_checks(
@@ -267,6 +393,7 @@ def run_macsec_checks(
     )
     auth_container = targets.ceos_container(AUTHENTICATOR)
     supp_container = targets.ceos_container(SUPPLICANT)
+    quadra_slave_container = targets.ceos_container(QUADRA_SLAVE)
 
     print_section_header("MACsec verification (802.1X EAP-TLS + MKA on inter-switch link)")
     print("  [config] EOS running-config stanzas")
@@ -317,12 +444,20 @@ def run_macsec_checks(
             verbose=verbose,
         )
 
+    print()
+    run_quadra_macsec_checks(
+        auth_container,
+        quadra_slave_container,
+        skip_config=skip_config,
+        verbose=verbose,
+    )
+
     checks = "[config] and [live] checks" if not skip_config else "live checks only"
     reauth_note = ", reauth cycle" if verify_reauth else ""
     report_summary(
         "MACsec",
-        f"all {checks}{reauth_note} "
-        "passed (802.1X EAP-TLS, MKA, encrypted traffic)",
+        f"all {checks}{reauth_note} passed "
+        "(802.1X EAP-TLS + QuaDRA static MACsec, encrypted traffic)",
     )
 
 

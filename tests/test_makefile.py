@@ -65,11 +65,15 @@ def test_makefile_exists() -> None:
         "ssh-ceos1-both",
         "ssh-ceos2-pqc",
         "ssh-ceos3-qkd",
+        "install-quadra",
         "test-lab",
         "test-radius",
         "test-kme",
         "test-pqc",
         "test-syslog",
+        "test-macsec",
+        "test-macsec-reauth",
+        "test-qkd",
         "test-hosts",
     ],
 )
@@ -286,6 +290,13 @@ def test_test_macsec_recipe_delegates_to_python_module() -> None:
     assert "test-macsec:" in content
     macsec = content.split("test-macsec:")[1].split("test-hosts:")[0]
     assert "lab.test_macsec" in macsec
+
+
+def test_test_qkd_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-qkd:" in content
+    qkd = content.split("test-qkd:")[1].split("test-hosts:")[0]
+    assert "lab.test_qkd" in qkd
 
 
 def test_clean_recipe_removes_artifacts_and_images() -> None:

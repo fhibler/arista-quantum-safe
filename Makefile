@@ -36,7 +36,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd test-lab test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-hosts
+        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd install-quadra test-lab test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -321,6 +321,10 @@ ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
 ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
 	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
 
+install-quadra: ## Copy and install QuaDRA swix on ceos1-both and ceos3-qkd (requires deployed lab)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
 test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
 	@echo
@@ -331,6 +335,8 @@ test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command e
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-qkd
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
 	@echo
@@ -358,6 +364,10 @@ test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full
 
 test-macsec-reauth: ## MACsec + periodic 802.1X reauth wait (~75s; requires deployed lab)
 	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec
+
+test-qkd: ## QuaDRA daemon + QKD rotation checks (requires deployed lab; skips when swix absent)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_qkd --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section hosts

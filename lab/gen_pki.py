@@ -89,10 +89,77 @@ def _generate_server_cert(
     (out / f"{name}-{role}.key").write_bytes(server_key.read_bytes())
 
 
+def _generate_syslog_server_cert(
+    *,
+    work: Path,
+    out: Path,
+    syslog_ip: str,
+    ca_crt: Path,
+    ca_key: Path,
+) -> None:
+    """Create or refresh the syslog collector TLS server cert when the mgmt IP changes."""
+    marker = work / "syslog-server-san"
+    server_key = work / "syslog-server.key"
+    server_csr = work / "syslog-server.csr"
+    server_crt = work / "syslog-server.crt"
+    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == syslog_ip:
+        pass
+    else:
+        _run(
+            [
+                "openssl",
+                "req",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(server_key),
+                "-out",
+                str(server_csr),
+                "-subj",
+                "/CN=syslog/O=Lab/C=US",
+            ]
+        )
+        server_ext = work / "syslog-server.ext"
+        _write_ext(
+            server_ext,
+            [
+                f"subjectAltName = IP:{syslog_ip},DNS:syslog,DNS:{container_name('syslog')}",
+                "extendedKeyUsage = serverAuth",
+                "keyUsage = digitalSignature,keyEncipherment",
+            ],
+        )
+        _run(
+            [
+                "openssl",
+                "x509",
+                "-req",
+                "-in",
+                str(server_csr),
+                "-CA",
+                str(ca_crt),
+                "-CAkey",
+                str(ca_key),
+                "-CAcreateserial",
+                "-out",
+                str(server_crt),
+                "-days",
+                str(CERT_DAYS),
+                "-extfile",
+                str(server_ext),
+            ]
+        )
+        marker.write_text(f"{syslog_ip}\n", encoding="utf-8")
+
+    (out / "syslog-server.pem").write_bytes(server_crt.read_bytes())
+    (out / "syslog-server.key").write_bytes(server_key.read_bytes())
+
+
 def generate_radsec_pki(
     *,
     repo_root: Path | None = None,
     radius_ip: str,
+    syslog_ip: str | None = None,
     ceos_hosts: dict[str, str] | None = None,
     ceos_mgmt_ips: dict[str, str] | None = None,
 ) -> Path:
@@ -252,5 +319,14 @@ def generate_radsec_pki(
                 ca_crt=ca_crt,
                 ca_key=ca_key,
             )
+
+    if syslog_ip is not None:
+        _generate_syslog_server_cert(
+            work=work,
+            out=out,
+            syslog_ip=syslog_ip,
+            ca_crt=ca_crt,
+            ca_key=ca_key,
+        )
 
     return out

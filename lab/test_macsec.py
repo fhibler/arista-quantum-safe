@@ -9,6 +9,18 @@ import subprocess
 import sys
 import time
 
+from lab.ceos_json import (
+    CeosJsonError,
+    assert_json_contains,
+    extract_ckn_from_json,
+    json_tree_contains,
+    json_tree_values,
+    json_truthy,
+    macsec_has_active_key,
+    mka_has_live_peers,
+    parse_eos_json,
+    ping_json_success,
+)
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
     DOT1X_EAP_IDENTITY,
@@ -18,7 +30,7 @@ from lab.topology_contract import (
     LAB_NAME,
     MACSEC_PROFILE,
 )
-from lab.test_pqc_connections import LabTargets, assert_contains, ceos_cli, docker_exec
+from lab.test_pqc_connections import LabTargets, assert_contains, ceos_cli, ceos_show_json, docker_exec
 
 MACSEC_INTERFACE = "Ethernet1"
 AUTHENTICATOR = "ceos1-both"
@@ -47,7 +59,20 @@ def report_live(detail: str) -> None:
     print(f"  [live]   {detail}")
 
 
+def _assert_json_contains(obj, needle: str, *, label: str, case_sensitive: bool = True) -> None:
+    try:
+        assert_json_contains(obj, needle, label=label, case_sensitive=case_sensitive)
+    except CeosJsonError as exc:
+        raise MacsecCheckError(str(exc)) from exc
+
+
 def extract_ckn(participants_output: str) -> str:
+    """Extract CKN from text or JSON participant output (unit-test helper)."""
+    if participants_output.lstrip().startswith("{"):
+        try:
+            return extract_ckn_from_json(parse_eos_json(participants_output))
+        except CeosJsonError:
+            pass
     match = re.search(r"CKN:\s+([0-9a-f]+)", participants_output, re.IGNORECASE)
     if not match:
         raise MacsecCheckError("expected CKN in mac security participants detail")
@@ -55,18 +80,24 @@ def extract_ckn(participants_output: str) -> str:
 
 
 def check_authenticator_config(container: str, *, verbose: bool | None = None) -> None:
-    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n", verbose=verbose)
-    if "aaa authentication dot1x default group" not in cfg.lower():
+    cfg = ceos_show_json(container, "show running-config | section dot1x", verbose=verbose)
+    if not (
+        json_tree_contains(cfg, "dot1x", case_sensitive=False)
+        and json_tree_contains(cfg, "RADIUS", case_sensitive=False)
+    ):
         raise MacsecCheckError(f"{AUTHENTICATOR} dot1x aaa: expected dot1x authentication group")
-    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n", verbose=verbose)
-    assert_contains(intf, "dot1x pae authenticator", label=f"{AUTHENTICATOR} dot1x authenticator")
-    assert_contains(intf, "dot1x reauthentication", label=f"{AUTHENTICATOR} dot1x reauthentication")
-    assert_contains(
-        intf,
-        f"dot1x timeout reauth-period {DOT1X_REAUTH_PERIOD_SEC}",
-        label=f"{AUTHENTICATOR} dot1x reauth period",
-    )
-    assert_contains(intf, f"mac security profile {MACSEC_PROFILE}", label=f"{AUTHENTICATOR} macsec profile")
+    intf = ceos_show_json(container, f"show running-config interface {MACSEC_INTERFACE}", verbose=verbose)
+    if not (
+        json_tree_contains(intf, "dot1x", case_sensitive=False)
+        and json_tree_contains(intf, "authenticator", case_sensitive=False)
+    ):
+        raise MacsecCheckError(f"{AUTHENTICATOR} dot1x authenticator: expected authenticator PAE")
+    if not json_tree_contains(intf, "reauthentication", case_sensitive=False):
+        raise MacsecCheckError(f"{AUTHENTICATOR} dot1x reauthentication: expected periodic reauth")
+    if str(DOT1X_REAUTH_PERIOD_SEC) not in "\n".join(json_tree_values(intf)):
+        raise MacsecCheckError(f"{AUTHENTICATOR} dot1x reauth period: expected {DOT1X_REAUTH_PERIOD_SEC}s")
+    if not json_tree_contains(intf, MACSEC_PROFILE, case_sensitive=False):
+        raise MacsecCheckError(f"{AUTHENTICATOR} macsec profile: expected {MACSEC_PROFILE}")
     report_config(
         f"dot1x authenticator with reauth every {DOT1X_REAUTH_PERIOD_SEC}s, "
         f"mac security profile {MACSEC_PROFILE}, RadSec AAA group RADIUS"
@@ -74,58 +105,65 @@ def check_authenticator_config(container: str, *, verbose: bool | None = None) -
 
 
 def check_supplicant_config(container: str, *, verbose: bool | None = None) -> None:
-    cfg = ceos_cli(container, "enable\nshow running-config | section dot1x\n", verbose=verbose)
-    assert_contains(cfg, f"supplicant profile {DOT1X_SUPPLICANT_PROFILE}", label=f"{SUPPLICANT} supplicant profile")
-    assert_contains(cfg, f"identity {DOT1X_EAP_IDENTITY}", label=f"{SUPPLICANT} EAP identity")
-    assert_contains(cfg, "eap-method tls", label=f"{SUPPLICANT} EAP-TLS")
-    assert_contains(cfg, f"ssl profile {DOT1X_EAP_SSL_PROFILE}", label=f"{SUPPLICANT} DOT1X ssl profile")
-    intf = ceos_cli(container, f"enable\nshow running-config interface {MACSEC_INTERFACE}\n", verbose=verbose)
-    assert_contains(intf, f"dot1x pae supplicant {DOT1X_SUPPLICANT_PROFILE}", label=f"{SUPPLICANT} dot1x supplicant")
+    cfg = ceos_show_json(container, "show running-config | section dot1x", verbose=verbose)
+    _assert_json_contains(cfg, DOT1X_SUPPLICANT_PROFILE, label=f"{SUPPLICANT} supplicant profile")
+    _assert_json_contains(cfg, DOT1X_EAP_IDENTITY, label=f"{SUPPLICANT} EAP identity")
+    _assert_json_contains(cfg, "tls", label=f"{SUPPLICANT} EAP-TLS", case_sensitive=False)
+    _assert_json_contains(cfg, DOT1X_EAP_SSL_PROFILE, label=f"{SUPPLICANT} DOT1X ssl profile")
+    intf = ceos_show_json(container, f"show running-config interface {MACSEC_INTERFACE}", verbose=verbose)
+    if not (
+        json_tree_contains(intf, "dot1x", case_sensitive=False)
+        and json_tree_contains(intf, DOT1X_SUPPLICANT_PROFILE, case_sensitive=False)
+        and json_tree_contains(intf, "supplicant", case_sensitive=False)
+    ):
+        raise MacsecCheckError(f"{SUPPLICANT} dot1x supplicant: expected supplicant PAE")
     report_config(
         f"dot1x supplicant {DOT1X_SUPPLICANT_PROFILE}, EAP-TLS + ssl profile {DOT1X_EAP_SSL_PROFILE}"
     )
 
 
 def check_authenticator_dot1x(container: str, *, verbose: bool | None = None) -> None:
-    hosts = ceos_cli(container, "enable\nshow dot1x hosts\n", verbose=verbose)
-    assert_contains(hosts, DOT1X_EAP_IDENTITY, label=f"{AUTHENTICATOR} dot1x host identity")
-    assert_contains(hosts, "SUCCESS", label=f"{AUTHENTICATOR} dot1x host state")
-    detail = ceos_cli(container, f"enable\nshow dot1x interface {MACSEC_INTERFACE} detail\n", verbose=verbose)
-    assert_contains(detail, "Port status: Authorized", label=f"{AUTHENTICATOR} dot1x port authorized")
+    hosts = ceos_show_json(container, "show dot1x hosts", verbose=verbose)
+    _assert_json_contains(hosts, DOT1X_EAP_IDENTITY, label=f"{AUTHENTICATOR} dot1x host identity")
+    _assert_json_contains(hosts, "SUCCESS", label=f"{AUTHENTICATOR} dot1x host state")
+    detail = ceos_show_json(container, f"show dot1x interface {MACSEC_INTERFACE} detail", verbose=verbose)
+    _assert_json_contains(detail, "Authorized", label=f"{AUTHENTICATOR} dot1x port authorized")
     report_live(f"802.1X host {DOT1X_EAP_IDENTITY} SUCCESS, port Authorized")
 
 
 def check_supplicant_dot1x(container: str, *, verbose: bool | None = None) -> None:
-    output = ceos_cli(container, "enable\nshow dot1x supplicant\n", verbose=verbose)
-    assert_contains(output, f"Identity: {DOT1X_EAP_IDENTITY}", label=f"{SUPPLICANT} dot1x identity")
-    assert_contains(output, "Status: success", label=f"{SUPPLICANT} dot1x status")
-    assert_contains(output, "EAP method: tls", label=f"{SUPPLICANT} EAP method")
-    assert_contains(output, f"SSL profile: {DOT1X_EAP_SSL_PROFILE}", label=f"{SUPPLICANT} ssl profile")
-    assert_contains(output, PQC_EAP_GROUP, label=f"{SUPPLICANT} EAP-TLS PQC group")
+    output = ceos_show_json(container, "show dot1x supplicant", verbose=verbose)
+    _assert_json_contains(output, DOT1X_EAP_IDENTITY, label=f"{SUPPLICANT} dot1x identity")
+    _assert_json_contains(output, "success", label=f"{SUPPLICANT} dot1x status")
+    _assert_json_contains(output, "tls", label=f"{SUPPLICANT} EAP method")
+    _assert_json_contains(output, DOT1X_EAP_SSL_PROFILE, label=f"{SUPPLICANT} ssl profile")
+    _assert_json_contains(output, PQC_EAP_GROUP, label=f"{SUPPLICANT} EAP-TLS PQC group")
     report_live(f"802.1X supplicant success (EAP-TLS, {PQC_EAP_GROUP})")
 
 
 def check_macsec_interface(container: str, node: str, *, verbose: bool | None = None) -> None:
-    output = ceos_cli(
+    output = ceos_show_json(
         container,
-        f"enable\nshow mac security interface {MACSEC_INTERFACE} detail\n",
+        f"show mac security interface {MACSEC_INTERFACE} detail",
         verbose=verbose,
     )
-    assert_contains(output, "Controlled port: True", label=f"{node} controlled port")
-    assert_contains(output, "Traffic: encrypted", label=f"{node} traffic encrypted")
-    if "Key in use: None" in output or "Key in use:" not in output:
+    _assert_json_contains(output, "True", label=f"{node} controlled port")
+    _assert_json_contains(output, "encrypted", label=f"{node} traffic encrypted")
+    if not macsec_has_active_key(output):
         raise MacsecCheckError(f"{node}: expected active SAK (Key in use)")
     report_live(f"MACsec controlled port up, traffic encrypted on {MACSEC_INTERFACE}")
 
 
 def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
-    output = ceos_cli(container, "enable\nshow mac security participants detail\n", verbose=verbose)
-    assert_contains(output, "CKN:", label=f"{node} MKA participants")
-    assert_contains(output, "Success: True", label=f"{node} MKA participant success")
-    assert_contains(output, "Live peer list:", label=f"{node} MKA live peers")
-    if 'Live peer list: []' in output:
+    output = ceos_show_json(container, "show mac security participants detail", verbose=verbose)
+    if not json_truthy(output, "success") and not json_tree_contains(output, "Success", case_sensitive=False):
+        raise MacsecCheckError(f"{node}: expected successful MKA participant")
+    if not mka_has_live_peers(output):
         raise MacsecCheckError(f"{node}: MKA live peer list is empty")
-    ckn = extract_ckn(output)
+    try:
+        ckn = extract_ckn_from_json(output)
+    except CeosJsonError as exc:
+        raise MacsecCheckError(str(exc)) from exc
     report_live(f"MKA participant CKN {ckn}, Success: True")
     return ckn
 
@@ -179,8 +217,8 @@ def check_dot1x_reauth_cycle(
 
 
 def probe_inter_switch_ping(container: str, node: str, peer_ip: str, *, verbose: bool | None = None) -> None:
-    output = ceos_cli(container, f"enable\nping {peer_ip} repeat 3\n", verbose=verbose)
-    if "0% packet loss" not in output and "Success rate is 100 percent" not in output:
+    output = ceos_show_json(container, f"ping {peer_ip} repeat 3", verbose=verbose)
+    if not ping_json_success(output):
         raise MacsecCheckError(f"{node} ping {peer_ip} over MACsec link: no successful replies")
     report_live(f"ping {peer_ip} over encrypted {MACSEC_INTERFACE} (0% loss)")
 

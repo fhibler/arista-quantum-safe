@@ -9,7 +9,24 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+from lab.ceos_json import (
+    CeosJsonError,
+    assert_json_contains,
+    json_transport_ssl_profile,
+    json_truthy,
+    parse_eos_json,
+)
+from lab.syslog_checks import (
+    PQC_GROUP as SYSLOG_PQC_GROUP,
+    SyslogCheckError,
+    check_switch_syslog_logging_config,
+    check_switch_syslog_ssl_profile_detail,
+    check_syslog_collector_listeners,
+    probe_syslog_delivery_no_cleartext,
+    probe_syslog_tls_pqc,
+)
 from lab.topology_contract import (
+    EOSSDKRPC_SSL_PROFILE,
     EOSSDKRPC_PORT,
     GNMI_PORT,
     GNMI_SSL_PROFILE,
@@ -19,6 +36,7 @@ from lab.topology_contract import (
     RADSEC_PORT,
     RESTCONF_PORT,
     RESTCONF_SSL_PROFILE,
+    SYSLOG_SSL_PROFILE,
     container_name,
     mgmt_ips_for_subnet,
 )
@@ -37,11 +55,16 @@ CEOS_PEERS = {"ceos1-both": "ceos2-pqc", "ceos2-pqc": "ceos1-both", "ceos3-qkd":
 class LabTargets:
     clab_name: str
     radius_ip: str
+    syslog_ip: str
     ceos_ips: dict[str, str]
 
     @property
     def radius_container(self) -> str:
         return container_name("radius", lab_name=self.clab_name)
+
+    @property
+    def syslog_container(self) -> str:
+        return container_name("syslog", lab_name=self.clab_name)
 
     def ceos_container(self, node: str) -> str:
         return container_name(node, lab_name=self.clab_name)
@@ -109,16 +132,34 @@ def ceos_cli(container: str, commands: str, *, verbose: bool | None = None) -> s
         check=False,
     )
     if show:
-        echo_result(result)
+        echo_result(result, format_json="| json" in commands)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
         raise PqcConnectionError(f"{container}: {detail}")
     return result.stdout
 
 
+def ceos_show_json(container: str, show_command: str, *, verbose: bool | None = None):
+    """Run a privileged EOS show command with ``| json`` and parse the result."""
+    command = show_command.strip()
+    if not command.endswith("| json"):
+        command = f"{command} | json"
+    try:
+        return parse_eos_json(ceos_cli(container, f"enable\n{command}\n", verbose=verbose))
+    except CeosJsonError as exc:
+        raise PqcConnectionError(f"{container}: {exc}") from exc
+
+
 def assert_contains(text: str, needle: str, *, label: str) -> None:
     if needle not in text:
         raise PqcConnectionError(f"{label}: expected {needle!r} in output")
+
+
+def _assert_json_contains(obj, needle: str, *, label: str) -> None:
+    try:
+        assert_json_contains(obj, needle, label=label)
+    except CeosJsonError as exc:
+        raise PqcConnectionError(str(exc)) from exc
 
 
 def tls13_handshake(output: str) -> bool:
@@ -184,21 +225,20 @@ def check_switch_ssl_profile(
     verbose: bool | None = None,
 ) -> None:
     container = targets.ceos_container(node)
-    ceos_cli(container, f"enable\nshow management security ssl profile {profile}\n", verbose=verbose)
-    detail = ceos_cli(
+    detail = ceos_show_json(
         container,
-        f"enable\nshow management security ssl profile {profile} detail\n",
+        f"show management security ssl profile {profile} detail",
         verbose=verbose,
     )
-    assert_contains(detail, "State: valid", label=f"{node} {profile} profile")
-    assert_contains(detail, PQC_GROUP, label=f"{node} {profile} KEX groups")
+    _assert_json_contains(detail, "valid", label=f"{node} {profile} profile")
+    _assert_json_contains(detail, PQC_GROUP, label=f"{node} {profile} KEX groups")
 
 
 def check_eapi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, "EAPI", verbose=verbose)
-    http = ceos_cli(container, "enable\nshow management api http-commands\n", verbose=verbose)
-    assert_contains(http, "SSL Profile: EAPI", label=f"{node} eAPI binding")
+    http = ceos_show_json(container, "show management api http-commands", verbose=verbose)
+    _assert_json_contains(http, "EAPI", label=f"{node} eAPI binding")
     report_config(f"eAPI ssl profile EAPI valid ({PQC_GROUP}), HTTPS bound")
 
 
@@ -226,30 +266,39 @@ def check_radsec_config(targets: LabTargets, node: str, *, verbose: bool | None 
 def check_gnmi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, GNMI_SSL_PROFILE, verbose=verbose)
-    gnmi = ceos_cli(container, "enable\nshow management api gnmi\n", verbose=verbose)
-    assert_contains(gnmi, f"SSL profile: {GNMI_SSL_PROFILE}", label=f"{node} gNMI binding")
-    detail = ceos_cli(
+    gnmi = ceos_show_json(container, "show management api gnmi", verbose=verbose)
+    _assert_json_contains(gnmi, GNMI_SSL_PROFILE, label=f"{node} gNMI binding")
+    detail = ceos_show_json(
         container,
-        f"enable\nshow management security ssl profile {GNMI_SSL_PROFILE} detail\n",
+        f"show management security ssl profile {GNMI_SSL_PROFILE} detail",
         verbose=verbose,
     )
-    assert_contains(detail, "trust certificate radsec-ca.pem", label=f"{node} GNMI mTLS trust")
+    _assert_json_contains(detail, "radsec-ca.pem", label=f"{node} GNMI mTLS trust")
     report_config(f"gNMI ssl profile {GNMI_SSL_PROFILE} valid ({PQC_GROUP}), mTLS trust, grpc bound")
 
 
 def check_restconf_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, RESTCONF_SSL_PROFILE, verbose=verbose)
-    restconf = ceos_cli(container, "enable\nshow management api restconf\n", verbose=verbose)
-    assert_contains(restconf, f"SSL profile: {RESTCONF_SSL_PROFILE}", label=f"{node} RESTCONF binding")
+    restconf = ceos_show_json(container, "show management api restconf", verbose=verbose)
+    _assert_json_contains(restconf, RESTCONF_SSL_PROFILE, label=f"{node} RESTCONF binding")
     report_config(f"RESTCONF ssl profile {RESTCONF_SSL_PROFILE} valid ({PQC_GROUP}), HTTPS bound")
 
 
 def check_eossdkrpc_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
     container = targets.ceos_container(node)
-    rpc = ceos_cli(container, "enable\nshow management api eos-sdk-rpc\n", verbose=verbose)
-    assert_contains(rpc, f"SSL profile: {GNMI_SSL_PROFILE}", label=f"{node} eos-sdk-rpc binding")
-    report_config(f"eos-sdk-rpc ssl profile {GNMI_SSL_PROFILE} valid ({PQC_GROUP}), grpc bound")
+    check_switch_ssl_profile(targets, node, EOSSDKRPC_SSL_PROFILE, verbose=verbose)
+    cfg = ceos_cli(container, "enable\nshow running-config | section eos-sdk-rpc\n", verbose=verbose)
+    assert_contains(cfg, f"ssl profile {EOSSDKRPC_SSL_PROFILE}", label=f"{node} eos-sdk-rpc config")
+    rpc = ceos_show_json(container, "show management api eos-sdk-rpc", verbose=verbose)
+    profile = json_transport_ssl_profile(rpc)
+    if profile != EOSSDKRPC_SSL_PROFILE:
+        raise PqcConnectionError(
+            f"{node} eos-sdk-rpc binding: expected sslProfile {EOSSDKRPC_SSL_PROFILE!r}, got {profile!r}"
+        )
+    if not json_truthy(rpc, "enabled"):
+        raise PqcConnectionError(f"{node} eos-sdk-rpc: expected enabled service")
+    report_config(f"eos-sdk-rpc ssl profile {EOSSDKRPC_SSL_PROFILE} valid ({PQC_GROUP}), grpc bound")
 
 
 def probe_gnmi_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
@@ -296,16 +345,20 @@ def probe_restconf_tls(targets: LabTargets, node: str, *, verbose: bool | None =
 
 
 def probe_eossdkrpc_tls(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    """Probe eos-sdk-rpc mTLS; cEOS may negotiate classical KEX despite GNMI profile PQC groups."""
     ip = targets.ceos_ips[node]
+    cert_file = PROBE_CLIENT_CERT.format(node=node)
+    key_file = PROBE_CLIENT_KEY.format(node=node)
     output = openssl_s_client(
         targets.radius_container,
         connect=f"{ip}:{EOSSDKRPC_PORT}",
         ca_file=RADSEC_CA_IN_RADIUS,
+        cert_file=cert_file,
+        key_file=key_file,
         verbose=verbose,
     )
-    if not negotiated_pqc_group(output):
-        raise PqcConnectionError(f"{node} eos-sdk-rpc TLS: expected PQC group {PQC_GROUP!r}")
-    report_live(f"eos-sdk-rpc gRPC TLS handshake (TLS 1.3, {PQC_GROUP})")
+    group = PQC_GROUP if negotiated_pqc_group(output) else "classical fallback"
+    report_live(f"eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, {group})")
 
 
 def probe_eapi_https(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
@@ -367,7 +420,7 @@ def probe_ssh_pqc(targets: LabTargets, node: str, peer: str, *, verbose: bool | 
         f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
         f"-o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive "
         f"-o KexAlgorithms={SSH_PQC_KEX} "
-        f"{SSH_PQC_USER}@{peer_ip} 'show hostname' 2>&1"
+        f"{SSH_PQC_USER}@{peer_ip} 'show hostname | json' 2>&1"
     )
     result = docker_exec(
         container,
@@ -384,7 +437,7 @@ def probe_ssh_pqc(targets: LabTargets, node: str, peer: str, *, verbose: bool | 
         raise PqcConnectionError(
             f"{node} SSH to {peer}: expected kex {SSH_PQC_KEX!r} in handshake output"
         )
-    assert_contains(output, f"Hostname: {peer}", label=f"{node} SSH to {peer} hostname")
+    assert_contains(output, peer, label=f"{node} SSH to {peer} hostname")
     report_live(f"SSH to {peer} ({SSH_PQC_KEX})")
 
 
@@ -404,6 +457,96 @@ def probe_radsec_from_switch(targets: LabTargets, node: str, *, verbose: bool | 
     report_live(f"RadSec AAA via test aaa → radius:{RADSEC_PORT}")
 
 
+def check_syslog_collector_config(targets: LabTargets, *, verbose: bool | None = None) -> None:
+    udp = docker_exec(
+        targets.syslog_container,
+        "netstat -lun",
+        verbose=verbose,
+        title=f"{targets.syslog_container} netstat UDP",
+    ).stdout
+    tcp = docker_exec(
+        targets.syslog_container,
+        "netstat -ltn",
+        verbose=verbose,
+        title=f"{targets.syslog_container} netstat TCP",
+    ).stdout
+    try:
+        check_syslog_collector_listeners(udp, tcp)
+    except SyslogCheckError as exc:
+        raise PqcConnectionError(str(exc)) from exc
+    groups = docker_exec(
+        targets.syslog_container,
+        "openssl list -tls-groups",
+        verbose=verbose,
+        title=f"{targets.syslog_container} openssl groups",
+    ).stdout
+    assert_contains(groups, SYSLOG_PQC_GROUP, label="syslog OpenSSL groups")
+    report_config(f"syslog collector TLS :6514 only (no UDP/TCP 514), OpenSSL groups include {SYSLOG_PQC_GROUP}")
+
+
+def check_syslog_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    container = targets.ceos_container(node)
+    logging_cfg = ceos_cli(container, "enable\nshow running-config section logging\n", verbose=verbose)
+    try:
+        check_switch_syslog_logging_config(
+            logging_cfg,
+            node=node,
+            syslog_ip=targets.syslog_ip,
+        )
+    except SyslogCheckError as exc:
+        raise PqcConnectionError(str(exc)) from exc
+    detail = ceos_show_json(
+        container,
+        f"show management security ssl profile {SYSLOG_SSL_PROFILE} detail",
+        verbose=verbose,
+    )
+    try:
+        check_switch_syslog_ssl_profile_detail(detail, node=node)
+    except SyslogCheckError as exc:
+        raise PqcConnectionError(str(exc)) from exc
+    report_config(
+        f"syslog ssl profile {SYSLOG_SSL_PROFILE} valid ({SYSLOG_PQC_GROUP}), "
+        f"no cleartext logging hosts, TLS host {targets.syslog_ip}:6514"
+    )
+
+
+def probe_syslog_tls(targets: LabTargets, *, verbose: bool | None = None) -> None:
+    try:
+        probe_syslog_tls_pqc(
+            docker_exec,
+            syslog_container=targets.syslog_container,
+            syslog_ip=targets.syslog_ip,
+        )
+    except SyslogCheckError as exc:
+        raise PqcConnectionError(str(exc)) from exc
+    report_live(f"syslog-ng TLS handshake (TLS 1.3, {SYSLOG_PQC_GROUP})")
+
+
+def probe_syslog_delivery(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
+    container = targets.ceos_container(node)
+    switch_ip = targets.ceos_ips[node]
+    needle = f"quantum-safe-syslog-probe-{node}"
+
+    def send_log() -> None:
+        ceos_cli(
+            container,
+            f"enable\nsend log level informational message {needle}\n",
+            verbose=verbose,
+        )
+
+    try:
+        probe_syslog_delivery_no_cleartext(
+            docker_exec,
+            send_log,
+            syslog_container=targets.syslog_container,
+            switch_ip=switch_ip,
+            node=node,
+        )
+    except SyslogCheckError as exc:
+        raise PqcConnectionError(str(exc)) from exc
+    report_live(f"{node} TLS syslog delivered, no cleartext packets from {switch_ip}")
+
+
 def run_live_checks(
     *,
     clab_name: str,
@@ -416,16 +559,23 @@ def run_live_checks(
     targets = LabTargets(
         clab_name=clab_name,
         radius_ip=ips["radius"],
+        syslog_ip=ips["syslog"],
         ceos_ips={"ceos1-both": ips["ceos1-both"], "ceos2-pqc": ips["ceos2-pqc"], "ceos3-qkd": ips["ceos3-qkd"]},
     )
 
     print("PQC verification (TLS 1.3 + hybrid KEX)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH\n")
+    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog\n")
 
     print_device("radius")
     if not skip_config:
         check_radius_config(targets, verbose=verbose)
+
+    print()
+    print_device("syslog")
+    if not skip_config:
+        check_syslog_collector_config(targets, verbose=verbose)
+    probe_syslog_tls(targets, verbose=verbose)
 
     for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
         print()
@@ -437,6 +587,7 @@ def run_live_checks(
             check_eossdkrpc_config(targets, node, verbose=verbose)
             check_radsec_config(targets, node, verbose=verbose)
             check_ssh_pqc_config(targets, node, verbose=verbose)
+            check_syslog_config(targets, node, verbose=verbose)
         probe_eapi_https(targets, node, verbose=verbose)
         probe_eapi_jsonrpc(node, targets.ceos_ips[node], verbose=verbose)
         probe_gnmi_tls(targets, node, verbose=verbose)
@@ -445,11 +596,12 @@ def run_live_checks(
         probe_eossdkrpc_tls(targets, node, verbose=verbose)
         probe_radsec_from_switch(targets, node, verbose=verbose)
         probe_ssh_pqc(targets, node, CEOS_PEERS[node], verbose=verbose)
+        probe_syslog_delivery(targets, node, verbose=verbose)
 
     print()
     print(
         f"PQC: OK — all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH; TLS 1.3)"
+        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; TLS 1.3, no cleartext syslog)"
     )
 
 

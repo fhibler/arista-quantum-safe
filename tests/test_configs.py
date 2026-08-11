@@ -15,6 +15,7 @@ from lab.topology_contract import (
     RADIUS_SERVER_IP,
     validate_ceos_configs,
     validate_radius_configs,
+    validate_syslog_configs,
 )
 
 
@@ -40,6 +41,11 @@ def test_ceos_configs_contract(repo_root: Path) -> None:
 
 def test_radius_configs_contract(repo_root: Path) -> None:
     errors = validate_radius_configs(repo_root)
+    assert errors == [], "\n".join(errors)
+
+
+def test_syslog_configs_contract(repo_root: Path) -> None:
+    errors = validate_syslog_configs(repo_root)
     assert errors == [], "\n".join(errors)
 
 

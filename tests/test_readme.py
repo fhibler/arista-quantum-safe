@@ -41,6 +41,7 @@ def test_verification_doc_lists_checklist() -> None:
     assert "make inspect" in content
     assert "make test-radius" in content
     assert "make test-pqc" in content
+    assert "make test-syslog" in content
     assert "make test-macsec" in content
     assert "make test-hosts" in content
     assert "Path C" in content
@@ -49,3 +50,4 @@ def test_verification_doc_lists_checklist() -> None:
 def test_docs_index_links_verification() -> None:
     content = DOCS_INDEX.read_text(encoding="utf-8")
     assert "verification.md" in content
+    assert "syslog.md" in content

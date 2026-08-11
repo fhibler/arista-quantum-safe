@@ -1,6 +1,6 @@
 # Quantum Safe Lab
 
-Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, SSH), **dynamic MACsec** on an inter-switch link, and optional ETSI QKD 014 KME simulators on the mgmt network.
+Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, syslog, SSH), **dynamic MACsec** on an inter-switch link, and optional ETSI QKD 014 KME simulators on the mgmt network.
 
 Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology. `ceos1-both` and `ceos2-pqc` connect over an L3 link protected by 802.1X EAP-TLS and MKA-derived keys. `ceos3-qkd` attaches to `ceos1-both` over plain L3 (MACsec not configured yet). Each switch serves an Alpine Linux host on **Ethernet8**. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
 
@@ -8,13 +8,14 @@ Lab identity in Containerlab: `name: quantum-safe`, `prefix: arista` → contain
 
 ## Overview
 
-Nine data-plane nodes plus two KME simulators on the mgmt network:
+Nine data-plane nodes plus syslog collector and two KME simulators on the mgmt network:
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client; **ceos1-both/ceos2-pqc MACsec on eth1**; ceos3-qkd plain L3 to ceos1-both |
-| host1, host2, host3 | Alpine 3.20 hosts on routed data segments (ceos*:eth8) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client, remote syslog (TLS); **ceos1-both/ceos2-pqc MACsec on eth1**; ceos3-qkd plain L3 to ceos1-both |
+| host1, host2, host3 | Alpine 3.20 hosts on routed data segments only (no mgmt network) |
 | radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
+| syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) — see [docs/syslog.md](docs/syslog.md) |
 | kme-a | [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) KME (HTTPS 8010, lab SAE client + peer) — see [docs/kme.md](docs/kme.md) |
 | kme-b | Peer KME (HTTPS 8020, linked to `kme-a` via `OTHER_KMES`) — see [docs/kme.md](docs/kme.md) |
 
@@ -102,6 +103,7 @@ make deploy
 make inspect
 make test-radius
 make test-pqc
+make test-syslog
 make test-macsec
 make test-hosts
 make destroy
@@ -125,10 +127,8 @@ See [docs/makefile.md](docs/makefile.md) for all Makefile targets and [docs/veri
 | ceos1-both | 172.20.127.11 | cEOS switch A (hub) |
 | ceos2-pqc | 172.20.127.12 | cEOS switch B |
 | ceos3-qkd | 172.20.127.13 | cEOS switch C |
-| host1 | 172.20.127.21 | Alpine host on ceos1-both:eth8 |
-| host2 | 172.20.127.22 | Alpine host on ceos2-pqc:eth8 |
-| host3 | 172.20.127.23 | Alpine host on ceos3-qkd:eth8 |
-| radius | 172.20.127.50 | FreeRADIUS (UDP 1812/1813) |
+| radius | 172.20.127.50 | FreeRADIUS (UDP 1812/1813, RadSec 2083) |
+| syslog | 172.20.127.53 | syslog-ng collector (TLS 6514) |
 
 ### Data plane (L3 routed segments)
 
@@ -180,17 +180,22 @@ Full contract: [docs/topology.md](docs/topology.md).
 
 | # | Check | Command |
 |---|-------|---------|
-| 1 | All nodes up | `make inspect` → 9× running |
+| 1 | All nodes up | `make inspect` → 10× running |
 | 2 | ceos1-both → radius | ping in MGMT VRF |
 | 3 | ceos2-pqc → radius | ping in MGMT VRF |
 | 3b | ceos3-qkd → radius | ping in MGMT VRF |
 | 4 | FreeRADIUS listening | `docker logs arista-quantum-safe-radius` |
 | 5 | RADIUS auth | `make test-radius` |
-| 6 | TLS 1.3 PQC (eAPI + gNMI + RadSec + SSH) | `make test-pqc` |
+| 6 | TLS 1.3 PQC (eAPI, gNMI, RESTCONF, RadSec, SSH; eos-sdk-rpc see below) | `make test-pqc` |
+| 6b | Syslog over TLS (all switches → syslog-ng) | `make test-syslog` |
 | 7 | Dynamic MACsec (802.1X + MKA) | `make test-macsec` |
 | 8 | Host routing | `make test-hosts` |
 
 Details and troubleshooting: [docs/verification.md](docs/verification.md).
+
+### Known limitation: eos-sdk-rpc
+
+`management api eos-sdk-rpc` (gRPC port **9543**, mTLS, ssl profile `GNMI`) is enabled on all switches and the profile lists hybrid KEX `X25519MLKEM768`. On cEOS **4.36.1F**, live handshakes still negotiate classical **`secp256r1`** — unlike gNMI on the same profile, which negotiates PQC. Session keys for SDK RPC are therefore **not** harvest-now-decrypt-later resistant on this release. `make test-pqc` reports `eos-sdk-rpc gRPC mTLS handshake (TLS 1.3, classical fallback)`. Details: [docs/eos-pqc.md](docs/eos-pqc.md).
 
 ## Multi-arch notes
 
@@ -212,6 +217,7 @@ Details and troubleshooting: [docs/verification.md](docs/verification.md).
 | `ARISTA_TOKEN` / ardl errors | Verify token; fall back to manual import |
 | No mgmt connectivity | Confirm gateway `<subnet>.1` in rendered `lab/.gen/ceos*.cfg` — see [docs/verification.md](docs/verification.md#mgmt-gateway) |
 | RADIUS issues | Check `lab/logs/radius/radius.log` and container logs |
+| Syslog issues | Check `lab/logs/syslog/eos.log` (created on first message), `make test-syslog`, [docs/syslog.md](docs/syslog.md) |
 | Host ping fails | Verify L3 addresses and static routes in [docs/topology.md](docs/topology.md) |
 | Reset lab host to clean slate | `make clean` — see [docs/verification.md](docs/verification.md#full-reset) |
 

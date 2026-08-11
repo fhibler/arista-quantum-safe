@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from lab.gen_pki import generate_radsec_pki
 from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
     DEFAULT_MGMT_SUBNET,
+    GEN_TOPOLOGY_ANNOTATIONS_PATH,
     GEN_TOPOLOGY_PATH,
     KME_A_PORT,
     KME_B_PORT,
@@ -19,6 +21,8 @@ from lab.topology_contract import (
     KME_KEY_SIZE,
     KME_SAE_CLIENT_NODES,
     KME_SAE_ID,
+    TOPOLOGY_ANNOTATIONS_PATH,
+    TOPOLOGY_PATH,
     mgmt_gateway,
     mgmt_ips_for_subnet,
     mgmt_prefix_len,
@@ -33,8 +37,16 @@ TEMPLATE_PATHS = {
 }
 
 
-def build_substitutions(*, ceos_image: str, mgmt_subnet: str) -> dict[str, str]:
+def build_substitutions(
+    *,
+    repo_root: Path,
+    ceos_image: str,
+    mgmt_subnet: str,
+) -> dict[str, str]:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
+    control_plane_acl = (repo_root / "configs/ceos/control-plane-acl.cfg.in").read_text(
+        encoding="utf-8",
+    )
     return {
         "CEOS_IMAGE": ceos_image,
         "MGMT_SUBNET": mgmt_subnet,
@@ -43,14 +55,14 @@ def build_substitutions(*, ceos_image: str, mgmt_subnet: str) -> dict[str, str]:
         "MGMT_IP_CEOS1_BOTH": ips["ceos1-both"],
         "MGMT_IP_CEOS2_PQC": ips["ceos2-pqc"],
         "MGMT_IP_CEOS3_QKD": ips["ceos3-qkd"],
-        "MGMT_IP_HOST1": ips["host1"],
-        "MGMT_IP_HOST2": ips["host2"],
-        "MGMT_IP_HOST3": ips["host3"],
         "MGMT_IP_RADIUS": ips["radius"],
+        "MGMT_IP_SYSLOG": ips["syslog"],
         "MGMT_IP_KME_A": ips["kme-a"],
         "MGMT_IP_KME_B": ips["kme-b"],
         "KME_SAE_CLIENT_IPS": ",".join(ips[node] for node in KME_SAE_CLIENT_NODES),
         "RADIUS_SERVER_IP": ips["radius"],
+        "SYSLOG_SERVER_IP": ips["syslog"],
+        "CONTROL_PLANE_ACL": control_plane_acl.rstrip("\n"),
     }
 
 
@@ -72,7 +84,11 @@ def render_topology(
     src: Path | None = None,
     dst: Path | None = None,
 ) -> Path:
-    substitutions = build_substitutions(ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
+    substitutions = build_substitutions(
+        repo_root=repo_root,
+        ceos_image=ceos_image,
+        mgmt_subnet=mgmt_subnet,
+    )
     topo_src = src or (repo_root / TOPOLOGY_PATH.relative_to(repo_root))
     topo_dst = dst or (repo_root / GEN_TOPOLOGY_PATH.relative_to(repo_root))
     content = topo_src.read_text(encoding="utf-8")
@@ -80,8 +96,26 @@ def render_topology(
     return topo_dst
 
 
+def render_topology_annotations(
+    *,
+    repo_root: Path,
+    src: Path | None = None,
+    dst: Path | None = None,
+) -> Path:
+    ann_src = src or (repo_root / TOPOLOGY_ANNOTATIONS_PATH.relative_to(repo_root))
+    ann_dst = dst or (repo_root / GEN_TOPOLOGY_ANNOTATIONS_PATH.relative_to(repo_root))
+    if not ann_src.is_file():
+        raise FileNotFoundError(ann_src)
+    shutil.copyfile(ann_src, ann_dst)
+    return ann_dst
+
+
 def render_config_templates(*, repo_root: Path, mgmt_subnet: str, ceos_image: str) -> None:
-    substitutions = build_substitutions(ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
+    substitutions = build_substitutions(
+        repo_root=repo_root,
+        ceos_image=ceos_image,
+        mgmt_subnet=mgmt_subnet,
+    )
     out_dir = repo_root / "lab" / ".gen"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +165,7 @@ def render_lab(
     generate_radsec_pki(
         repo_root=root,
         radius_ip=ips["radius"],
+        syslog_ip=ips["syslog"],
         ceos_hosts={"ceos1-both": "ceos1-both", "ceos2-pqc": "ceos2-pqc", "ceos3-qkd": "ceos3-qkd"},
         ceos_mgmt_ips={
             "ceos1-both": ips["ceos1-both"],
@@ -140,13 +175,15 @@ def render_lab(
     )
     generate_kme_pki(repo_root=root, kme_a_ip=ips["kme-a"], kme_b_ip=ips["kme-b"])
     render_kme_lab_conf(repo_root=root, mgmt_subnet=mgmt_subnet)
-    return render_topology(
+    topo_path = render_topology(
         repo_root=root,
         ceos_image=ceos_image,
         mgmt_subnet=mgmt_subnet,
         src=root / "lab" / "quantum-safe.clab.yml",
         dst=root / "lab" / ".gen.quantum-safe.clab.yml",
     )
+    render_topology_annotations(repo_root=root)
+    return topo_path
 
 
 def main(argv: list[str] | None = None) -> int:

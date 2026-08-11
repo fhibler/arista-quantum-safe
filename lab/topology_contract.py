@@ -14,9 +14,23 @@ LAB_NAME = "quantum-safe"
 CLAB_PREFIX = "arista"
 LAB_DISPLAY_NAME = "Quantum Safe"
 MGMT_NETWORK = "quantum-safe-mgmt"
+MGMT_BRIDGE_NODE = "mgmt-bridge"
+MGMT_BRIDGE_IFACES = {
+    "ceos1-both": "eth1",
+    "ceos2-pqc": "eth2",
+    "ceos3-qkd": "eth3",
+    "radius": "eth4",
+    "syslog": "eth5",
+    "kme-a": "eth6",
+    "kme-b": "eth7",
+}
+MGMT_BRIDGE_NODES = frozenset(MGMT_BRIDGE_IFACES)
 RADIUS_IMAGE = "quantum-safe-radius:latest"
+SYSLOG_IMAGE = "quantum-safe-syslog:latest"
 TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
+TOPOLOGY_ANNOTATIONS_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml.annotations.json"
 GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml"
+GEN_TOPOLOGY_ANNOTATIONS_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml.annotations.json"
 GEN_CONFIG_DIR = REPO_ROOT / "lab" / ".gen"
 
 
@@ -29,10 +43,8 @@ MGMT_HOST_SUFFIXES = {
     "ceos1-both": 11,
     "ceos2-pqc": 12,
     "ceos3-qkd": 13,
-    "host1": 21,
-    "host2": 22,
-    "host3": 23,
     "radius": 50,
+    "syslog": 53,
     "kme-a": 51,
     "kme-b": 52,
 }
@@ -73,6 +85,11 @@ LINKS = [
     ("ceos3-qkd:eth8", "host3:eth1"),
 ]
 
+MGMT_LINKS = [
+    (f"{node}:eth0", f"{MGMT_BRIDGE_NODE}:{bridge_iface}")
+    for node, bridge_iface in MGMT_BRIDGE_IFACES.items()
+]
+
 CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 
 DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
@@ -83,6 +100,8 @@ MGMT_VRF_ENV = "MGMT"
 RADSEC_SECRET = "radsec"
 RADSEC_PORT = 2083
 SSL_PROFILE = "RADSEC"
+SYSLOG_SSL_PROFILE = "SYSLOG"
+SYSLOG_PORT = 6514
 EAPI_SSL_PROFILE = "EAPI"
 GNMI_SSL_PROFILE = "GNMI"
 GNMI_PORT = 6030
@@ -90,6 +109,7 @@ RESTCONF_SSL_PROFILE = "RESTCONF"
 RESTCONF_PORT = 6020
 EOSSDKRPC_SSL_PROFILE = GNMI_SSL_PROFILE
 EOSSDKRPC_PORT = 9543
+CONTROL_PLANE_ACL = "quantum-safe-cp"
 PROBE_CLIENT_CERT = "/etc/raddb/certs/probe/{node}-client.pem"
 PROBE_CLIENT_KEY = "/etc/raddb/certs/probe/{node}-client.key"
 MACSEC_PROFILE = "dynamic"
@@ -103,6 +123,7 @@ SSH_PQC_CIPHERS = (
 )
 SSH_PQC_MACS = "hmac-sha2-256 hmac-sha2-512"
 RADIUS_SERVER_IP = MGMT_IPS["radius"]
+SYSLOG_SERVER_IP = MGMT_IPS["syslog"]
 KME_A_SERVER_IP = MGMT_IPS["kme-a"]
 KME_B_SERVER_IP = MGMT_IPS["kme-b"]
 
@@ -208,6 +229,15 @@ RADIUS_BINDS = [
     "../lab/.gen/pki/ceos3-qkd-client.pem:/etc/raddb/certs/probe/ceos3-qkd-client.pem:ro",
     "../lab/.gen/pki/ceos3-qkd-client.key:/etc/raddb/certs/probe/ceos3-qkd-client.key:ro",
     "logs/radius:/var/log/radius",
+]
+
+SYSLOG_BINDS = [
+    "../configs/syslog/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro",
+    "../docker/syslog/openssl-pqc.cnf:/etc/syslog-ng/openssl-pqc.cnf:ro",
+    "../lab/.gen/pki/syslog-server.pem:/etc/syslog-ng/certs/server.pem:ro",
+    "../lab/.gen/pki/syslog-server.key:/etc/syslog-ng/certs/server.key:ro",
+    "../lab/.gen/pki/ca.pem:/etc/syslog-ng/certs/ca.pem:ro",
+    "logs/syslog:/var/log/syslog",
 ]
 
 KME_BINDS = [
@@ -375,6 +405,8 @@ PKI_FILES = [
     "ceos3-qkd-eapi.key",
     "ceos3-qkd-gnmi.pem",
     "ceos3-qkd-gnmi.key",
+    "syslog-server.pem",
+    "syslog-server.key",
 ]
 
 CEOS_STARTUP_CONFIGS = {
@@ -392,6 +424,8 @@ CONFIG_PATHS = {
     "tls_site": REPO_ROOT / "configs" / "radius" / "raddb" / "sites-available" / "tls",
     "radiusd": REPO_ROOT / "configs" / "radius" / "raddb" / "radiusd.conf",
     "dockerfile": REPO_ROOT / "docker" / "radius" / "Dockerfile",
+    "syslog_dockerfile": REPO_ROOT / "docker" / "syslog" / "Dockerfile",
+    "syslog_conf": REPO_ROOT / "configs" / "syslog" / "syslog-ng.conf",
     "kme_dockerfile": REPO_ROOT / "docker" / "kme" / "Dockerfile",
     "eap": REPO_ROOT / "configs" / "radius" / "raddb" / "mods-available" / "eap",
 }
@@ -496,10 +530,13 @@ def validate_ceos_configs(
     mgmt_subnet: str | None = None,
 ) -> list[str]:
     """Validate rendered cEOS startup configs against mgmt and data-plane contract."""
+    from lab.syslog_checks import cleartext_syslog_lines
+
     errors: list[str] = []
     root = repo_root or REPO_ROOT
     expected_plane = ceos_data_plane(mgmt_subnet)
     radius_ip = mgmt_ips_for_subnet(mgmt_subnet)["radius"]
+    syslog_ip = mgmt_ips_for_subnet(mgmt_subnet)["syslog"]
 
     for ceos, expected in expected_plane.items():
         path = root / "lab" / ".gen" / f"{ceos}.cfg"
@@ -537,6 +574,28 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must configure PQC-hybrid key establishment groups")
         if f"server {radius_ip} tls vrf MGMT" not in text:
             errors.append(f"{ceos}.cfg aaa group must use RadSec transport in MGMT VRF")
+        if "logging vrf MGMT" not in text:
+            errors.append(f"{ceos}.cfg must configure remote syslog in vrf MGMT")
+        if (
+            f"logging vrf MGMT host {syslog_ip} {SYSLOG_PORT} protocol tls ssl-profile {SYSLOG_SSL_PROFILE}"
+            not in text
+        ):
+            errors.append(
+                f"{ceos}.cfg must forward syslog to {syslog_ip}:{SYSLOG_PORT} via TLS "
+                f"profile {SYSLOG_SSL_PROFILE}"
+            )
+        logging_section = "\n".join(
+            line for line in text.splitlines() if line.strip().startswith("logging")
+        )
+        cleartext = cleartext_syslog_lines(logging_section)
+        if cleartext:
+            errors.append(
+                f"{ceos}.cfg must not configure cleartext syslog hosts: {cleartext!r}"
+            )
+        if "logging trap informational" not in text:
+            errors.append(f"{ceos}.cfg must trap informational syslog messages")
+        if f"ssl profile {SYSLOG_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {SYSLOG_SSL_PROFILE}")
         if f"ssl profile {EAPI_SSL_PROFILE}" not in text:
             errors.append(f"{ceos}.cfg must define ssl profile {EAPI_SSL_PROFILE}")
         if f"protocol https ssl profile {EAPI_SSL_PROFILE}" not in text:
@@ -563,13 +622,39 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must enable management api eos-sdk-rpc")
         if f"ssl profile {GNMI_SSL_PROFILE}" not in text.split("management api eos-sdk-rpc", 1)[-1]:
             errors.append(f"{ceos}.cfg eos-sdk-rpc transport must reference ssl profile {GNMI_SSL_PROFILE}")
+        eossdkrpc = text.split("management api eos-sdk-rpc", 1)[-1].split("!", 1)[0]
+        if "local interface Management0" not in eossdkrpc:
+            errors.append(f"{ceos}.cfg eos-sdk-rpc transport must bind local interface Management0")
+        if "service all" not in eossdkrpc:
+            errors.append(f"{ceos}.cfg eos-sdk-rpc transport must enable service all")
+        if "no disabled" not in eossdkrpc:
+            errors.append(f"{ceos}.cfg eos-sdk-rpc transport must be enabled (no disabled)")
         security = text.split("management security", 1)[-1]
+        syslog_profile = security.split(f"ssl profile {SYSLOG_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
+        if f"certificate {ceos}-client.pem key {ceos}-client.key" not in syslog_profile:
+            errors.append(f"{ceos}.cfg SYSLOG ssl profile must use per-switch client certificate")
+        if "trust certificate radsec-ca.pem" not in syslog_profile:
+            errors.append(f"{ceos}.cfg SYSLOG ssl profile must trust radsec-ca.pem")
         gnmi_profile = security.split("ssl profile GNMI", 1)[-1].split("!", 1)[0]
         if "trust certificate radsec-ca.pem" not in gnmi_profile:
             errors.append(f"{ceos}.cfg GNMI ssl profile must trust radsec-ca.pem for mTLS")
         restconf_profile = security.split(f"ssl profile {RESTCONF_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
         if "trust certificate radsec-ca.pem" not in restconf_profile:
             errors.append(f"{ceos}.cfg RESTCONF ssl profile must trust radsec-ca.pem for mTLS")
+        if f"ip access-list {CONTROL_PLANE_ACL}" not in text:
+            errors.append(f"{ceos}.cfg must define control-plane ACL {CONTROL_PLANE_ACL}")
+        if f"permit tcp any any eq {RESTCONF_PORT}" not in text:
+            errors.append(
+                f"{ceos}.cfg control-plane ACL must permit TCP {RESTCONF_PORT} (RESTCONF)"
+            )
+        if f"permit tcp any any eq {EOSSDKRPC_PORT}" not in text:
+            errors.append(
+                f"{ceos}.cfg control-plane ACL must permit TCP {EOSSDKRPC_PORT} (eos-sdk-rpc)"
+            )
+        if f"ip access-group {CONTROL_PLANE_ACL} vrf MGMT in" not in text:
+            errors.append(
+                f"{ceos}.cfg must apply {CONTROL_PLANE_ACL} on system control-plane vrf MGMT"
+            )
         if "copy flash:" in text:
             errors.append(f"{ceos}.cfg must not use copy flash in startup-config (use containerlab exec)")
         if "aaa group server radius RADIUS" not in text:
@@ -647,6 +732,58 @@ def validate_ceos_configs(
                 errors.append(f"{ceos}.cfg must not configure MACsec (not enabled yet)")
             if "dot1x" in text:
                 errors.append(f"{ceos}.cfg must not configure dot1x (MACsec not enabled yet)")
+
+    return errors
+
+
+def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
+    """Validate syslog-ng image and collector configuration."""
+    errors: list[str] = []
+    root = repo_root or REPO_ROOT
+
+    dockerfile_path = root / "docker" / "syslog" / "Dockerfile"
+    syslog_conf_path = root / "configs" / "syslog" / "syslog-ng.conf"
+    openssl_cnf_path = root / "docker" / "syslog" / "openssl-pqc.cnf"
+
+    if not dockerfile_path.is_file():
+        errors.append(f"missing {dockerfile_path.relative_to(root)}")
+    if not syslog_conf_path.is_file():
+        errors.append(f"missing {syslog_conf_path.relative_to(root)}")
+    if not openssl_cnf_path.is_file():
+        errors.append(f"missing {openssl_cnf_path.relative_to(root)}")
+
+    if syslog_conf_path.is_file():
+        syslog_conf = syslog_conf_path.read_text(encoding="utf-8")
+        if f"port({SYSLOG_PORT})" not in syslog_conf:
+            errors.append(f"syslog-ng.conf must listen on port {SYSLOG_PORT}")
+        if 'transport("tls")' not in syslog_conf:
+            errors.append("syslog-ng.conf must use TLS transport")
+        if re.search(r"port\((514|601)\)", syslog_conf):
+            errors.append("syslog-ng.conf must not listen on cleartext syslog ports 514/601")
+
+    if openssl_cnf_path.is_file():
+        openssl_cnf = openssl_cnf_path.read_text(encoding="utf-8")
+        if "X25519MLKEM768" not in openssl_cnf:
+            errors.append("syslog openssl-pqc.cnf must advertise X25519MLKEM768")
+        if "MinProtocol = TLSv1.3" not in openssl_cnf:
+            errors.append("syslog openssl-pqc.cnf must require TLS 1.3")
+
+    if dockerfile_path.is_file():
+        dockerfile = dockerfile_path.read_text(encoding="utf-8")
+        for fragment in (
+            "openssl-3.5.7",
+            "SYSLOG_NG_VERSION=4.8.1",
+            "openssl-pqc.cnf",
+            "OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf",
+            "syslog-ng.conf",
+        ):
+            if fragment not in dockerfile:
+                errors.append(f"syslog Dockerfile must contain: {fragment!r}")
+
+    pki_dir = root / "lab" / ".gen" / "pki"
+    for name in ("syslog-server.pem", "syslog-server.key", "ca.pem"):
+        if not (pki_dir / name).is_file():
+            errors.append(f"missing lab/.gen/pki/{name} (run make gen-topo)")
 
     return errors
 
@@ -810,10 +947,20 @@ def validate_topology(
     mgmt = data.get("mgmt", {})
     if mgmt.get("network") != MGMT_NETWORK:
         errors.append(f"mgmt.network must be {MGMT_NETWORK}")
+    if mgmt.get("bridge") != MGMT_BRIDGE_NODE:
+        errors.append(f"mgmt.bridge must be {MGMT_BRIDGE_NODE}")
     if mgmt.get("ipv4-subnet") != expected_mgmt_subnet:
         errors.append(f"mgmt.ipv4-subnet must be {expected_mgmt_subnet}")
+    expected_gateway = mgmt_gateway(expected_mgmt_subnet)
+    if mgmt.get("ipv4-gw") not in (expected_gateway, "${MGMT_GATEWAY}"):
+        errors.append(f"mgmt.ipv4-gw must be {expected_gateway}")
 
     topology = data.get("topology", {})
+    bridge_cfg = topology.get("nodes", {}).get(MGMT_BRIDGE_NODE)
+    if bridge_cfg is None:
+        errors.append(f"missing node {MGMT_BRIDGE_NODE}")
+    elif bridge_cfg.get("kind") != "bridge":
+        errors.append(f"{MGMT_BRIDGE_NODE} kind must be bridge")
     kinds = topology.get("kinds", {}).get("arista_ceos", {})
     actual_ceos_image = kinds.get("image")
     if actual_ceos_image not in (expected_ceos_image, CEOS_IMAGE_PLACEHOLDER):
@@ -830,12 +977,39 @@ def validate_topology(
             continue
         if node_cfg.get("mgmt-ipv4") != expected_ip:
             errors.append(f"{node} mgmt-ipv4 must be {expected_ip}")
+        if node_cfg.get("network-mode") != "none":
+            errors.append(f"{node} network-mode must be none (eth0 wired to {MGMT_BRIDGE_NODE})")
+
+    for host in HOST_DATA_PLANE:
+        host_cfg = nodes.get(host)
+        if host_cfg is None:
+            errors.append(f"missing node {host}")
+            continue
+        if host_cfg.get("mgmt-ipv4"):
+            errors.append(f"{host} must not have mgmt-ipv4 (data-plane only)")
+        if host_cfg.get("network-mode") != "none":
+            errors.append(f"{host} network-mode must be none (data-plane only)")
 
     radius_cfg = nodes.get("radius")
     if radius_cfg is None:
         errors.append("missing node radius")
     elif radius_cfg.get("image") != RADIUS_IMAGE:
         errors.append(f"radius image must be {RADIUS_IMAGE}")
+
+    syslog_cfg = nodes.get("syslog")
+    if syslog_cfg is None:
+        errors.append("missing node syslog")
+    else:
+        if syslog_cfg.get("kind") != "linux":
+            errors.append("syslog kind must be linux")
+        if syslog_cfg.get("image") != SYSLOG_IMAGE:
+            errors.append(f"syslog image must be {SYSLOG_IMAGE}")
+        if syslog_cfg.get("mgmt-ipv4") != expected_mgmt_ips["syslog"]:
+            errors.append(f"syslog mgmt-ipv4 must be {expected_mgmt_ips['syslog']}")
+        syslog_binds = syslog_cfg.get("binds", [])
+        for expected_bind in SYSLOG_BINDS:
+            if expected_bind not in syslog_binds:
+                errors.append(f"syslog must bind {expected_bind}")
 
     for ceos, expected in CEOS_STARTUP_CONFIGS.items():
         startup = nodes.get(ceos, {}).get("startup-config")
@@ -892,14 +1066,16 @@ def validate_topology(
         if "NET_ADMIN" not in cap_add:
             errors.append("kme-b must include cap-add NET_ADMIN for mgmt-plane iptables isolation")
 
-    kme_endpoints = {
+    kme_data_plane_endpoints = {
         endpoint
         for link in topology.get("links", [])
         for endpoint in link.get("endpoints", [])
         if endpoint.startswith("kme-a:") or endpoint.startswith("kme-b:")
-    }
-    if kme_endpoints:
-        errors.append(f"KME nodes must not have data-plane links (found {sorted(kme_endpoints)})")
+    } - {f"kme-a:eth0", f"kme-b:eth0"}
+    if kme_data_plane_endpoints:
+        errors.append(
+            f"KME nodes must not have data-plane links (found {sorted(kme_data_plane_endpoints)})"
+        )
 
     for ceos, expected_binds in CEOS_BINDS.items():
         actual_binds = nodes.get(ceos, {}).get("binds", [])
@@ -917,13 +1093,14 @@ def validate_topology(
         for link in topology.get("links", [])
         if "endpoints" in link
     }
-    for endpoints in LINKS:
+    for endpoints in LINKS + MGMT_LINKS:
         if endpoints not in actual_links and tuple(reversed(endpoints)) not in actual_links:
             errors.append(f"missing link {endpoints[0]} <-> {endpoints[1]}")
 
     errors.extend(validate_host_data_plane(nodes))
     errors.extend(validate_ceos_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
     errors.extend(validate_radius_configs(repo_root, mgmt_subnet=expected_mgmt_subnet))
+    errors.extend(validate_syslog_configs(repo_root))
     errors.extend(validate_topo_host_paths(repo_root))
 
     return errors

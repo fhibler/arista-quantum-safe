@@ -10,6 +10,7 @@ from lab.topology_contract import (
     CEOS_STARTUP_CONFIGS,
     CLAB_PREFIX,
     DEFAULT_CEOS_IMAGE,
+    GEN_TOPOLOGY_ANNOTATIONS_PATH,
     HOST_DATA_PLANE,
     KME_A_PORT,
     KME_B_PORT,
@@ -17,8 +18,12 @@ from lab.topology_contract import (
     KME_IMAGE,
     KME_NODES,
     LAB_NAME,
+    MGMT_BRIDGE_NODE,
+    MGMT_LINKS,
     MGMT_NETWORK,
     MGMT_SUBNET_PLACEHOLDER,
+    SYSLOG_IMAGE,
+    SYSLOG_BINDS,
     RADIUS_IMAGE,
     RADIUS_BINDS,
     REPO_ROOT,
@@ -52,6 +57,25 @@ def test_topology_yaml_parses(topology: dict) -> None:
     assert topology["name"] == LAB_NAME
     assert topology["prefix"] == CLAB_PREFIX
     assert topology["mgmt"]["network"] == MGMT_NETWORK
+    assert topology["mgmt"]["bridge"] == MGMT_BRIDGE_NODE
+
+
+def test_topology_mgmt_bridge_links(topology: dict) -> None:
+    actual_links = {
+        tuple(link["endpoints"])
+        for link in topology["topology"]["links"]
+        if "endpoints" in link
+    }
+    for endpoints in MGMT_LINKS:
+        assert endpoints in actual_links or tuple(reversed(endpoints)) in actual_links
+    bridge = topology["topology"]["nodes"][MGMT_BRIDGE_NODE]
+    assert bridge["kind"] == "bridge"
+
+
+def test_generated_topology_annotations_copy() -> None:
+    assert GEN_TOPOLOGY_ANNOTATIONS_PATH.is_file()
+    annotations = GEN_TOPOLOGY_ANNOTATIONS_PATH.read_text(encoding="utf-8")
+    assert '"id": "mgmt-bridge"' in annotations
 
 
 def test_topology_template_placeholders(topology: dict) -> None:
@@ -101,6 +125,17 @@ def test_kme_bind_mounts(topology: dict, node: str, expected_bind: str) -> None:
 
 def test_radius_image_in_topology(topology: dict) -> None:
     assert topology["topology"]["nodes"]["radius"]["image"] == RADIUS_IMAGE
+
+
+def test_syslog_image_in_topology(topology: dict) -> None:
+    assert topology["topology"]["nodes"]["syslog"]["image"] == SYSLOG_IMAGE
+    assert topology["topology"]["nodes"]["syslog"]["mgmt-ipv4"] == "${MGMT_IP_SYSLOG}"
+
+
+@pytest.mark.parametrize("expected_bind", SYSLOG_BINDS)
+def test_syslog_bind_mounts(topology: dict, expected_bind: str) -> None:
+    binds = topology["topology"]["nodes"]["syslog"]["binds"]
+    assert expected_bind in binds
 
 
 def test_kme_a_sae_client_allowed(topology: dict) -> None:

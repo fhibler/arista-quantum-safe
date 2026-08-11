@@ -17,6 +17,7 @@ def test_generate_radsec_pki_files(tmp_path: Path) -> None:
     out = generate_radsec_pki(
         repo_root=tmp_path,
         radius_ip="172.20.127.50",
+        syslog_ip="172.20.127.53",
         ceos_mgmt_ips={
             "ceos1-both": "172.20.127.11",
             "ceos2-pqc": "172.20.127.12",

@@ -10,22 +10,10 @@ import subprocess
 import sys
 from typing import Sequence
 
-from lab.kme_http import (
-    CEOS_KME_CA_CERT,
-    CEOS_KME_SAE_B_CERT,
-    CEOS_KME_SAE_B_KEY,
-    CEOS_KME_SAE_CERT,
-    CEOS_KME_SAE_KEY,
-    DOCKER_EXEC_TIMEOUT_SEC,
-    KME_CA_CERT_CONTAINER,
-    ceos_kme_curl_exec_argv,
-    kme_curl_argv,
-)
+from lab.ceos_json import assert_json_contains as _json_contains
+from lab.test_pqc_connections import PqcConnectionError, ceos_cli, ceos_show_json
 from lab.topology_contract import (
-    CEOS_KME_NODES,
-    KME_B_SAE_ID,
-    KME_KEY_SIZE,
-    KME_SAE_ID,
+    HOST_DATA_PLANE,
     LAB_NAME,
     container_name,
     mgmt_ips_for_subnet,
@@ -112,28 +100,36 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
     if ":2083" not in listener.stdout:
         raise LabTestError("RadSec listener not found on port 2083")
 
-    checks = (
-        ("ping radius (MGMT VRF)", f"enable\nping vrf MGMT {radius_ip} repeat 3\n", "0% packet loss"),
-        ("ssl profile RADSEC", "enable\nshow management security ssl profile RADSEC\n", "valid"),
+    json_checks = (
+        ("ping radius (MGMT VRF)", f"ping vrf MGMT {radius_ip} repeat 3", "0"),
+        ("ssl profile RADSEC", "show management security ssl profile RADSEC", "valid"),
         (
             "ssl profile RADSEC detail (PQC groups)",
-            "enable\nshow management security ssl profile RADSEC detail\n",
+            "show management security ssl profile RADSEC detail",
             "X25519MLKEM768",
         ),
-        ("RadSec client config", "enable\nshow running-config | section radius\n", "tls ssl-profile RADSEC"),
+    )
+    text_checks = (
+        ("RadSec client config", "show running-config | section radius", "tls ssl-profile RADSEC"),
         (
             "RadSec AAA test",
-            f"enable\ntest aaa group RADIUS server {radius_ip} tls port 2083 vrf MGMT\n",
+            f"test aaa group RADIUS server {radius_ip} tls port 2083 vrf MGMT",
             "successfully authenticated",
         ),
     )
     for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
         container = container_name(node, lab_name=clab_name)
-        for label, commands, expect in checks:
+        for label, show_command, expect in json_checks:
+            try:
+                payload = ceos_show_json(container, show_command, verbose=verbose)
+                _json_contains(payload, expect, label=f"{node} {label}")
+            except PqcConnectionError as exc:
+                raise LabTestError(str(exc)) from exc
+        for label, command, expect in text_checks:
             result = run_step(
                 f"{node} {label}",
                 ["docker", "exec", "-i", container, "Cli"],
-                input_text=commands,
+                input_text=f"enable\n{command}\n",
                 verbose=verbose,
             )
             if expect not in result.stdout:
@@ -141,158 +137,6 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
 
     if not verbose:
         print("RADIUS: OK")
-
-
-def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: bool) -> None:
-    section("KME", verbose=verbose)
-    checks = (
-        (
-            "SAE status (kme-a)",
-            container_name("kme-a", lab_name=clab_name),
-            f"https://{kme_a_ip}:8010/api/v1/keys/{KME_SAE_ID}/status",
-            "/certs/sae.crt.pem",
-            "/certs/sae.key.pem",
-            '"source_KME_ID"',
-        ),
-        (
-            "kme-a → kme-b peer status",
-            container_name("kme-a", lab_name=clab_name),
-            f"https://{kme_b_ip}:8020/api/v1/kme/status",
-            "/certs/kme-a.crt.pem",
-            "/certs/kme-a.key.pem",
-            '"KME_ID"',
-        ),
-        (
-            "kme-b → kme-a peer status",
-            container_name("kme-b", lab_name=clab_name),
-            f"https://{kme_a_ip}:8010/api/v1/kme/status",
-            "/certs/kme-b.crt.pem",
-            "/certs/kme-b.key.pem",
-            '"KME_ID"',
-        ),
-    )
-
-    for title, container, url, cert, key, expect in checks:
-        argv = ["docker", "exec", container, *kme_curl_argv(url=url, cert=cert, key=key)]
-        result = run_step(
-            title,
-            argv,
-            verbose=verbose,
-            timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
-        )
-        if expect not in result.stdout:
-            raise LabTestError(f"{title} missing expected field {expect}")
-        if verbose:
-            print("--- formatted JSON ---")
-            print(format_json(result.stdout))
-
-    if not verbose:
-        print(f"KME SAE status OK (master SAE {KME_SAE_ID})")
-        print("KME peer status OK (kme-a <-> kme-b)")
-
-    kme_a_container = container_name("kme-a", lab_name=clab_name)
-    enc_body = json.dumps({"number": 1, "size": KME_KEY_SIZE * 8})
-    enc = run_step(
-        "KME enc_keys (master SAE, AES-256)",
-        [
-            "docker",
-            "exec",
-            kme_a_container,
-            *kme_curl_argv(
-                url=f"https://{kme_a_ip}:8010/api/v1/keys/{KME_B_SAE_ID}/enc_keys",
-                cert="/certs/sae.crt.pem",
-                key="/certs/sae.key.pem",
-                method="POST",
-                body=enc_body,
-            ),
-        ],
-        verbose=verbose,
-        timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
-    )
-    enc_payload = json.loads(enc.stdout)
-    keys = enc_payload.get("keys")
-    if not isinstance(keys, list) or not keys:
-        raise LabTestError(f"enc_keys missing keys[]: {enc_payload!r}")
-    key_id = keys[0].get("key_ID")
-    key_b64 = keys[0].get("key")
-    if not isinstance(key_id, str) or not isinstance(key_b64, str):
-        raise LabTestError(f"enc_keys missing key_ID/key: {enc_payload!r}")
-
-    dec_body = json.dumps({"key_IDs": [{"key_ID": key_id}]})
-    dec = run_step(
-        "KME dec_keys (slave SAE, AES-256)",
-        [
-            "docker",
-            "exec",
-            kme_a_container,
-            *kme_curl_argv(
-                url=f"https://{kme_b_ip}:8020/api/v1/keys/{KME_SAE_ID}/dec_keys",
-                cert="/certs/sae-b.crt.pem",
-                key="/certs/sae-b.key.pem",
-                ca_cert=KME_CA_CERT_CONTAINER,
-                method="POST",
-                body=dec_body,
-            ),
-        ],
-        verbose=verbose,
-        timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
-    )
-    dec_payload = json.loads(dec.stdout)
-    dec_keys = dec_payload.get("keys")
-    if not isinstance(dec_keys, list) or len(dec_keys) != 1:
-        raise LabTestError(f"dec_keys expected one key: {dec_payload!r}")
-    if dec_keys[0].get("key_ID") != key_id:
-        raise LabTestError(f"dec_keys key_ID mismatch: {dec_payload!r}")
-    if dec_keys[0].get("key") != key_b64:
-        raise LabTestError("dec_keys material does not match enc_keys")
-
-    if verbose:
-        print("--- formatted JSON ---")
-        print(format_json(json.dumps({"key_ID": key_id, "key_size": KME_KEY_SIZE})))
-    if not verbose:
-        print(f"KME enc/dec round-trip OK (key_ID {key_id}, {KME_KEY_SIZE} bytes)")
-
-    ceos_kme_checks = (
-        (
-            "kme-a SAE status (TLS chain verify)",
-            kme_a_ip,
-            KME_SAE_ID,
-            CEOS_KME_SAE_CERT,
-            CEOS_KME_SAE_KEY,
-            '"source_KME_ID"',
-        ),
-        (
-            "kme-b slave SAE status (TLS chain verify)",
-            kme_b_ip,
-            KME_B_SAE_ID,
-            CEOS_KME_SAE_B_CERT,
-            CEOS_KME_SAE_B_KEY,
-            '"stored_key_count"',
-        ),
-    )
-    for node in sorted(CEOS_KME_NODES):
-        container = container_name(node, lab_name=clab_name)
-        for label, kme_ip, sae_id, cert, key, expect in ceos_kme_checks:
-            port = 8010 if kme_ip == kme_a_ip else 8020
-            url = f"https://{kme_ip}:{port}/api/v1/keys/{sae_id}/status"
-            argv = ceos_kme_curl_exec_argv(container, url=url, cert=cert, key=key)
-            result = run_step(
-                f"{node} {label}",
-                argv,
-                verbose=verbose,
-                timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
-            )
-            if expect not in result.stdout:
-                raise LabTestError(f"{node} {label}: expected {expect!r}")
-            if verbose:
-                print("--- formatted JSON ---")
-                print(format_json(result.stdout))
-
-    if not verbose:
-        print(
-            f"KME TLS chain verified from {', '.join(sorted(CEOS_KME_NODES))} "
-            f"(lab CA {CEOS_KME_CA_CERT})"
-        )
 
 
 def run_python_module(title: str, module: str, *args: str, verbose: bool = False) -> None:
@@ -310,21 +154,106 @@ def run_python_module(title: str, module: str, *args: str, verbose: bool = False
         raise LabTestError(f"{title} failed (exit {result.returncode})")
 
 
+def host_data_ips() -> dict[str, str]:
+    """Return host name → data-plane IP (without prefix)."""
+    return {host: spec["addr"].split("/")[0] for host, spec in HOST_DATA_PLANE.items()}
+
+
+def host_ping_pairs() -> tuple[tuple[str, str, str], ...]:
+    """Return (src_host, dst_host, dst_ip) for every off-diagonal pair."""
+    ips = host_data_ips()
+    hosts = tuple(HOST_DATA_PLANE)
+    return tuple(
+        (src, dst, ips[dst])
+        for src in hosts
+        for dst in hosts
+        if src != dst
+    )
+
+
+def format_host_connectivity_matrix(results: dict[tuple[str, str], bool]) -> str:
+    """Return an ASCII ping matrix for host-to-host data-plane reachability."""
+    hosts = tuple(HOST_DATA_PLANE)
+    ips = host_data_ips()
+    cell_width = max(4, max(len(ip) for ip in ips.values()))
+    label_width = max(len(host) for host in hosts) + 3
+
+    lines = [
+        "HOST ROUTING (data-plane ping matrix)",
+        "",
+        f"{'':>{label_width}}" + "".join(f"{host:>{cell_width + 2}}" for host in hosts),
+        f"{'':>{label_width}}" + "".join(f"{ips[host]:>{cell_width + 2}}" for host in hosts),
+        "",
+    ]
+    for src in hosts:
+        row = f"{src} →".ljust(label_width)
+        for dst in hosts:
+            if src == dst:
+                cell = "—"
+            elif results.get((src, dst)):
+                cell = "OK"
+            else:
+                cell = "FAIL"
+            row += f"{cell:>{cell_width + 2}}"
+        lines.append(row)
+    return "\n".join(lines)
+
+
+def _ping_host(
+    *,
+    src_host: str,
+    dst_host: str,
+    target_ip: str,
+    clab_name: str,
+    verbose: bool,
+) -> bool:
+    title = f"{src_host} ping {dst_host} ({target_ip})"
+    argv = [
+        "docker",
+        "exec",
+        container_name(src_host, lab_name=clab_name),
+        "ping",
+        "-c3",
+        "-W2",
+        target_ip,
+    ]
+    if verbose:
+        try:
+            run_step(title, argv, verbose=True)
+            return True
+        except LabTestError:
+            return False
+
+    try:
+        result = subprocess.run(
+            argv,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
+
+
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     section("HOST ROUTING", verbose=verbose)
-    checks = (
-        ("host1 ping host2", container_name("host1", lab_name=clab_name), "10.0.2.1"),
-        ("host1 ping host3", container_name("host1", lab_name=clab_name), "10.0.3.1"),
-        ("host3 ping host1", container_name("host3", lab_name=clab_name), "10.0.1.1"),
-    )
-    for title, container, target in checks:
-        run_step(
-            title,
-            ["docker", "exec", container, "ping", "-c3", target],
+    results: dict[tuple[str, str], bool] = {}
+    for src_host, dst_host, target_ip in host_ping_pairs():
+        results[(src_host, dst_host)] = _ping_host(
+            src_host=src_host,
+            dst_host=dst_host,
+            target_ip=target_ip,
+            clab_name=clab_name,
             verbose=verbose,
         )
-    if not verbose:
-        print("HOSTS: OK")
+
+    print(format_host_connectivity_matrix(results))
+
+    failed = [f"{src} → {dst}" for (src, dst), ok in results.items() if not ok]
+    if failed:
+        raise LabTestError(f"host routing failed: {', '.join(failed)}")
 
 
 def run_sections(
@@ -342,10 +271,13 @@ def run_sections(
         elif name == "radius":
             run_radius_checks(clab_name=clab_name, radius_ip=ips["radius"], verbose=verbose)
         elif name == "kme":
-            run_kme_checks(
-                clab_name=clab_name,
-                kme_a_ip=ips["kme-a"],
-                kme_b_ip=ips["kme-b"],
+            run_python_module(
+                "KME",
+                "lab.test_kme",
+                "--clab-name",
+                clab_name,
+                "--mgmt-subnet",
+                mgmt_subnet,
                 verbose=verbose,
             )
         elif name == "pqc":

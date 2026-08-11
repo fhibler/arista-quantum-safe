@@ -52,6 +52,7 @@ def test_makefile_exists() -> None:
         "download-ceos",
         "download-ceos-help",
         "build-radius",
+        "build-syslog",
         "build-kme",
         "deploy-kme",
         "wait-kme-pool",
@@ -68,6 +69,7 @@ def test_makefile_exists() -> None:
         "test-radius",
         "test-kme",
         "test-pqc",
+        "test-syslog",
         "test-hosts",
     ],
 )
@@ -218,7 +220,10 @@ def test_download_ceos_recipe_installs_eos_downloader_when_missing() -> None:
     assert "eos-downloader>=0.16.0" in content
     assert "import eos_downloader" in content
     assert "rm -rf .venv && python3 -m venv .venv" in content
+    assert 'PY="$$ROOT/.venv/bin/python3"' in content
     assert "! .venv/bin/ardl" not in content
+    assert ".venv/bin/ardl" not in content
+    assert "eos_downloader.cli.cli" in content
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
@@ -260,6 +265,14 @@ def test_test_radius_recipe_delegates_to_test_lab() -> None:
     assert "VERBOSE" in radius
 
 
+def test_test_kme_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-kme:" in content
+    kme = content.split("test-kme:")[1].split("test-pqc:")[0]
+    assert "lab.test_kme" in kme
+    assert "--section kme" not in kme
+
+
 def test_test_pqc_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "test-pqc:" in content
@@ -284,6 +297,7 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert "rm -rf .venv .pytest_cache" in clean
     assert "docker images" in clean
     assert "quantum-safe-radius" in clean
+    assert "quantum-safe-syslog" in clean
     assert "quantum-safe-kme" in clean
     assert "docker rmi" in clean
     assert "rm -f .env" in clean

@@ -9,14 +9,17 @@ CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download
 CLAB_TOPO_SRC := lab/quantum-safe.clab.yml
+CLAB_TOPO_ANN := lab/quantum-safe.clab.yml.annotations.json
 CLAB_TOPO_GEN := lab/.gen.quantum-safe.clab.yml
 CLAB_PREFIX   := arista
 CLAB_NAME     := quantum-safe
 CLAB_MGMT_NETWORK := quantum-safe-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem syslog-server.pem syslog-server.key ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
 RADIUS_IMAGE  := quantum-safe-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
+SYSLOG_IMAGE  := quantum-safe-syslog:latest
+SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
 KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -31,14 +34,14 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-radius build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
+        download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
+        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd test-lab test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
+$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
@@ -156,12 +159,14 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 	if [ ! -x .venv/bin/python3 ] || ! .venv/bin/python3 -m pip --version >/dev/null 2>&1; then \
 		rm -rf .venv && python3 -m venv .venv; \
 	fi; \
-	if ! .venv/bin/python3 -c "import eos_downloader" 2>/dev/null; then \
-		.venv/bin/python3 -m pip install 'eos-downloader>=0.16.0'; \
+	ROOT=$$(pwd); \
+	PY="$$ROOT/.venv/bin/python3"; \
+	if ! "$$PY" -c "import eos_downloader" 2>/dev/null; then \
+		"$$PY" -m pip install 'eos-downloader>=0.16.0'; \
 	fi; \
 	mkdir -p "$(CEOS_DOWNLOAD_DIR)"; \
 	cd "$(CEOS_DOWNLOAD_DIR)" && \
-	ARISTA_GET_EOS_OUTPUT="." ../.venv/bin/ardl --token "$$ARISTA_TOKEN" get eos \
+	ARISTA_GET_EOS_OUTPUT="." "$$PY" -m eos_downloader.cli.cli --token "$$ARISTA_TOKEN" get eos \
 		--version "$(CEOS_VERSION)" \
 		--format "$$CEOS_FORMAT" \
 		--output "." \
@@ -192,6 +197,22 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
+build-syslog: $(GEN_CONFIGS) ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
+	@$(MAKE) --no-print-directory test-syslog-image
+
+test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
+	@set -euo pipefail; \
+	echo "OpenSSL:    $$(docker run --rm $(SYSLOG_IMAGE) openssl version)"; \
+	groups=$$(docker run --rm $(SYSLOG_IMAGE) openssl list -tls-groups); \
+	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
+		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
+		echo "PQC group:  $$g present"; \
+	done; \
+	docker run --rm $(SYSLOG_IMAGE) test -f /etc/syslog-ng/syslog-ng.conf; \
+	docker run --rm $(SYSLOG_IMAGE) /opt/syslog-ng/sbin/syslog-ng -s -f /etc/syslog-ng/syslog-ng.conf; \
+	echo "Syslog:     syslog-ng config OK"
+
 build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-kme-image
@@ -212,7 +233,7 @@ wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, po
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
+deploy: gen-topo build-radius build-syslog build-kme check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
 	@$(MAKE) --no-print-directory deploy-kme
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
@@ -241,6 +262,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 	rm -rf lab/.gen lab/.gen.* lab/.ceos-monitor lab/clab-* clab-*; \
 	echo "=== Cleaning lab logs ==="; \
 	find lab/logs/radius -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
+	find lab/logs/syslog -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
 	echo "=== Removing download tarballs ==="; \
 	rm -rf "$(CEOS_DOWNLOAD_DIR)"; \
 	echo "=== Removing Python virtualenv and test caches ==="; \
@@ -252,7 +274,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 	rm -f .env; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in quantum-safe-radius quantum-safe-kme; do \
+		for repo in quantum-safe-radius quantum-safe-syslog quantum-safe-kme; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \
@@ -287,6 +309,7 @@ test-lab: ## All live lab checks (requires deployed lab; use VERBOSE=1 for comma
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-pqc
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
 	@echo "All lab checks passed."
@@ -295,10 +318,15 @@ test-radius: ## RadSec auth test from both switches (requires deployed lab; VERB
 	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section radius
 
 test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
-	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section kme
+	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-pqc: ## TLS 1.3 + PQC checks (requires deployed lab; VERBOSE=1 for full output)
+test-pqc: ## TLS 1.3 + PQC checks incl. syslog-over-TLS (requires deployed lab; VERBOSE=1 for full output)
 	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)
+	@VERBOSE='$(VERBOSE)' $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full output)

@@ -3,7 +3,9 @@ prefix: arista
 
 mgmt:
   network: quantum-safe-mgmt
+  bridge: mgmt-bridge
   ipv4-subnet: ${MGMT_SUBNET}
+  ipv4-gw: ${MGMT_GATEWAY}
   external-access: false
 
 topology:
@@ -13,8 +15,11 @@ topology:
       env:
         CLAB_MGMT_VRF: MGMT
   nodes:
+    mgmt-bridge:
+      kind: bridge
     ceos1-both:
       kind: arista_ceos
+      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS1_BOTH}
       startup-config: ../lab/.gen/ceos1-both.cfg
       binds:
@@ -34,6 +39,7 @@ topology:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos1-both-client.pem certificate:"; echo "copy flash:ceos1-both-client.key sslkey:"; echo "copy flash:ceos1-both-eapi.pem certificate:"; echo "copy flash:ceos1-both-eapi.key sslkey:"; echo "copy flash:ceos1-both-gnmi.pem certificate:"; echo "copy flash:ceos1-both-gnmi.key sslkey:"; } | Cli'
     ceos2-pqc:
       kind: arista_ceos
+      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS2_PQC}
       startup-config: ../lab/.gen/ceos2-pqc.cfg
       binds:
@@ -48,6 +54,7 @@ topology:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos2-pqc-client.pem certificate:"; echo "copy flash:ceos2-pqc-client.key sslkey:"; echo "copy flash:ceos2-pqc-eapi.pem certificate:"; echo "copy flash:ceos2-pqc-eapi.key sslkey:"; echo "copy flash:ceos2-pqc-gnmi.pem certificate:"; echo "copy flash:ceos2-pqc-gnmi.key sslkey:"; } | Cli'
     ceos3-qkd:
       kind: arista_ceos
+      network-mode: none
       mgmt-ipv4: ${MGMT_IP_CEOS3_QKD}
       startup-config: ../lab/.gen/ceos3-qkd.cfg
       binds:
@@ -68,7 +75,7 @@ topology:
     host1:
       kind: linux
       image: alpine:3.20
-      mgmt-ipv4: ${MGMT_IP_HOST1}
+      network-mode: none
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.1.1/24 dev eth1
@@ -76,7 +83,7 @@ topology:
     host2:
       kind: linux
       image: alpine:3.20
-      mgmt-ipv4: ${MGMT_IP_HOST2}
+      network-mode: none
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.2.1/24 dev eth1
@@ -84,7 +91,7 @@ topology:
     host3:
       kind: linux
       image: alpine:3.20
-      mgmt-ipv4: ${MGMT_IP_HOST3}
+      network-mode: none
       exec:
         - ip link set eth1 up
         - ip addr add 10.0.3.1/24 dev eth1
@@ -92,6 +99,7 @@ topology:
     radius:
       kind: linux
       image: quantum-safe-radius:latest
+      network-mode: none
       startup-delay: 15
       mgmt-ipv4: ${MGMT_IP_RADIUS}
       binds:
@@ -108,9 +116,23 @@ topology:
         - ../lab/.gen/pki/ceos3-qkd-client.pem:/etc/raddb/certs/probe/ceos3-qkd-client.pem:ro
         - ../lab/.gen/pki/ceos3-qkd-client.key:/etc/raddb/certs/probe/ceos3-qkd-client.key:ro
         - logs/radius:/var/log/radius
+    syslog:
+      kind: linux
+      image: quantum-safe-syslog:latest
+      network-mode: none
+      startup-delay: 10
+      mgmt-ipv4: ${MGMT_IP_SYSLOG}
+      binds:
+        - ../configs/syslog/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
+        - ../docker/syslog/openssl-pqc.cnf:/etc/syslog-ng/openssl-pqc.cnf:ro
+        - ../lab/.gen/pki/syslog-server.pem:/etc/syslog-ng/certs/server.pem:ro
+        - ../lab/.gen/pki/syslog-server.key:/etc/syslog-ng/certs/server.key:ro
+        - ../lab/.gen/pki/ca.pem:/etc/syslog-ng/certs/ca.pem:ro
+        - logs/syslog:/var/log/syslog
     kme-a:
       kind: linux
       image: quantum-safe-kme:latest
+      network-mode: none
       mgmt-ipv4: ${MGMT_IP_KME_A}
       cap-add:
         - NET_ADMIN
@@ -136,6 +158,7 @@ topology:
     kme-b:
       kind: linux
       image: quantum-safe-kme:latest
+      network-mode: none
       startup-delay: 10
       mgmt-ipv4: ${MGMT_IP_KME_B}
       cap-add:
@@ -160,6 +183,13 @@ topology:
       binds:
         - ../lab/.gen/kme-pki:/certs:ro
   links:
+    - endpoints: ["ceos1-both:eth0", "mgmt-bridge:eth1"]
+    - endpoints: ["ceos2-pqc:eth0", "mgmt-bridge:eth2"]
+    - endpoints: ["ceos3-qkd:eth0", "mgmt-bridge:eth3"]
+    - endpoints: ["radius:eth0", "mgmt-bridge:eth4"]
+    - endpoints: ["syslog:eth0", "mgmt-bridge:eth5"]
+    - endpoints: ["kme-a:eth0", "mgmt-bridge:eth6"]
+    - endpoints: ["kme-b:eth0", "mgmt-bridge:eth7"]
     - endpoints: ["ceos1-both:eth1", "ceos2-pqc:eth1"]
     - endpoints: ["ceos1-both:eth3", "ceos3-qkd:eth1"]
     - endpoints: ["ceos1-both:eth8", "host1:eth1"]

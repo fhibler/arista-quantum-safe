@@ -1,0 +1,281 @@
+{
+  "freeTextAnnotations": [
+    {
+      "id": "freeText_1786428356539",
+      "text": "QKD",
+      "position": {
+        "x": 213.11147012475004,
+        "y": 349.9437408188969
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786428365569",
+      "text": "MACsec",
+      "position": {
+        "x": 202.02917782800768,
+        "y": 313.38228365570416
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786428365569-1",
+      "text": "MACsec",
+      "position": {
+        "x": 504.98587655561886,
+        "y": 315.58521391391423
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786428403450",
+      "text": "PQC/RadSec",
+      "position": {
+        "x": 488.65833837393893,
+        "y": 349.6729272879428
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786430552297",
+      "text": "QKD ETSI 014 Simulator",
+      "position": {
+        "x": 94.98762666931182,
+        "y": -51.38931929920215
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786430678545",
+      "text": "Syslog",
+      "position": {
+        "x": 355.6605301042135,
+        "y": -52.863161847874906
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786430698704",
+      "text": "RadSec",
+      "position": {
+        "x": 531.7513127422632,
+        "y": -53.281584053505085
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    }
+  ],
+  "freeShapeAnnotations": [
+    {
+      "id": "freeShape_1786428313755",
+      "shapeType": "circle",
+      "position": {
+        "x": 108.01563715146,
+        "y": 319.87603743615836
+      },
+      "width": 250,
+      "height": 75,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_1786428313755-1",
+      "shapeType": "circle",
+      "position": {
+        "x": 407.78684370962105,
+        "y": 319.845011790024
+      },
+      "width": 250,
+      "height": 75,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_1786430535051",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 68.54859461793635,
+        "y": -46.53533276210475
+      },
+      "width": 213,
+      "height": 119,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_1786430661798",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 324.0526348732291,
+        "y": -46.85000312956764
+      },
+      "width": 118,
+      "height": 119,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_1786430661798-1",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 501.19034160143246,
+        "y": -47.271570644295394
+      },
+      "width": 118,
+      "height": 119,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    }
+  ],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "mgmt-bridge",
+      "position": {
+        "x": 360,
+        "y": 180
+      }
+    },
+    {
+      "id": "ceos1-both",
+      "position": {
+        "x": 360,
+        "y": 340
+      }
+    },
+    {
+      "id": "ceos2-pqc",
+      "position": {
+        "x": 660,
+        "y": 340
+      }
+    },
+    {
+      "id": "ceos3-qkd",
+      "position": {
+        "x": 60,
+        "y": 340
+      }
+    },
+    {
+      "id": "host1",
+      "position": {
+        "x": 360,
+        "y": 500
+      }
+    },
+    {
+      "id": "host2",
+      "position": {
+        "x": 660,
+        "y": 500
+      }
+    },
+    {
+      "id": "host3",
+      "position": {
+        "x": 60,
+        "y": 500
+      }
+    },
+    {
+      "id": "radius",
+      "position": {
+        "x": 540,
+        "y": 0
+      }
+    },
+    {
+      "id": "syslog",
+      "position": {
+        "x": 360,
+        "y": 0
+      }
+    },
+    {
+      "id": "kme-a",
+      "position": {
+        "x": 100,
+        "y": 0
+      }
+    },
+    {
+      "id": "kme-b",
+      "position": {
+        "x": 200,
+        "y": 0
+      }
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}

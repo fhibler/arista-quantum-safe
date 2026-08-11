@@ -9,6 +9,8 @@ lab/.gen.*
 # Logs / secrets
 lab/logs/radius/*
 !lab/logs/radius/.gitkeep
+lab/logs/syslog/*
+!lab/logs/syslog/.gitkeep
 *.tar
 *.tar.xz
 *.sha512sum
@@ -16,6 +18,10 @@ download/
 .env
 .env.*
 !.env.example
+
+# Unreleases extensions
+experimental/quadra/**/*.swix
+experimental/quadra/**/*.*sum
 
 # Editor / OS
 .vscode/

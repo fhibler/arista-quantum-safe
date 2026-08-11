@@ -1,6 +1,10 @@
 hostname ceos1-both
 no aaa root
 !
+logging console informational
+logging vrf MGMT host ${SYSLOG_SERVER_IP} 6514 protocol tls ssl-profile SYSLOG
+logging trap informational
+!
 aaa authentication policy local allow-nopassword-remote-login
 aaa authentication dot1x default group RADIUS
 aaa accounting dot1x default start-stop group RADIUS
@@ -53,6 +57,9 @@ management api restconf
 !
 management api eos-sdk-rpc
    transport grpc default
+      local interface Management0
+      service all
+      no disabled
       ssl profile GNMI
 !
 management api netconf
@@ -104,6 +111,13 @@ management security
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
       certificate ceos1-both-client.pem key ceos1-both-client.key
       trust certificate radsec-ca.pem
+   !
+   ssl profile SYSLOG
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-client.pem key ceos1-both-client.key
+      trust certificate radsec-ca.pem
 !
 radius-server host ${RADIUS_SERVER_IP} vrf MGMT tls ssl-profile RADSEC
 !
@@ -116,4 +130,5 @@ mac security
    profile dynamic
       key source dot1x
 !
+${CONTROL_PLANE_ACL}
 end

@@ -1,4 +1,4 @@
-# QKD-MACsec-RADIUS lab — Containerlab lifecycle
+# Quantum Safe lab — Containerlab lifecycle
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -8,15 +8,16 @@ CEOS_IMAGE ?= ceos:4.36.1F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download
-CLAB_TOPO_SRC := lab/qkd-macsec-radius.clab.yml
-CLAB_TOPO_GEN := lab/.gen.qkd-macsec-radius.clab.yml
-CLAB_NAME     := qkd-macsec-radius
-CLAB_MGMT_NETWORK := qkd-mgmt
+CLAB_TOPO_SRC := lab/quantum-safe.clab.yml
+CLAB_TOPO_GEN := lab/.gen.quantum-safe.clab.yml
+CLAB_PREFIX   := arista
+CLAB_NAME     := quantum-safe
+CLAB_MGMT_NETWORK := quantum-safe-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
-GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1.cfg lab/.gen/ceos2.cfg lab/.gen/kme-radius.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-client.pem ceos1-client.key ceos1-eapi.pem ceos1-eapi.key ceos1-gnmi.pem ceos1-gnmi.key ceos2-client.pem ceos2-client.key ceos2-eapi.pem ceos2-eapi.key ceos2-gnmi.pem ceos2-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
-RADIUS_IMAGE  := qkd-radius:latest
+GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem)
+RADIUS_IMAGE  := quantum-safe-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
-KME_IMAGE     := qkd-kme:latest
+KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 VERBOSE       ?=
@@ -30,14 +31,14 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
 .PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-radius build-kme deploy-kme-radius wait-kme-pool deploy destroy redeploy \
-        clean inspect graph ssh-ceos1 ssh-ceos2 test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
+        download-ceos download-ceos-help build-radius build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
+        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd test-lab test-radius test-kme test-pqc test-macsec test-macsec-reauth test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1.cfg.in configs/ceos/ceos2.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
+$(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
@@ -173,11 +174,11 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-radius: $(GEN_CONFIGS) ## Build qkd-radius:latest for the host architecture (buildx --load)
+build-radius: $(GEN_CONFIGS) ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-radius-image
 
-test-radius-image: ## Verify qkd-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
+test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
 	@set -euo pipefail; \
 	echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
 	echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
@@ -191,28 +192,28 @@ test-radius-image: ## Verify qkd-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 P
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-build-kme: $(GEN_CONFIGS) ## Build qkd-kme:latest for the host architecture (buildx --load)
+build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-kme-image
 
-test-kme-image: ## Verify qkd-kme:latest (ETSI QKD 014 simulator)
+test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	@set -euo pipefail; \
 	docker run --rm --entrypoint python3 $(KME_IMAGE) -c "from server.app import App; import flask; print('import ok')"; \
 	echo "KME:        next-door-key-simulator import OK"; \
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-DEPLOY_KME_NODES := kme-a,kme-b,radius
+DEPLOY_KME_NODES := kme-a,kme-b
 
-deploy-kme-radius: $(CLAB_TOPO_GEN) ## Deploy RADIUS + KME nodes first (staged)
+deploy-kme: $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
 	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES)
 
 wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (KME/RADIUS first, wait for keys, then full topo)
-	@$(MAKE) --no-print-directory deploy-kme-radius
+deploy: gen-topo build-radius build-kme check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
+	@$(MAKE) --no-print-directory deploy-kme
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
 
@@ -226,9 +227,9 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 		containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup 2>/dev/null || true; \
 	fi; \
 	if command -v docker >/dev/null 2>&1; then \
-		ids=$$(docker ps -aq --filter "name=clab-$(CLAB_NAME)-" 2>/dev/null || true); \
+		ids=$$(docker ps -aq --filter "name=$(CLAB_PREFIX)-$(CLAB_NAME)-" 2>/dev/null || true); \
 		if [ -n "$$ids" ]; then \
-			echo "Removing leftover clab-$(CLAB_NAME)-* containers"; \
+			echo "Removing leftover $(CLAB_PREFIX)-$(CLAB_NAME)-* containers"; \
 			docker rm -f $$ids 2>/dev/null || true; \
 		fi; \
 		if docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
@@ -251,7 +252,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 	rm -f .env; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in qkd-radius qkd-kme; do \
+		for repo in quantum-safe-radius quantum-safe-kme; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \
@@ -273,11 +274,14 @@ inspect: ## Inspect lab node status
 graph: ## Render topology graph
 	containerlab graph -t $(CLAB_TOPO_GEN)
 
-ssh-ceos1: ## Open cEOS CLI on ceos1
-	docker exec -it clab-$(CLAB_NAME)-ceos1 Cli
+ssh-ceos1-both: ## Open cEOS CLI on ceos1-both
+	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos1-both Cli
 
-ssh-ceos2: ## Open cEOS CLI on ceos2
-	docker exec -it clab-$(CLAB_NAME)-ceos2 Cli
+ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
+	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos2-pqc Cli
+
+ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
+	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
 
 test-lab: ## All live lab checks (requires deployed lab; use VERBOSE=1 for command echo)
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
@@ -305,5 +309,5 @@ test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full
 test-macsec-reauth: ## MACsec + periodic 802.1X reauth wait (~75s; requires deployed lab)
 	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec
 
-test-hosts: ## host1 ping host2 across routed segments (VERBOSE=1 for full output)
+test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
 	@VERBOSE='$(VERBOSE)' $(LAB_TEST) --section hosts

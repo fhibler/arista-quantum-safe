@@ -55,7 +55,7 @@ RUN ./configure --prefix=/opt/freeradius \
 
 FROM alpine:${ALPINE_VERSION}
 
-RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl python3
+RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl
 
 COPY --from=openssl-build /opt/openssl /opt/openssl
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius
@@ -85,14 +85,8 @@ COPY lab/.gen/clients.conf /etc/raddb/clients.conf
 COPY lab/.gen/clients-radsec.conf /etc/raddb/clients-radsec.conf
 COPY configs/radius/raddb/radiusd.conf /etc/raddb/radiusd-log.conf
 COPY configs/radius/raddb/policy.d/macsec-dot1x /etc/raddb/policy.d/macsec-dot1x
-COPY configs/radius/raddb/policy.d/kme-qkd /etc/raddb/policy.d/kme-qkd
 COPY configs/radius/raddb/mods-config/files/authorize /etc/raddb/mods-config/files/authorize
-COPY lab/__init__.py /opt/qkd/lab/__init__.py
-COPY lab/kme_sae_client.py /opt/qkd/lab/kme_sae_client.py
-COPY configs/radius/raddb/bin/kme-fetch-key /usr/local/bin/kme-fetch-key
-RUN chmod +x /usr/local/bin/kme-fetch-key
-RUN sed -i '/^\tremove_reply_message_if_eap$/i\\tmacsec-dot1x' /etc/raddb/sites-enabled/default \
- && sed -i '/^\tmacsec-dot1x$/a\\tkme-qkd' /etc/raddb/sites-enabled/default
+RUN sed -i '/^\tremove_reply_message_if_eap$/i\\tmacsec-dot1x' /etc/raddb/sites-enabled/default
 RUN printf '\n$INCLUDE radiusd-log.conf\n' >> /etc/raddb/radiusd.conf
 
 CMD ["radiusd", "-f"]

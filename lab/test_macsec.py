@@ -15,13 +15,14 @@ from lab.topology_contract import (
     DOT1X_EAP_SSL_PROFILE,
     DOT1X_REAUTH_PERIOD_SEC,
     DOT1X_SUPPLICANT_PROFILE,
+    LAB_NAME,
     MACSEC_PROFILE,
 )
 from lab.test_pqc_connections import LabTargets, assert_contains, ceos_cli, docker_exec
 
 MACSEC_INTERFACE = "Ethernet1"
-AUTHENTICATOR = "ceos1"
-SUPPLICANT = "ceos2"
+AUTHENTICATOR = "ceos1-both"
+SUPPLICANT = "ceos2-pqc"
 PQC_EAP_GROUP = "X25519MLKEM768"
 INTER_SWITCH_PEER = {
     AUTHENTICATOR: CEOS_DATA_PLANE[SUPPLICANT]["eth1"].split("/")[0],
@@ -264,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Verify dynamic MACsec (802.1X EAP-TLS + MKA) on the inter-switch link.",
     )
-    parser.add_argument("--clab-name", default="qkd-macsec-radius")
+    parser.add_argument("--clab-name", default=LAB_NAME)
     parser.add_argument("--mgmt-subnet", default="172.20.127.0/24")
     parser.add_argument(
         "--skip-config",

@@ -1,5 +1,5 @@
 {
-    "name": "QKD-MACsec-RADIUS (Containerlab DinD)",
+    "name": "Quantum Safe (Containerlab DinD)",
     "build": {
         "dockerfile": "Dockerfile",
         "context": "..",

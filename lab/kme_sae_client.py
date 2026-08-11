@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_KEY_SIZE_BYTES = 32  # AES-256; KEY_SIZE in radius-kme.conf is also bytes
+DEFAULT_KEY_SIZE_BYTES = 32  # AES-256; KEY_SIZE in kme-lab.conf is also bytes
 
-DEFAULT_CONFIG_PATH = Path("/etc/kme/radius-kme.conf")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG_PATH = REPO_ROOT / "lab" / ".gen" / "kme-lab.conf"
 
 KME_LOG_PATH = Path("/var/log/radius/radius.log")
 
@@ -280,11 +281,11 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     fetch = subparsers.add_parser("fetch-enc-key", help="POST enc_keys on kme-a (stdout: key_ID)")
-    fetch.add_argument("--config", help="Override /etc/kme/radius-kme.conf")
+    fetch.add_argument("--config", help=f"Override {DEFAULT_CONFIG_PATH}")
     fetch.set_defaults(func=_cmd_fetch_enc_key)
 
     trip = subparsers.add_parser("roundtrip", help="enc_keys on kme-a + dec_keys on kme-b")
-    trip.add_argument("--config", help="Override /etc/kme/radius-kme.conf")
+    trip.add_argument("--config", help=f"Override {DEFAULT_CONFIG_PATH}")
     trip.set_defaults(func=_cmd_roundtrip)
 
     args = parser.parse_args(argv)

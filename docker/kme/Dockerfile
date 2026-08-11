@@ -1,6 +1,6 @@
 # ETSI GS QKD 014 KME simulator — https://github.com/CreepPork/next-door-key-simulator
 #
-# Multi-arch (linux/amd64, linux/arm64) via buildx --load, matching qkd-radius:latest.
+# Multi-arch (linux/amd64, linux/arm64) via buildx --load, matching quantum-safe-radius:latest.
 
 ARG ALPINE_VERSION=3.20
 ARG PYTHON_VERSION=3.12

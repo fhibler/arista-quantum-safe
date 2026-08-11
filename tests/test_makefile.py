@@ -53,7 +53,7 @@ def test_makefile_exists() -> None:
         "download-ceos-help",
         "build-radius",
         "build-kme",
-        "deploy-kme-radius",
+        "deploy-kme",
         "wait-kme-pool",
         "deploy",
         "destroy",
@@ -61,8 +61,9 @@ def test_makefile_exists() -> None:
         "redeploy",
         "inspect",
         "graph",
-        "ssh-ceos1",
-        "ssh-ceos2",
+        "ssh-ceos1-both",
+        "ssh-ceos2-pqc",
+        "ssh-ceos3-qkd",
         "test-lab",
         "test-radius",
         "test-kme",
@@ -126,17 +127,17 @@ def test_validate_topo_fails_on_contract_violation(tmp_path: Path) -> None:
     broken = tmp_path / "broken.clab.yml"
     broken.write_text(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     data = yaml.safe_load(broken.read_text(encoding="utf-8"))
-    data["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] = "10.0.0.1"
+    data["topology"]["nodes"]["ceos1-both"]["mgmt-ipv4"] = "10.0.0.1"
     broken.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
 
     errors = validate_topology(load_topology(broken))
-    assert any("ceos1 mgmt-ipv4" in err for err in errors)
+    assert any("ceos1-both mgmt-ipv4" in err for err in errors)
 
 
 def test_render_preserves_yaml_structure() -> None:
     _run_make("gen-topo")
     data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))
-    assert data["topology"]["nodes"]["radius"]["image"] == "qkd-radius:latest"
+    assert data["topology"]["nodes"]["radius"]["image"] == "quantum-safe-radius:latest"
     assert data["topology"]["kinds"]["arista_ceos"]["image"] == DEFAULT_CEOS_IMAGE
 
 
@@ -282,8 +283,8 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' in clean
     assert "rm -rf .venv .pytest_cache" in clean
     assert "docker images" in clean
-    assert "qkd-radius" in clean
-    assert "qkd-kme" in clean
+    assert "quantum-safe-radius" in clean
+    assert "quantum-safe-kme" in clean
     assert "docker rmi" in clean
     assert "rm -f .env" in clean
     assert "CLAB_MGMT_NETWORK" in clean

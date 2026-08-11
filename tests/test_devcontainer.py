@@ -109,10 +109,3 @@ def test_devcontainer_lock_has_dind_not_dood() -> None:
     features = lock.get("features", {})
     assert "ghcr.io/devcontainers/features/docker-in-docker:2" in features
     assert "ghcr.io/devcontainers/features/docker-outside-of-docker:1" not in features
-
-
-def test_dood_backup_preserved_under_tmp() -> None:
-    backup = REPO_ROOT / "tmp" / "dood" / "devcontainer.json"
-    assert backup.is_file()
-    text = backup.read_text(encoding="utf-8")
-    assert "docker-outside-of-docker" in text

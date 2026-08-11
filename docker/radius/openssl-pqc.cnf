@@ -1,4 +1,4 @@
-# OpenSSL 3.5 TLS defaults for EOS PQC-hybrid RadSec (qkd-radius:latest).
+# OpenSSL 3.5 TLS defaults for EOS PQC-hybrid RadSec (quantum-safe-radius:latest).
 openssl_conf = openssl_init
 
 [openssl_init]

@@ -2,7 +2,7 @@
 # and EAP-Key-Name. FreeRADIUS stores the session id in EAP-Session-Id; copy it to
 # EAP-Key-Name on Access-Accept (see stock sites-available/default post-auth comments).
 # Session-Timeout + Termination-Action drive periodic reauth on the EOS authenticator
-# (matches ceos1 dot1x timeout reauth-period 60).
+# (matches ceos1-both dot1x timeout reauth-period 60).
 macsec-dot1x {
 	if (&reply:EAP-Session-Id) {
 		update reply {

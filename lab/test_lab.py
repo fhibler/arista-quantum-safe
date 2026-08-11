@@ -10,8 +10,26 @@ import subprocess
 import sys
 from typing import Sequence
 
-from lab.kme_http import DOCKER_EXEC_TIMEOUT_SEC, KME_CURL_FLAGS
-from lab.topology_contract import KME_KEY_SIZE, KME_SAE_ID, mgmt_ips_for_subnet
+from lab.kme_http import (
+    CEOS_KME_CA_CERT,
+    CEOS_KME_SAE_B_CERT,
+    CEOS_KME_SAE_B_KEY,
+    CEOS_KME_SAE_CERT,
+    CEOS_KME_SAE_KEY,
+    DOCKER_EXEC_TIMEOUT_SEC,
+    KME_CA_CERT_CONTAINER,
+    ceos_kme_curl_exec_argv,
+    kme_curl_argv,
+)
+from lab.topology_contract import (
+    CEOS_KME_NODES,
+    KME_B_SAE_ID,
+    KME_KEY_SIZE,
+    KME_SAE_ID,
+    LAB_NAME,
+    container_name,
+    mgmt_ips_for_subnet,
+)
 
 ALL_SECTIONS = ("inspect", "radius", "kme", "pqc", "macsec", "hosts")
 
@@ -85,7 +103,7 @@ def run_inspect(clab_topo_gen: str, *, verbose: bool) -> None:
 
 def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
     section("RADIUS", verbose=verbose)
-    radius_container = f"clab-{clab_name}-radius"
+    radius_container = container_name("radius", lab_name=clab_name)
     listener = run_step(
         "RadSec listener",
         ["docker", "exec", radius_container, "netstat", "-ltn"],
@@ -109,8 +127,8 @@ def run_radius_checks(*, clab_name: str, radius_ip: str, verbose: bool) -> None:
             "successfully authenticated",
         ),
     )
-    for node in ("ceos1", "ceos2"):
-        container = f"clab-{clab_name}-{node}"
+    for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
+        container = container_name(node, lab_name=clab_name)
         for label, commands, expect in checks:
             result = run_step(
                 f"{node} {label}",
@@ -129,16 +147,16 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
     section("KME", verbose=verbose)
     checks = (
         (
-            "RADIUS SAE status (kme-a)",
-            f"clab-{clab_name}-radius",
+            "SAE status (kme-a)",
+            container_name("kme-a", lab_name=clab_name),
             f"https://{kme_a_ip}:8010/api/v1/keys/{KME_SAE_ID}/status",
-            "/etc/kme/sae.crt.pem",
-            "/etc/kme/sae.key.pem",
+            "/certs/sae.crt.pem",
+            "/certs/sae.key.pem",
             '"source_KME_ID"',
         ),
         (
             "kme-a → kme-b peer status",
-            f"clab-{clab_name}-kme-a",
+            container_name("kme-a", lab_name=clab_name),
             f"https://{kme_b_ip}:8020/api/v1/kme/status",
             "/certs/kme-a.crt.pem",
             "/certs/kme-a.key.pem",
@@ -146,7 +164,7 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
         ),
         (
             "kme-b → kme-a peer status",
-            f"clab-{clab_name}-kme-b",
+            container_name("kme-b", lab_name=clab_name),
             f"https://{kme_a_ip}:8010/api/v1/kme/status",
             "/certs/kme-b.crt.pem",
             "/certs/kme-b.key.pem",
@@ -155,19 +173,7 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
     )
 
     for title, container, url, cert, key, expect in checks:
-        argv = [
-            "docker",
-            "exec",
-            container,
-            "curl",
-            "-sk" if verbose else "-sfk",
-            *KME_CURL_FLAGS,
-            "--cert",
-            cert,
-            "--key",
-            key,
-            url,
-        ]
+        argv = ["docker", "exec", container, *kme_curl_argv(url=url, cert=cert, key=key)]
         result = run_step(
             title,
             argv,
@@ -181,35 +187,112 @@ def run_kme_checks(*, clab_name: str, kme_a_ip: str, kme_b_ip: str, verbose: boo
             print(format_json(result.stdout))
 
     if not verbose:
-        print(f"KME status OK from RADIUS (SAE {KME_SAE_ID})")
+        print(f"KME SAE status OK (master SAE {KME_SAE_ID})")
         print("KME peer status OK (kme-a <-> kme-b)")
 
-    radius_container = f"clab-{clab_name}-radius"
-    roundtrip = run_step(
-        "KME enc/dec round-trip (RADIUS SAE, AES-256)",
+    kme_a_container = container_name("kme-a", lab_name=clab_name)
+    enc_body = json.dumps({"number": 1, "size": KME_KEY_SIZE * 8})
+    enc = run_step(
+        "KME enc_keys (master SAE, AES-256)",
         [
             "docker",
             "exec",
-            radius_container,
-            "sh",
-            "-c",
-            "PYTHONPATH=/opt/qkd python3 -m lab.kme_sae_client roundtrip",
+            kme_a_container,
+            *kme_curl_argv(
+                url=f"https://{kme_a_ip}:8010/api/v1/keys/{KME_B_SAE_ID}/enc_keys",
+                cert="/certs/sae.crt.pem",
+                key="/certs/sae.key.pem",
+                method="POST",
+                body=enc_body,
+            ),
         ],
         verbose=verbose,
         timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
     )
-    payload = json.loads(roundtrip.stdout)
-    key_id = payload.get("key_ID")
-    key_size = payload.get("key_size")
-    if not key_id or key_size != KME_KEY_SIZE:
-        raise LabTestError(
-            f"KME round-trip: expected key_size {KME_KEY_SIZE}, got {payload!r}"
-        )
+    enc_payload = json.loads(enc.stdout)
+    keys = enc_payload.get("keys")
+    if not isinstance(keys, list) or not keys:
+        raise LabTestError(f"enc_keys missing keys[]: {enc_payload!r}")
+    key_id = keys[0].get("key_ID")
+    key_b64 = keys[0].get("key")
+    if not isinstance(key_id, str) or not isinstance(key_b64, str):
+        raise LabTestError(f"enc_keys missing key_ID/key: {enc_payload!r}")
+
+    dec_body = json.dumps({"key_IDs": [{"key_ID": key_id}]})
+    dec = run_step(
+        "KME dec_keys (slave SAE, AES-256)",
+        [
+            "docker",
+            "exec",
+            kme_a_container,
+            *kme_curl_argv(
+                url=f"https://{kme_b_ip}:8020/api/v1/keys/{KME_SAE_ID}/dec_keys",
+                cert="/certs/sae-b.crt.pem",
+                key="/certs/sae-b.key.pem",
+                ca_cert=KME_CA_CERT_CONTAINER,
+                method="POST",
+                body=dec_body,
+            ),
+        ],
+        verbose=verbose,
+        timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
+    )
+    dec_payload = json.loads(dec.stdout)
+    dec_keys = dec_payload.get("keys")
+    if not isinstance(dec_keys, list) or len(dec_keys) != 1:
+        raise LabTestError(f"dec_keys expected one key: {dec_payload!r}")
+    if dec_keys[0].get("key_ID") != key_id:
+        raise LabTestError(f"dec_keys key_ID mismatch: {dec_payload!r}")
+    if dec_keys[0].get("key") != key_b64:
+        raise LabTestError("dec_keys material does not match enc_keys")
+
     if verbose:
         print("--- formatted JSON ---")
-        print(format_json(roundtrip.stdout))
+        print(format_json(json.dumps({"key_ID": key_id, "key_size": KME_KEY_SIZE})))
     if not verbose:
-        print(f"KME enc/dec round-trip OK (key_ID {key_id}, {key_size} bytes)")
+        print(f"KME enc/dec round-trip OK (key_ID {key_id}, {KME_KEY_SIZE} bytes)")
+
+    ceos_kme_checks = (
+        (
+            "kme-a SAE status (TLS chain verify)",
+            kme_a_ip,
+            KME_SAE_ID,
+            CEOS_KME_SAE_CERT,
+            CEOS_KME_SAE_KEY,
+            '"source_KME_ID"',
+        ),
+        (
+            "kme-b slave SAE status (TLS chain verify)",
+            kme_b_ip,
+            KME_B_SAE_ID,
+            CEOS_KME_SAE_B_CERT,
+            CEOS_KME_SAE_B_KEY,
+            '"stored_key_count"',
+        ),
+    )
+    for node in sorted(CEOS_KME_NODES):
+        container = container_name(node, lab_name=clab_name)
+        for label, kme_ip, sae_id, cert, key, expect in ceos_kme_checks:
+            port = 8010 if kme_ip == kme_a_ip else 8020
+            url = f"https://{kme_ip}:{port}/api/v1/keys/{sae_id}/status"
+            argv = ceos_kme_curl_exec_argv(container, url=url, cert=cert, key=key)
+            result = run_step(
+                f"{node} {label}",
+                argv,
+                verbose=verbose,
+                timeout_sec=DOCKER_EXEC_TIMEOUT_SEC,
+            )
+            if expect not in result.stdout:
+                raise LabTestError(f"{node} {label}: expected {expect!r}")
+            if verbose:
+                print("--- formatted JSON ---")
+                print(format_json(result.stdout))
+
+    if not verbose:
+        print(
+            f"KME TLS chain verified from {', '.join(sorted(CEOS_KME_NODES))} "
+            f"(lab CA {CEOS_KME_CA_CERT})"
+        )
 
 
 def run_python_module(title: str, module: str, *args: str, verbose: bool = False) -> None:
@@ -229,11 +312,17 @@ def run_python_module(title: str, module: str, *args: str, verbose: bool = False
 
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     section("HOST ROUTING", verbose=verbose)
-    run_step(
-        "host1 ping host2",
-        ["docker", "exec", f"clab-{clab_name}-host1", "ping", "-c3", "10.0.2.1"],
-        verbose=verbose,
+    checks = (
+        ("host1 ping host2", container_name("host1", lab_name=clab_name), "10.0.2.1"),
+        ("host1 ping host3", container_name("host1", lab_name=clab_name), "10.0.3.1"),
+        ("host3 ping host1", container_name("host3", lab_name=clab_name), "10.0.1.1"),
     )
+    for title, container, target in checks:
+        run_step(
+            title,
+            ["docker", "exec", container, "ping", "-c3", target],
+            verbose=verbose,
+        )
     if not verbose:
         print("HOSTS: OK")
 
@@ -291,10 +380,10 @@ def run_sections(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run live lab acceptance checks.")
-    parser.add_argument("--clab-name", default="qkd-macsec-radius")
+    parser.add_argument("--clab-name", default=LAB_NAME)
     parser.add_argument(
         "--clab-topo-gen",
-        default="lab/.gen.qkd-macsec-radius.clab.yml",
+        default="lab/.gen.quantum-safe.clab.yml",
         help="Generated Containerlab topology file (inspect section only)",
     )
     parser.add_argument("--mgmt-subnet", default="172.20.127.0/24")

@@ -13,11 +13,13 @@ from lab.topology_contract import (
     EOSSDKRPC_PORT,
     GNMI_PORT,
     GNMI_SSL_PROFILE,
+    LAB_NAME,
     PROBE_CLIENT_CERT,
     PROBE_CLIENT_KEY,
     RADSEC_PORT,
     RESTCONF_PORT,
     RESTCONF_SSL_PROFILE,
+    container_name,
     mgmt_ips_for_subnet,
 )
 from lab.verbose import echo_command, echo_result, verbose_enabled
@@ -28,7 +30,7 @@ PQC_GROUP = "X25519MLKEM768"
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_NETNS = "ns-MGMT"
 SSH_PQC_USER = "admin"
-CEOS_PEERS = {"ceos1": "ceos2", "ceos2": "ceos1"}
+CEOS_PEERS = {"ceos1-both": "ceos2-pqc", "ceos2-pqc": "ceos1-both", "ceos3-qkd": "ceos1-both"}
 
 
 @dataclass(frozen=True)
@@ -39,10 +41,10 @@ class LabTargets:
 
     @property
     def radius_container(self) -> str:
-        return f"clab-{self.clab_name}-radius"
+        return container_name("radius", lab_name=self.clab_name)
 
     def ceos_container(self, node: str) -> str:
-        return f"clab-{self.clab_name}-{node}"
+        return container_name(node, lab_name=self.clab_name)
 
 
 class PqcConnectionError(RuntimeError):
@@ -414,7 +416,7 @@ def run_live_checks(
     targets = LabTargets(
         clab_name=clab_name,
         radius_ip=ips["radius"],
-        ceos_ips={"ceos1": ips["ceos1"], "ceos2": ips["ceos2"]},
+        ceos_ips={"ceos1-both": ips["ceos1-both"], "ceos2-pqc": ips["ceos2-pqc"], "ceos3-qkd": ips["ceos3-qkd"]},
     )
 
     print("PQC verification (TLS 1.3 + hybrid KEX)")
@@ -425,7 +427,7 @@ def run_live_checks(
     if not skip_config:
         check_radius_config(targets, verbose=verbose)
 
-    for node in ("ceos1", "ceos2"):
+    for node in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
         print()
         print_device(node)
         if not skip_config:
@@ -453,7 +455,7 @@ def run_live_checks(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify live eAPI and RadSec PQC connectivity.")
-    parser.add_argument("--clab-name", default="qkd-macsec-radius")
+    parser.add_argument("--clab-name", default=LAB_NAME)
     parser.add_argument("--mgmt-subnet", default="172.20.127.0/24")
     parser.add_argument(
         "--skip-config",

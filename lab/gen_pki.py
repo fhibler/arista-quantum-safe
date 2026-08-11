@@ -1,13 +1,15 @@
-"""Generate RadSec PKI material for the qkd-macsec-radius lab."""
+"""Generate RadSec PKI material for the Quantum Safe lab."""
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
+from lab.topology_contract import container_name
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-CA_SUBJECT = "/CN=qkd-macsec-radius-radsec-ca/O=Lab/C=US"
+CA_SUBJECT = "/CN=quantum-safe-radsec-ca/O=Lab/C=US"
 CERT_DAYS = 825
 
 
@@ -56,7 +58,7 @@ def _generate_server_cert(
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = IP:{mgmt_ip},DNS:{name},DNS:clab-qkd-macsec-radius-{name}",
+                f"subjectAltName = IP:{mgmt_ip},DNS:{name},DNS:{container_name(name)}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -101,7 +103,9 @@ def generate_radsec_pki(
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
 
-    hosts = ceos_hosts or {"ceos1": "ceos1", "ceos2": "ceos2"}
+    hosts = ceos_hosts or (
+        {name: name for name in ceos_mgmt_ips} if ceos_mgmt_ips else {"ceos1-both": "ceos1-both", "ceos2-pqc": "ceos2-pqc"}
+    )
 
     ca_key = work / "ca.key"
     ca_crt = work / "ca.crt"
@@ -148,7 +152,7 @@ def generate_radsec_pki(
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = IP:{radius_ip},DNS:radius,DNS:clab-qkd-macsec-radius-radius",
+                f"subjectAltName = IP:{radius_ip},DNS:radius,DNS:{container_name('radius')}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],

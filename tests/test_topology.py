@@ -5,7 +5,10 @@ import pytest
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
     CEOS_IMAGE_PLACEHOLDER,
+    CEOS_KME_BINDS,
+    CEOS_KME_NODES,
     CEOS_STARTUP_CONFIGS,
+    CLAB_PREFIX,
     DEFAULT_CEOS_IMAGE,
     HOST_DATA_PLANE,
     KME_A_PORT,
@@ -13,7 +16,10 @@ from lab.topology_contract import (
     KME_BINDS,
     KME_IMAGE,
     KME_NODES,
+    LAB_NAME,
+    MGMT_NETWORK,
     MGMT_SUBNET_PLACEHOLDER,
+    RADIUS_IMAGE,
     RADIUS_BINDS,
     REPO_ROOT,
     kme_other_kmes,
@@ -43,13 +49,15 @@ def generated_topology() -> dict:
 
 
 def test_topology_yaml_parses(topology: dict) -> None:
-    assert topology["name"] == "qkd-macsec-radius"
+    assert topology["name"] == LAB_NAME
+    assert topology["prefix"] == CLAB_PREFIX
+    assert topology["mgmt"]["network"] == MGMT_NETWORK
 
 
 def test_topology_template_placeholders(topology: dict) -> None:
     assert topology["mgmt"]["ipv4-subnet"] == MGMT_SUBNET_PLACEHOLDER
     assert topology["topology"]["kinds"]["arista_ceos"]["image"] == CEOS_IMAGE_PLACEHOLDER
-    assert topology["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] == "${MGMT_IP_CEOS1}"
+    assert topology["topology"]["nodes"]["ceos1-both"]["mgmt-ipv4"] == "${MGMT_IP_CEOS1_BOTH}"
 
 
 def test_generated_topology_contract(generated_topology: dict) -> None:
@@ -91,13 +99,17 @@ def test_kme_bind_mounts(topology: dict, node: str, expected_bind: str) -> None:
     assert expected_bind in binds
 
 
-def test_kme_a_radius_attached(topology: dict) -> None:
+def test_radius_image_in_topology(topology: dict) -> None:
+    assert topology["topology"]["nodes"]["radius"]["image"] == RADIUS_IMAGE
+
+
+def test_kme_a_sae_client_allowed(topology: dict) -> None:
     kme_a = topology["topology"]["nodes"]["kme-a"]
     assert kme_a["image"] == KME_IMAGE
     assert kme_a["mgmt-ipv4"] == "${MGMT_IP_KME_A}"
     assert "NET_ADMIN" in kme_a["cap-add"]
     assert kme_a["env"]["OTHER_KMES"] == "https://${MGMT_IP_KME_B}:8020"
-    assert kme_a["env"]["RADIUS_IP"] == "${MGMT_IP_RADIUS}"
+    assert kme_a["env"]["SAE_CLIENT_IPS"] == "${KME_SAE_CLIENT_IPS}"
     assert kme_a["env"]["PORT"] == str(KME_A_PORT)
 
 
@@ -108,7 +120,7 @@ def test_kme_b_peer_linked(topology: dict) -> None:
     assert "NET_ADMIN" in kme_b["cap-add"]
     assert kme_b["env"]["OTHER_KMES"] == "https://${MGMT_IP_KME_A}:8010"
     assert kme_b["env"]["PORT"] == str(KME_B_PORT)
-    assert kme_b["env"]["RADIUS_IP"] == "${MGMT_IP_RADIUS}"
+    assert kme_b["env"]["SAE_CLIENT_IPS"] == "${KME_SAE_CLIENT_IPS}"
     assert kme_b["env"]["SAE_CERT"] == "/certs/sae-b.crt.pem"
     assert kme_b["env"]["KME_ID"] == KME_NODES["kme-b"]["kme_id"]
 
@@ -120,6 +132,15 @@ def test_kme_peer_urls_match_contract(generated_topology: dict) -> None:
     kme_b = generated_topology["topology"]["nodes"]["kme-b"]
     assert kme_a["env"]["OTHER_KMES"] == kme_other_kmes(MGMT_IPS["kme-b"], KME_B_PORT)
     assert kme_b["env"]["OTHER_KMES"] == kme_other_kmes(MGMT_IPS["kme-a"], KME_A_PORT)
+
+
+@pytest.mark.parametrize(
+    "node,expected_bind",
+    [(node, bind) for node in sorted(CEOS_KME_NODES) for bind in CEOS_KME_BINDS],
+)
+def test_ceos_kme_bind_mounts(topology: dict, node: str, expected_bind: str) -> None:
+    binds = topology["topology"]["nodes"][node]["binds"]
+    assert expected_bind in binds
 
 
 @pytest.mark.parametrize("host,spec", HOST_DATA_PLANE.items())
@@ -141,4 +162,4 @@ def test_ceos_startup_config_paths(generated_topology: dict, ceos: str, spec: di
     assert path.is_file()
     text = path.read_text(encoding="utf-8")
     assert spec["eth1"] in text
-    assert spec["eth2"] in text
+    assert spec["eth8"] in text

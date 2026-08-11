@@ -22,7 +22,7 @@ def test_fetch_slave_status_parses_json() -> None:
         return_value=type("R", (), {"returncode": 0, "stdout": json.dumps(payload), "stderr": ""})(),
     ):
         status = fetch_slave_status(
-            radius_container="radius",
+            kme_a_container="kme-a",
             kme_a_ip="10.0.0.51",
             slave_sae_id="slave-id",
         )
@@ -31,21 +31,22 @@ def test_fetch_slave_status_parses_json() -> None:
 
 def test_probe_enc_keys_accepts_uuid() -> None:
     key_id = "bc490419-7d60-487f-adc1-4ddcc177c139"
+    payload = {"keys": [{"key_ID": key_id, "key": "AA=="}]}
     with patch(
-        "lab.wait_kme_pool.subprocess.run",
-        return_value=type("R", (), {"returncode": 0, "stdout": key_id + "\n", "stderr": ""})(),
+        "lab.wait_kme_pool._docker_curl",
+        return_value=type("R", (), {"returncode": 0, "stdout": json.dumps(payload), "stderr": ""})(),
     ):
-        got_id, err = probe_enc_keys("radius")
+        got_id, err = probe_enc_keys("kme-a", "10.0.0.51", "slave-id")
     assert got_id == key_id
     assert err is None
 
 
 def test_probe_enc_keys_rejects_failure() -> None:
     with patch(
-        "lab.wait_kme_pool.subprocess.run",
+        "lab.wait_kme_pool._docker_curl",
         return_value=type("R", (), {"returncode": 1, "stdout": "", "stderr": "boom"})(),
     ):
-        got_id, err = probe_enc_keys("radius")
+        got_id, err = probe_enc_keys("kme-a", "10.0.0.51", "slave-id")
     assert got_id is None
     assert err == "boom"
 
@@ -63,7 +64,7 @@ def test_wait_for_kme_pool_honors_min_wait_and_probe() -> None:
         with patch("lab.wait_kme_pool.time.monotonic", side_effect=[0.0, 0.0, 100.0]):
             with patch("lab.wait_kme_pool.probe_enc_keys", return_value=(key_id, None)):
                 got = wait_for_kme_pool(
-                    clab_name="qkd-macsec-radius",
+                    clab_name="quantum-safe",
                     mgmt_subnet="172.20.127.0/24",
                     min_wait_sec=15,
                     timeout_sec=60,
@@ -85,7 +86,7 @@ def test_wait_for_kme_pool_times_out() -> None:
                 ):
                     with pytest.raises(KmePoolWaitError, match="not ready after"):
                         wait_for_kme_pool(
-                            clab_name="qkd-macsec-radius",
+                            clab_name="quantum-safe",
                             mgmt_subnet="172.20.127.0/24",
                             min_wait_sec=1,
                             timeout_sec=5,

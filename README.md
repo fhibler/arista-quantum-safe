@@ -1,19 +1,21 @@
-# QKD-MACsec-RADIUS Lab
+# Quantum Safe Lab
 
-Containerlab topology for a cEOS + FreeRADIUS lab with PQC-hybrid management-plane security and **dynamic MACsec** on the inter-switch link.
+Containerlab lab demonstrating **quantum-safe** network security on Arista cEOS: PQC-hybrid management-plane TLS (RadSec, eAPI, gNMI, SSH), **dynamic MACsec** on an inter-switch link, and optional ETSI QKD 014 KME simulators on the mgmt network.
 
-Two Arista cEOS switches (`ceos1`, `ceos2`) connect over an L3 inter-switch link protected by 802.1X EAP-TLS and MKA-derived keys. Each switch serves an Alpine Linux host on a separate routed subnet. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
+Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology. `ceos1-both` and `ceos2-pqc` connect over an L3 link protected by 802.1X EAP-TLS and MKA-derived keys. `ceos3-qkd` attaches to `ceos1-both` over plain L3 (MACsec not configured yet). Each switch serves an Alpine Linux host on **Ethernet8**. FreeRADIUS runs on the management network (`172.20.127.0/24`). cEOS nodes use the **MGMT VRF** for management and RadSec traffic; hosts reach each other via static routes on the switches.
+
+Lab identity in Containerlab: `name: quantum-safe`, `prefix: arista` → containers `arista-quantum-safe-<node>`.
 
 ## Overview
 
-Five Containerlab nodes exercise management-plane RADIUS authentication, L3 host routing, and switch-to-switch MACsec. Two ETSI QKD 014 KME simulators on the mgmt network form a linked pair; RADIUS is the SAE client for `kme-a` only:
+Nine data-plane nodes plus two KME simulators on the mgmt network:
 
 | Node | Role |
 |------|------|
-| ceos1, ceos2 | Arista cEOS switches — MGMT VRF, RadSec client, **ceos1 dot1x authenticator / ceos2 EAP-TLS supplicant** on Ethernet1 |
-| host1, host2 | Alpine 3.20 hosts on routed data segments |
-| radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network; SAE client to `kme-a` |
-| kme-a | [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) KME (HTTPS 8010, RADIUS + peer) — see [docs/kme.md](docs/kme.md) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | Arista cEOS switches — MGMT VRF, RadSec client; **ceos1-both/ceos2-pqc MACsec on eth1**; ceos3-qkd plain L3 to ceos1-both |
+| host1, host2, host3 | Alpine 3.20 hosts on routed data segments (ceos*:eth8) |
+| radius | FreeRADIUS server (RadSec + EAP-TLS for dot1x) on the mgmt network |
+| kme-a | [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) KME (HTTPS 8010, lab SAE client + peer) — see [docs/kme.md](docs/kme.md) |
 | kme-b | Peer KME (HTTPS 8020, linked to `kme-a` via `OTHER_KMES`) — see [docs/kme.md](docs/kme.md) |
 
 ## Prerequisites
@@ -21,7 +23,7 @@ Five Containerlab nodes exercise management-plane RADIUS authentication, L3 host
 | Requirement | Notes |
 |-------------|-------|
 | Devcontainer rebuild | DinD devcontainer (trixie fork of `devcontainer-dind-slim`, CLAB **0.78.0**) — see [docs/devcontainer.md](docs/devcontainer.md) |
-| RAM | ~8 GB minimum (two cEOS containers are memory-heavy) |
+| RAM | ~10 GB minimum (three cEOS containers are memory-heavy) |
 | Containerlab CLI | Installed at devcontainer build time (`CLAB_VERSION` in Makefile); verify with `containerlab version` |
 | Docker (dind) | Inner daemon must match host arch (amd64 or aarch64) |
 | cEOS image | **Required for deploy** — import manually or via optional `make download-ceos` |
@@ -84,7 +86,7 @@ make download-ceos
 
 ## FreeRADIUS multi-arch
 
-The `qkd-radius:latest` image is built by `make build-radius` (~2 min first build):
+The `quantum-safe-radius:latest` image is built by `make build-radius` (~2 min first build):
 
 - **amd64 and arm64** — FreeRADIUS **3.2.6** + OpenSSL **3.5.7** (PQC-hybrid groups including `X25519MLKEM768`)
 - Post-build verification: `make test-radius-image`
@@ -120,10 +122,12 @@ See [docs/makefile.md](docs/makefile.md) for all Makefile targets and [docs/veri
 
 | Node | Mgmt IP | Role |
 |------|---------|------|
-| ceos1 | 172.20.127.11 | cEOS switch A |
-| ceos2 | 172.20.127.12 | cEOS switch B |
-| host1 | 172.20.127.21 | Alpine host on ceos1:eth2 |
-| host2 | 172.20.127.22 | Alpine host on ceos2:eth2 |
+| ceos1-both | 172.20.127.11 | cEOS switch A (hub) |
+| ceos2-pqc | 172.20.127.12 | cEOS switch B |
+| ceos3-qkd | 172.20.127.13 | cEOS switch C |
+| host1 | 172.20.127.21 | Alpine host on ceos1-both:eth8 |
+| host2 | 172.20.127.22 | Alpine host on ceos2-pqc:eth8 |
+| host3 | 172.20.127.23 | Alpine host on ceos3-qkd:eth8 |
 | radius | 172.20.127.50 | FreeRADIUS (UDP 1812/1813) |
 
 ### Data plane (L3 routed segments)
@@ -131,8 +135,9 @@ See [docs/makefile.md](docs/makefile.md) for all Makefile targets and [docs/veri
 ```mermaid
 flowchart LR
   subgraph mgmt["Mgmt 172.20.127.0/24"]
-    ceos1["ceos1<br/>172.20.127.11"]
-    ceos2["ceos2<br/>172.20.127.12"]
+    ceos1["ceos1-both<br/>172.20.127.11"]
+    ceos2["ceos2-pqc<br/>172.20.127.12"]
+    ceos3["ceos3-qkd<br/>172.20.127.13"]
     radius["radius<br/>172.20.127.50"]
   end
 
@@ -144,20 +149,30 @@ flowchart LR
     h2["host2<br/>10.0.2.1"]
   end
 
-  ceos1 ---|"eth1 10.255.0.1/30 MACsec"| ceos2
-  ceos1 ---|"eth2 10.0.1.254/24"| h1
-  ceos2 ---|"eth2 10.0.2.254/24"| h2
+  subgraph data3["10.0.3.0/24"]
+    h3["host3<br/>10.0.3.1"]
+  end
+
+  ceos1 ---|"eth1 MACsec"| ceos2
+  ceos1 ---|"eth3 plain L3"| ceos3
+  ceos1 ---|"eth8 10.0.1.254/24"| h1
+  ceos2 ---|"eth8 10.0.2.254/24"| h2
+  ceos3 ---|"eth8 10.0.3.254/24"| h3
   ceos1 -.->|"RADIUS vrf MGMT"| radius
   ceos2 -.->|"RADIUS vrf MGMT"| radius
+  ceos3 -.->|"RADIUS vrf MGMT"| radius
 ```
 
 | Link | Addresses |
 |------|-----------|
-| ceos1:eth1 ↔ ceos2:eth1 | `10.255.0.1/30` ↔ `10.255.0.2/30` |
-| ceos1:eth2 ↔ host1:eth1 | `10.0.1.254/24` ↔ `10.0.1.1/24` |
-| ceos2:eth2 ↔ host2:eth1 | `10.0.2.254/24` ↔ `10.0.2.1/24` |
-| ceos1 static route | `10.0.2.0/24 → 10.255.0.2` |
-| ceos2 static route | `10.0.1.0/24 → 10.255.0.1` |
+| ceos1-both:eth1 ↔ ceos2-pqc:eth1 | `10.255.0.1/30` ↔ `10.255.0.2/30` |
+| ceos1-both:eth3 ↔ ceos3-qkd:eth1 | `10.255.0.5/30` ↔ `10.255.0.6/30` |
+| ceos1-both:eth8 ↔ host1:eth1 | `10.0.1.254/24` ↔ `10.0.1.1/24` |
+| ceos2-pqc:eth8 ↔ host2:eth1 | `10.0.2.254/24` ↔ `10.0.2.1/24` |
+| ceos3-qkd:eth8 ↔ host3:eth1 | `10.0.3.254/24` ↔ `10.0.3.1/24` |
+| ceos1-both static routes | `10.0.2.0/24 → 10.255.0.2`, `10.0.3.0/24 → 10.255.0.6` |
+| ceos2-pqc static routes | `10.0.1.0/24 → 10.255.0.1`, `10.0.3.0/24 → 10.255.0.1` |
+| ceos3-qkd static routes | `10.0.1.0/24 → 10.255.0.5`, `10.0.2.0/24 → 10.255.0.5` |
 
 Full contract: [docs/topology.md](docs/topology.md).
 
@@ -165,10 +180,11 @@ Full contract: [docs/topology.md](docs/topology.md).
 
 | # | Check | Command |
 |---|-------|---------|
-| 1 | All nodes up | `make inspect` → 7× running |
-| 2 | ceos1 → radius | ping in MGMT VRF |
-| 3 | ceos2 → radius | ping in MGMT VRF |
-| 4 | FreeRADIUS listening | `docker logs clab-qkd-macsec-radius-radius` |
+| 1 | All nodes up | `make inspect` → 9× running |
+| 2 | ceos1-both → radius | ping in MGMT VRF |
+| 3 | ceos2-pqc → radius | ping in MGMT VRF |
+| 3b | ceos3-qkd → radius | ping in MGMT VRF |
+| 4 | FreeRADIUS listening | `docker logs arista-quantum-safe-radius` |
 | 5 | RADIUS auth | `make test-radius` |
 | 6 | TLS 1.3 PQC (eAPI + gNMI + RadSec + SSH) | `make test-pqc` |
 | 7 | Dynamic MACsec (802.1X + MKA) | `make test-macsec` |

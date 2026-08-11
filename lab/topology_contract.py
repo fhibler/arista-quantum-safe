@@ -1,4 +1,4 @@
-"""Topology and configuration contract validation for the qkd-macsec-radius lab."""
+"""Topology and configuration contract validation for the Quantum Safe lab."""
 
 from __future__ import annotations
 
@@ -10,16 +10,28 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TOPOLOGY_PATH = REPO_ROOT / "lab" / "qkd-macsec-radius.clab.yml"
-GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / ".gen.qkd-macsec-radius.clab.yml"
+LAB_NAME = "quantum-safe"
+CLAB_PREFIX = "arista"
+LAB_DISPLAY_NAME = "Quantum Safe"
+MGMT_NETWORK = "quantum-safe-mgmt"
+RADIUS_IMAGE = "quantum-safe-radius:latest"
+TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
+GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml"
 GEN_CONFIG_DIR = REPO_ROOT / "lab" / ".gen"
+
+
+def container_name(node: str, *, lab_name: str | None = None, prefix: str | None = None) -> str:
+    """Return the Containerlab Docker container name for a lab node."""
+    return f"{prefix or CLAB_PREFIX}-{lab_name or LAB_NAME}-{node}"
 
 DEFAULT_MGMT_SUBNET = "172.20.127.0/24"
 MGMT_HOST_SUFFIXES = {
-    "ceos1": 11,
-    "ceos2": 12,
+    "ceos1-both": 11,
+    "ceos2-pqc": 12,
+    "ceos3-qkd": 13,
     "host1": 21,
     "host2": 22,
+    "host3": 23,
     "radius": 50,
     "kme-a": 51,
     "kme-b": 52,
@@ -54,10 +66,14 @@ MGMT_SUBNET = DEFAULT_MGMT_SUBNET
 MGMT_IPS = mgmt_ips_for_subnet(DEFAULT_MGMT_SUBNET)
 
 LINKS = [
-    ("ceos1:eth1", "ceos2:eth1"),
-    ("ceos1:eth2", "host1:eth1"),
-    ("ceos2:eth2", "host2:eth1"),
+    ("ceos1-both:eth1", "ceos2-pqc:eth1"),
+    ("ceos1-both:eth3", "ceos3-qkd:eth1"),
+    ("ceos1-both:eth8", "host1:eth1"),
+    ("ceos2-pqc:eth8", "host2:eth1"),
+    ("ceos3-qkd:eth8", "host3:eth1"),
 ]
+
+CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 
 DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
@@ -79,7 +95,7 @@ PROBE_CLIENT_KEY = "/etc/raddb/certs/probe/{node}-client.key"
 MACSEC_PROFILE = "dynamic"
 DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
 DOT1X_EAP_SSL_PROFILE = "DOT1X"
-DOT1X_EAP_IDENTITY = "ceos2"
+DOT1X_EAP_IDENTITY = "ceos2-pqc"
 DOT1X_REAUTH_PERIOD_SEC = 60
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
@@ -90,7 +106,7 @@ RADIUS_SERVER_IP = MGMT_IPS["radius"]
 KME_A_SERVER_IP = MGMT_IPS["kme-a"]
 KME_B_SERVER_IP = MGMT_IPS["kme-b"]
 
-KME_IMAGE = "qkd-kme:latest"
+KME_IMAGE = "quantum-safe-kme:latest"
 KME_A_PORT = 8010
 KME_B_PORT = 8020
 KME_A_ID = "9b7703f1-9b6d-403d-b850-18a1b6fd6d8f"
@@ -99,6 +115,19 @@ KME_SAE_ID = "25840139-0dd4-49ae-ba1e-b86731601803"
 KME_B_SAE_ID = "c565d5aa-8670-4446-8471-b0e53e315d2a"
 KME_KEY_SIZE = 32  # AES-256 key length in bytes (ETSI API uses bits: 256)
 KME_KEY_SIZE_BITS = KME_KEY_SIZE * 8
+
+# Lab nodes allowed to call the KME SAE API (iptables allowlist on kme-a / kme-b).
+KME_SAE_CLIENT_NODES = ("kme-a", "ceos1-both", "ceos3-qkd")
+
+# KME SAE client material bind-mounted on cEOS switches (curl from MGMT VRF).
+CEOS_KME_BINDS = [
+    "../lab/.gen/kme-pki/ca.crt.pem:/mnt/flash/kme-ca.crt.pem:ro",
+    "../lab/.gen/kme-pki/sae.crt.pem:/mnt/flash/kme-sae.crt.pem:ro",
+    "../lab/.gen/kme-pki/sae.key.pem:/mnt/flash/kme-sae.key.pem:ro",
+    "../lab/.gen/kme-pki/sae-b.crt.pem:/mnt/flash/kme-sae-b.crt.pem:ro",
+    "../lab/.gen/kme-pki/sae-b.key.pem:/mnt/flash/kme-sae-b.key.pem:ro",
+]
+CEOS_KME_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
 # Backward-compatible aliases for callers that still use the old names.
 KME_SERVER_IP = KME_A_SERVER_IP
@@ -118,6 +147,10 @@ HOST_DATA_PLANE = {
         "addr": "10.0.2.1/24",
         "gateway": "10.0.2.254",
     },
+    "host3": {
+        "addr": "10.0.3.1/24",
+        "gateway": "10.0.3.254",
+    },
 }
 
 def ceos_data_plane(subnet: str | None = None) -> dict[str, dict[str, Any]]:
@@ -125,19 +158,36 @@ def ceos_data_plane(subnet: str | None = None) -> dict[str, dict[str, Any]]:
     ips = mgmt_ips_for_subnet(subnet)
     prefix = mgmt_prefix_len(subnet)
     return {
-        "ceos1": {
-            "mgmt_ip": f"{ips['ceos1']}/{prefix}",
+        "ceos1-both": {
+            "mgmt_ip": f"{ips['ceos1-both']}/{prefix}",
             "mgmt_gateway": mgmt_gateway(subnet),
             "eth1": "10.255.0.1/30",
-            "eth2": "10.0.1.254/24",
-            "static_route": ("10.0.2.0/24", "10.255.0.2"),
+            "eth3": "10.255.0.5/30",
+            "eth8": "10.0.1.254/24",
+            "static_routes": [
+                ("10.0.2.0/24", "10.255.0.2"),
+                ("10.0.3.0/24", "10.255.0.6"),
+            ],
         },
-        "ceos2": {
-            "mgmt_ip": f"{ips['ceos2']}/{prefix}",
+        "ceos2-pqc": {
+            "mgmt_ip": f"{ips['ceos2-pqc']}/{prefix}",
             "mgmt_gateway": mgmt_gateway(subnet),
             "eth1": "10.255.0.2/30",
-            "eth2": "10.0.2.254/24",
-            "static_route": ("10.0.1.0/24", "10.255.0.1"),
+            "eth8": "10.0.2.254/24",
+            "static_routes": [
+                ("10.0.1.0/24", "10.255.0.1"),
+                ("10.0.3.0/24", "10.255.0.1"),
+            ],
+        },
+        "ceos3-qkd": {
+            "mgmt_ip": f"{ips['ceos3-qkd']}/{prefix}",
+            "mgmt_gateway": mgmt_gateway(subnet),
+            "eth1": "10.255.0.6/30",
+            "eth8": "10.0.3.254/24",
+            "static_routes": [
+                ("10.0.1.0/24", "10.255.0.5"),
+                ("10.0.2.0/24", "10.255.0.5"),
+            ],
         },
     }
 
@@ -151,16 +201,12 @@ RADIUS_BINDS = [
     "../configs/radius/raddb/sites-available/tls:/etc/raddb/sites-available/tls:ro",
     "../lab/.gen/pki/server.pem:/etc/raddb/certs/radsec/server.pem:ro",
     "../lab/.gen/pki/ca.pem:/etc/raddb/certs/radsec/ca.pem:ro",
-    "../lab/.gen/pki/ceos1-client.pem:/etc/raddb/certs/probe/ceos1-client.pem:ro",
-    "../lab/.gen/pki/ceos1-client.key:/etc/raddb/certs/probe/ceos1-client.key:ro",
-    "../lab/.gen/pki/ceos2-client.pem:/etc/raddb/certs/probe/ceos2-client.pem:ro",
-    "../lab/.gen/pki/ceos2-client.key:/etc/raddb/certs/probe/ceos2-client.key:ro",
-    "../lab/.gen/kme-pki/sae.crt.pem:/etc/kme/sae.crt.pem:ro",
-    "../lab/.gen/kme-pki/sae.key.pem:/etc/kme/sae.key.pem:ro",
-    "../lab/.gen/kme-pki/sae-b.crt.pem:/etc/kme/sae-b.crt.pem:ro",
-    "../lab/.gen/kme-pki/sae-b.key.pem:/etc/kme/sae-b.key.pem:ro",
-    "../lab/.gen/kme-pki/ca.crt.pem:/etc/kme/ca.crt.pem:ro",
-    "../lab/.gen/kme-radius.conf:/etc/kme/radius-kme.conf:ro",
+    "../lab/.gen/pki/ceos1-both-client.pem:/etc/raddb/certs/probe/ceos1-both-client.pem:ro",
+    "../lab/.gen/pki/ceos1-both-client.key:/etc/raddb/certs/probe/ceos1-both-client.key:ro",
+    "../lab/.gen/pki/ceos2-pqc-client.pem:/etc/raddb/certs/probe/ceos2-pqc-client.pem:ro",
+    "../lab/.gen/pki/ceos2-pqc-client.key:/etc/raddb/certs/probe/ceos2-pqc-client.key:ro",
+    "../lab/.gen/pki/ceos3-qkd-client.pem:/etc/raddb/certs/probe/ceos3-qkd-client.pem:ro",
+    "../lab/.gen/pki/ceos3-qkd-client.key:/etc/raddb/certs/probe/ceos3-qkd-client.key:ro",
     "logs/radius:/var/log/radius",
 ]
 
@@ -189,7 +235,7 @@ KME_NODES: dict[str, dict[str, Any]] = {
         "kme_key": "/certs/kme-a.key.pem",
         "peer_node": "kme-b",
         "peer_port": KME_B_PORT,
-        "radius_ip_required": True,
+        "sae_client_ips": True,
     },
     "kme-b": {
         "port": KME_B_PORT,
@@ -199,7 +245,7 @@ KME_NODES: dict[str, dict[str, Any]] = {
         "kme_key": "/certs/kme-b.key.pem",
         "peer_node": "kme-a",
         "peer_port": KME_A_PORT,
-        "radius_ip_required": True,
+        "sae_client_ips": True,
         "sae_cert": "/certs/sae-b.crt.pem",
     },
 }
@@ -222,6 +268,11 @@ def kme_other_kmes(peer_ip: str, peer_port: int) -> str:
     return f"https://{peer_ip}:{peer_port}"
 
 
+def kme_sae_client_ips(mgmt_ips: dict[str, str]) -> str:
+    """Return comma-separated mgmt IPs allowed to call the KME SAE API."""
+    return ",".join(mgmt_ips[node] for node in KME_SAE_CLIENT_NODES)
+
+
 def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
     """Return expected KME container env for a lab node."""
     spec = KME_NODES[node]
@@ -236,49 +287,69 @@ def kme_env_for_node(node: str, *, mgmt_ips: dict[str, str]) -> dict[str, str]:
         "KME_KEY": spec["kme_key"],
         "SAE_CERT": spec.get("sae_cert", KME_COMMON_ENV["SAE_CERT"]),
     }
-    if spec.get("radius_ip_required"):
-        env["RADIUS_IP"] = mgmt_ips["radius"]
+    if spec.get("sae_client_ips"):
+        env["SAE_CLIENT_IPS"] = kme_sae_client_ips(mgmt_ips)
     return env
 
 CEOS_RADSEC_PKI_EXEC = {
-    "ceos1": (
+    "ceos1-both": (
         'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
-        'echo "copy flash:ceos1-client.pem certificate:"; '
-        'echo "copy flash:ceos1-client.key sslkey:"; '
-        'echo "copy flash:ceos1-eapi.pem certificate:"; '
-        'echo "copy flash:ceos1-eapi.key sslkey:"; '
-        'echo "copy flash:ceos1-gnmi.pem certificate:"; '
-        'echo "copy flash:ceos1-gnmi.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos1-both-client.pem certificate:"; '
+        'echo "copy flash:ceos1-both-client.key sslkey:"; '
+        'echo "copy flash:ceos1-both-eapi.pem certificate:"; '
+        'echo "copy flash:ceos1-both-eapi.key sslkey:"; '
+        'echo "copy flash:ceos1-both-gnmi.pem certificate:"; '
+        'echo "copy flash:ceos1-both-gnmi.key sslkey:"; } | Cli\''
     ),
-    "ceos2": (
+    "ceos2-pqc": (
         'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
-        'echo "copy flash:ceos2-client.pem certificate:"; '
-        'echo "copy flash:ceos2-client.key sslkey:"; '
-        'echo "copy flash:ceos2-eapi.pem certificate:"; '
-        'echo "copy flash:ceos2-eapi.key sslkey:"; '
-        'echo "copy flash:ceos2-gnmi.pem certificate:"; '
-        'echo "copy flash:ceos2-gnmi.key sslkey:"; } | Cli\''
+        'echo "copy flash:ceos2-pqc-client.pem certificate:"; '
+        'echo "copy flash:ceos2-pqc-client.key sslkey:"; '
+        'echo "copy flash:ceos2-pqc-eapi.pem certificate:"; '
+        'echo "copy flash:ceos2-pqc-eapi.key sslkey:"; '
+        'echo "copy flash:ceos2-pqc-gnmi.pem certificate:"; '
+        'echo "copy flash:ceos2-pqc-gnmi.key sslkey:"; } | Cli\''
+    ),
+    "ceos3-qkd": (
+        'bash -c \'{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; '
+        'echo "copy flash:ceos3-qkd-client.pem certificate:"; '
+        'echo "copy flash:ceos3-qkd-client.key sslkey:"; '
+        'echo "copy flash:ceos3-qkd-eapi.pem certificate:"; '
+        'echo "copy flash:ceos3-qkd-eapi.key sslkey:"; '
+        'echo "copy flash:ceos3-qkd-gnmi.pem certificate:"; '
+        'echo "copy flash:ceos3-qkd-gnmi.key sslkey:"; } | Cli\''
     ),
 }
 
 CEOS_BINDS = {
-    "ceos1": [
+    "ceos1-both": [
         "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
-        "../lab/.gen/pki/ceos1-client.pem:/mnt/flash/ceos1-client.pem:ro",
-        "../lab/.gen/pki/ceos1-client.key:/mnt/flash/ceos1-client.key:ro",
-        "../lab/.gen/pki/ceos1-eapi.pem:/mnt/flash/ceos1-eapi.pem:ro",
-        "../lab/.gen/pki/ceos1-eapi.key:/mnt/flash/ceos1-eapi.key:ro",
-        "../lab/.gen/pki/ceos1-gnmi.pem:/mnt/flash/ceos1-gnmi.pem:ro",
-        "../lab/.gen/pki/ceos1-gnmi.key:/mnt/flash/ceos1-gnmi.key:ro",
+        "../lab/.gen/pki/ceos1-both-client.pem:/mnt/flash/ceos1-both-client.pem:ro",
+        "../lab/.gen/pki/ceos1-both-client.key:/mnt/flash/ceos1-both-client.key:ro",
+        "../lab/.gen/pki/ceos1-both-eapi.pem:/mnt/flash/ceos1-both-eapi.pem:ro",
+        "../lab/.gen/pki/ceos1-both-eapi.key:/mnt/flash/ceos1-both-eapi.key:ro",
+        "../lab/.gen/pki/ceos1-both-gnmi.pem:/mnt/flash/ceos1-both-gnmi.pem:ro",
+        "../lab/.gen/pki/ceos1-both-gnmi.key:/mnt/flash/ceos1-both-gnmi.key:ro",
+        *CEOS_KME_BINDS,
     ],
-    "ceos2": [
+    "ceos2-pqc": [
         "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
-        "../lab/.gen/pki/ceos2-client.pem:/mnt/flash/ceos2-client.pem:ro",
-        "../lab/.gen/pki/ceos2-client.key:/mnt/flash/ceos2-client.key:ro",
-        "../lab/.gen/pki/ceos2-eapi.pem:/mnt/flash/ceos2-eapi.pem:ro",
-        "../lab/.gen/pki/ceos2-eapi.key:/mnt/flash/ceos2-eapi.key:ro",
-        "../lab/.gen/pki/ceos2-gnmi.pem:/mnt/flash/ceos2-gnmi.pem:ro",
-        "../lab/.gen/pki/ceos2-gnmi.key:/mnt/flash/ceos2-gnmi.key:ro",
+        "../lab/.gen/pki/ceos2-pqc-client.pem:/mnt/flash/ceos2-pqc-client.pem:ro",
+        "../lab/.gen/pki/ceos2-pqc-client.key:/mnt/flash/ceos2-pqc-client.key:ro",
+        "../lab/.gen/pki/ceos2-pqc-eapi.pem:/mnt/flash/ceos2-pqc-eapi.pem:ro",
+        "../lab/.gen/pki/ceos2-pqc-eapi.key:/mnt/flash/ceos2-pqc-eapi.key:ro",
+        "../lab/.gen/pki/ceos2-pqc-gnmi.pem:/mnt/flash/ceos2-pqc-gnmi.pem:ro",
+        "../lab/.gen/pki/ceos2-pqc-gnmi.key:/mnt/flash/ceos2-pqc-gnmi.key:ro",
+    ],
+    "ceos3-qkd": [
+        "../lab/.gen/pki/radsec-ca.pem:/mnt/flash/radsec-ca.pem:ro",
+        "../lab/.gen/pki/ceos3-qkd-client.pem:/mnt/flash/ceos3-qkd-client.pem:ro",
+        "../lab/.gen/pki/ceos3-qkd-client.key:/mnt/flash/ceos3-qkd-client.key:ro",
+        "../lab/.gen/pki/ceos3-qkd-eapi.pem:/mnt/flash/ceos3-qkd-eapi.pem:ro",
+        "../lab/.gen/pki/ceos3-qkd-eapi.key:/mnt/flash/ceos3-qkd-eapi.key:ro",
+        "../lab/.gen/pki/ceos3-qkd-gnmi.pem:/mnt/flash/ceos3-qkd-gnmi.pem:ro",
+        "../lab/.gen/pki/ceos3-qkd-gnmi.key:/mnt/flash/ceos3-qkd-gnmi.key:ro",
+        *CEOS_KME_BINDS,
     ],
 }
 
@@ -286,28 +357,36 @@ PKI_FILES = [
     "ca.pem",
     "radsec-ca.pem",
     "server.pem",
-    "ceos1-client.pem",
-    "ceos1-client.key",
-    "ceos1-eapi.pem",
-    "ceos1-eapi.key",
-    "ceos1-gnmi.pem",
-    "ceos1-gnmi.key",
-    "ceos2-client.pem",
-    "ceos2-client.key",
-    "ceos2-eapi.pem",
-    "ceos2-eapi.key",
-    "ceos2-gnmi.pem",
-    "ceos2-gnmi.key",
+    "ceos1-both-client.pem",
+    "ceos1-both-client.key",
+    "ceos1-both-eapi.pem",
+    "ceos1-both-eapi.key",
+    "ceos1-both-gnmi.pem",
+    "ceos1-both-gnmi.key",
+    "ceos2-pqc-client.pem",
+    "ceos2-pqc-client.key",
+    "ceos2-pqc-eapi.pem",
+    "ceos2-pqc-eapi.key",
+    "ceos2-pqc-gnmi.pem",
+    "ceos2-pqc-gnmi.key",
+    "ceos3-qkd-client.pem",
+    "ceos3-qkd-client.key",
+    "ceos3-qkd-eapi.pem",
+    "ceos3-qkd-eapi.key",
+    "ceos3-qkd-gnmi.pem",
+    "ceos3-qkd-gnmi.key",
 ]
 
 CEOS_STARTUP_CONFIGS = {
-    "ceos1": "../lab/.gen/ceos1.cfg",
-    "ceos2": "../lab/.gen/ceos2.cfg",
+    "ceos1-both": "../lab/.gen/ceos1-both.cfg",
+    "ceos2-pqc": "../lab/.gen/ceos2-pqc.cfg",
+    "ceos3-qkd": "../lab/.gen/ceos3-qkd.cfg",
 }
 
 CONFIG_PATHS = {
-    "ceos1": REPO_ROOT / "configs" / "ceos" / "ceos1.cfg.in",
-    "ceos2": REPO_ROOT / "configs" / "ceos" / "ceos2.cfg.in",
+    "ceos1-both": REPO_ROOT / "configs" / "ceos" / "ceos1-both.cfg.in",
+    "ceos2-pqc": REPO_ROOT / "configs" / "ceos" / "ceos2-pqc.cfg.in",
+    "ceos3-qkd": REPO_ROOT / "configs" / "ceos" / "ceos3-qkd.cfg.in",
     "clients": REPO_ROOT / "configs" / "radius" / "raddb" / "clients.conf.in",
     "clients_radsec": REPO_ROOT / "configs" / "radius" / "raddb" / "clients-radsec.conf.in",
     "tls_site": REPO_ROOT / "configs" / "radius" / "raddb" / "sites-available" / "tls",
@@ -349,10 +428,6 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
     for name in KME_PKI_FILES:
         if not (kme_pki_dir / name).is_file():
             errors.append(f"missing lab/.gen/kme-pki/{name} (run make gen-topo)")
-
-    kme_radius_conf = root / "lab" / ".gen" / "kme-radius.conf"
-    if not kme_radius_conf.is_file():
-        errors.append("missing lab/.gen/kme-radius.conf (run make gen-topo)")
 
     for ceos, binds in CEOS_BINDS.items():
         for bind in binds:
@@ -443,12 +518,14 @@ def validate_ceos_configs(
             )
         if f"ip address {expected['eth1']}" not in text:
             errors.append(f"{ceos}.cfg Ethernet1 must have {expected['eth1']}")
-        if f"ip address {expected['eth2']}" not in text:
-            errors.append(f"{ceos}.cfg Ethernet2 must have {expected['eth2']}")
+        if "eth3" in expected and f"ip address {expected['eth3']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet3 must have {expected['eth3']}")
+        if f"ip address {expected['eth8']}" not in text:
+            errors.append(f"{ceos}.cfg Ethernet8 must have {expected['eth8']}")
 
-        prefix, nexthop = expected["static_route"]
-        if f"ip route {prefix} {nexthop}" not in text:
-            errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
+        for prefix, nexthop in expected["static_routes"]:
+            if f"ip route {prefix} {nexthop}" not in text:
+                errors.append(f"{ceos}.cfg must route {prefix} via {nexthop}")
 
         if f"radius-server host {radius_ip} vrf MGMT tls ssl-profile {SSL_PROFILE}" not in text:
             errors.append(f"{ceos}.cfg must configure RadSec server in MGMT VRF")
@@ -520,16 +597,17 @@ def validate_ceos_configs(
         if not ssh_default_shutdown:
             errors.append(f"{ceos}.cfg must disable SSH on the default VRF (shutdown)")
 
-        if "dot1x system-auth-control" not in text:
-            errors.append(f"{ceos}.cfg must enable dot1x system-auth-control")
-        if f"profile {MACSEC_PROFILE}" not in text:
-            errors.append(f"{ceos}.cfg must define mac security profile {MACSEC_PROFILE}")
-        if "key source dot1x" not in text:
-            errors.append(f"{ceos}.cfg mac security profile must use key source dot1x")
-        if f"mac security profile {MACSEC_PROFILE}" not in text:
-            errors.append(f"{ceos}.cfg Ethernet1 must apply mac security profile {MACSEC_PROFILE}")
+        if ceos in CEOS_MACSEC_NODES:
+            if "dot1x system-auth-control" not in text:
+                errors.append(f"{ceos}.cfg must enable dot1x system-auth-control")
+            if f"profile {MACSEC_PROFILE}" not in text:
+                errors.append(f"{ceos}.cfg must define mac security profile {MACSEC_PROFILE}")
+            if "key source dot1x" not in text:
+                errors.append(f"{ceos}.cfg mac security profile must use key source dot1x")
+            if f"mac security profile {MACSEC_PROFILE}" not in text:
+                errors.append(f"{ceos}.cfg Ethernet1 must apply mac security profile {MACSEC_PROFILE}")
 
-        if ceos == "ceos1":
+        if ceos == "ceos1-both":
             if "aaa authentication dot1x default group RADIUS" not in text:
                 errors.append(f"{ceos}.cfg must authenticate dot1x via RadSec group RADIUS")
             if "aaa accounting dot1x default start-stop group RADIUS" not in text:
@@ -545,7 +623,7 @@ def validate_ceos_configs(
                     f"{ceos}.cfg Ethernet1 must set dot1x timeout reauth-period "
                     f"{DOT1X_REAUTH_PERIOD_SEC}"
                 )
-        elif ceos == "ceos2":
+        elif ceos == "ceos2-pqc":
             if f"supplicant profile {DOT1X_SUPPLICANT_PROFILE}" not in text:
                 errors.append(
                     f"{ceos}.cfg must define dot1x supplicant profile {DOT1X_SUPPLICANT_PROFILE}"
@@ -564,6 +642,11 @@ def validate_ceos_configs(
                 errors.append(
                     f"{ceos}.cfg Ethernet1 must enable dot1x supplicant {DOT1X_SUPPLICANT_PROFILE}"
                 )
+        elif ceos == "ceos3-qkd":
+            if "mac security profile" in text:
+                errors.append(f"{ceos}.cfg must not configure MACsec (not enabled yet)")
+            if "dot1x" in text:
+                errors.append(f"{ceos}.cfg must not configure dot1x (MACsec not enabled yet)")
 
     return errors
 
@@ -588,7 +671,11 @@ def validate_radius_configs(
         errors.append("missing lab/.gen/clients-radsec.conf (run make gen-topo)")
     else:
         clients_radsec = clients_radsec_path.read_text(encoding="utf-8")
-        for ceos, ip in (("ceos1", mgmt_ips["ceos1"]), ("ceos2", mgmt_ips["ceos2"])):
+        for ceos, ip in (
+            ("ceos1-both", mgmt_ips["ceos1-both"]),
+            ("ceos2-pqc", mgmt_ips["ceos2-pqc"]),
+            ("ceos3-qkd", mgmt_ips["ceos3-qkd"]),
+        ):
             block = re.search(rf"client\s+{ceos}\s*\{{([^}}]+)\}}", clients_radsec, re.DOTALL)
             if block is None:
                 errors.append(f"clients-radsec.conf must define client {ceos}")
@@ -661,7 +748,7 @@ def validate_radius_configs(
         clients = clients_path.read_text(encoding="utf-8")
         if "172.17.0.0/16" not in clients:
             errors.append("clients.conf must include dockernet client 172.17.0.0/16")
-        if "client ceos1" in clients or "client ceos2" in clients:
+        if "client ceos1-both" in clients or "client ceos2-pqc" in clients or "client ceos3-qkd" in clients:
             errors.append("clients.conf must not define plain UDP ceos clients (use clients-radsec.conf)")
 
     if not radiusd_path.is_file():
@@ -693,9 +780,6 @@ def validate_radius_configs(
             "radius-detail.log",
             "policy.d/macsec-dot1x",
             "macsec-dot1x",
-            "policy.d/kme-qkd",
-            "kme-qkd",
-            "kme-fetch-key",
             "sites-enabled/tls",
             "clients-radsec.conf",
         ):
@@ -718,10 +802,14 @@ def validate_topology(
     expected_mgmt_subnet = mgmt_subnet or DEFAULT_MGMT_SUBNET
     expected_mgmt_ips = mgmt_ips_for_subnet(expected_mgmt_subnet)
 
-    if data.get("name") != "qkd-macsec-radius":
-        errors.append("name must be qkd-macsec-radius")
+    if data.get("name") != LAB_NAME:
+        errors.append(f"name must be {LAB_NAME}")
+    if data.get("prefix") != CLAB_PREFIX:
+        errors.append(f"prefix must be {CLAB_PREFIX}")
 
     mgmt = data.get("mgmt", {})
+    if mgmt.get("network") != MGMT_NETWORK:
+        errors.append(f"mgmt.network must be {MGMT_NETWORK}")
     if mgmt.get("ipv4-subnet") != expected_mgmt_subnet:
         errors.append(f"mgmt.ipv4-subnet must be {expected_mgmt_subnet}")
 
@@ -742,6 +830,12 @@ def validate_topology(
             continue
         if node_cfg.get("mgmt-ipv4") != expected_ip:
             errors.append(f"{node} mgmt-ipv4 must be {expected_ip}")
+
+    radius_cfg = nodes.get("radius")
+    if radius_cfg is None:
+        errors.append("missing node radius")
+    elif radius_cfg.get("image") != RADIUS_IMAGE:
+        errors.append(f"radius image must be {RADIUS_IMAGE}")
 
     for ceos, expected in CEOS_STARTUP_CONFIGS.items():
         startup = nodes.get(ceos, {}).get("startup-config")

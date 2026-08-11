@@ -49,21 +49,21 @@ def test_probe_eapi_jsonrpc_requires_version_payload() -> None:
         "lab.test_pqc_connections.subprocess.run",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),
     ):
-        probe_eapi_jsonrpc("ceos1", "172.20.127.11")
+        probe_eapi_jsonrpc("ceos1-both", "172.20.127.11")
 
     with patch(
         "lab.test_pqc_connections.subprocess.run",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="No authentication header found", stderr=""),
     ):
         with pytest.raises(Exception, match="unexpected response"):
-            probe_eapi_jsonrpc("ceos1", "172.20.127.11")
+            probe_eapi_jsonrpc("ceos1-both", "172.20.127.11")
 
 
 def test_run_live_checks_happy_path(capsys) -> None:
     targets = LabTargets(
-        clab_name="qkd-macsec-radius",
+        clab_name="quantum-safe",
         radius_ip="172.20.127.50",
-        ceos_ips={"ceos1": "172.20.127.11", "ceos2": "172.20.127.12"},
+        ceos_ips={"ceos1-both": "172.20.127.11", "ceos2-pqc": "172.20.127.12"},
     )
 
     def fake_docker_exec(container: str, command: str, *, input_text: str = "", check: bool = True, **kwargs: object):
@@ -80,7 +80,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
                 stderr="",
             )
         if "ip netns exec" in command and "ssh" in command:
-            peer = "ceos2" if "172.20.127.12" in command else "ceos1"
+            peer = "ceos2-pqc" if "172.20.127.12" in command else "ceos1-both"
             return subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
@@ -151,8 +151,8 @@ def test_run_live_checks_happy_path(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "=== radius ===" in output
-    assert "=== ceos1 ===" in output
-    assert "=== ceos2 ===" in output
+    assert "=== ceos1-both ===" in output
+    assert "=== ceos2-pqc ===" in output
     assert "[config]" in output
     assert "[live]" in output
     assert "PQC: OK" in output
@@ -160,9 +160,9 @@ def test_run_live_checks_happy_path(capsys) -> None:
 
 def test_probe_ssh_pqc_requires_pqc_kex() -> None:
     targets = LabTargets(
-        clab_name="qkd-macsec-radius",
+        clab_name="quantum-safe",
         radius_ip="172.20.127.50",
-        ceos_ips={"ceos1": "172.20.127.11", "ceos2": "172.20.127.12"},
+        ceos_ips={"ceos1-both": "172.20.127.11", "ceos2-pqc": "172.20.127.12"},
     )
     with patch(
         "lab.test_pqc_connections.docker_exec",
@@ -174,32 +174,32 @@ def test_probe_ssh_pqc_requires_pqc_kex() -> None:
         ),
     ):
         with pytest.raises(Exception, match="expected kex"):
-            probe_ssh_pqc(targets, "ceos1", "ceos2")
+            probe_ssh_pqc(targets, "ceos1-both", "ceos2-pqc")
 
 
 def test_probe_radsec_from_switch_requires_auth_success() -> None:
     targets = LabTargets(
-        clab_name="qkd-macsec-radius",
+        clab_name="quantum-safe",
         radius_ip="172.20.127.50",
-        ceos_ips={"ceos1": "172.20.127.11", "ceos2": "172.20.127.12"},
+        ceos_ips={"ceos1-both": "172.20.127.11", "ceos2-pqc": "172.20.127.12"},
     )
     with patch(
         "lab.test_pqc_connections.ceos_cli",
         return_value="authentication failed",
     ):
         with pytest.raises(Exception, match="RadSec AAA test"):
-            probe_radsec_from_switch(targets, "ceos1")
+            probe_radsec_from_switch(targets, "ceos1-both")
 
 
 def test_probe_eapi_https_requires_tls13() -> None:
     targets = LabTargets(
-        clab_name="qkd-macsec-radius",
+        clab_name="quantum-safe",
         radius_ip="172.20.127.50",
-        ceos_ips={"ceos1": "172.20.127.11", "ceos2": "172.20.127.12"},
+        ceos_ips={"ceos1-both": "172.20.127.11", "ceos2-pqc": "172.20.127.12"},
     )
     with patch(
         "lab.test_pqc_connections.openssl_s_client",
         side_effect=Exception("TLS 1.3 handshake to 172.20.127.11:443 failed"),
     ):
         with pytest.raises(Exception):
-            probe_eapi_https(targets, "ceos1")
+            probe_eapi_https(targets, "ceos1-both")

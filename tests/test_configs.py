@@ -54,15 +54,16 @@ def test_ceos_no_todo_stub_markers(repo_root: Path, ceos: str, spec: dict) -> No
 def test_clients_conf_dockernet_only(repo_root: Path) -> None:
     clients = (repo_root / "lab" / ".gen" / "clients.conf").read_text(encoding="utf-8")
     assert "172.17.0.0/16" in clients
-    assert "client ceos1" not in clients
-    assert "client ceos2" not in clients
+    assert "client ceos1-both" not in clients
+    assert "client ceos2-pqc" not in clients
 
 
 def test_clients_radsec_conf_ceos_entries(repo_root: Path) -> None:
     clients = (repo_root / "lab" / ".gen" / "clients-radsec.conf").read_text(encoding="utf-8")
     assert RADSEC_SECRET in clients
-    assert MGMT_IPS["ceos1"] in clients
-    assert MGMT_IPS["ceos2"] in clients
+    assert MGMT_IPS["ceos1-both"] in clients
+    assert MGMT_IPS["ceos2-pqc"] in clients
+    assert MGMT_IPS["ceos3-qkd"] in clients
     assert "proto   = tls" in clients
 
 
@@ -90,9 +91,10 @@ def test_authorize_accepts_non_eap_and_uses_eap_module(repo_root: Path) -> None:
 
 
 def test_data_plane_constants_match_host_exec() -> None:
-    """Document-level sanity: host gateways are switch eth2 addresses."""
-    assert HOST_DATA_PLANE["host1"]["gateway"] == CEOS_DATA_PLANE["ceos1"]["eth2"].split("/")[0]
-    assert HOST_DATA_PLANE["host2"]["gateway"] == CEOS_DATA_PLANE["ceos2"]["eth2"].split("/")[0]
+    """Document-level sanity: host gateways are switch eth8 addresses."""
+    assert HOST_DATA_PLANE["host1"]["gateway"] == CEOS_DATA_PLANE["ceos1-both"]["eth8"].split("/")[0]
+    assert HOST_DATA_PLANE["host2"]["gateway"] == CEOS_DATA_PLANE["ceos2-pqc"]["eth8"].split("/")[0]
+    assert HOST_DATA_PLANE["host3"]["gateway"] == CEOS_DATA_PLANE["ceos3-qkd"]["eth8"].split("/")[0]
     assert RADIUS_SERVER_IP == MGMT_IPS["radius"]
 
 
@@ -101,6 +103,6 @@ def test_custom_mgmt_subnet_render(repo_root: Path) -> None:
     render_lab(repo_root=repo_root, mgmt_subnet=custom)
     errors = validate_ceos_configs(repo_root, mgmt_subnet=custom)
     assert errors == [], "\n".join(errors)
-    text = (repo_root / "lab" / ".gen" / "ceos1.cfg").read_text(encoding="utf-8")
+    text = (repo_root / "lab" / ".gen" / "ceos1-both.cfg").read_text(encoding="utf-8")
     assert "192.168.28.11/24" in text
     assert "192.168.28.1" in text

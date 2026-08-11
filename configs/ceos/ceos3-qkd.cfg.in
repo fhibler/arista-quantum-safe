@@ -1,9 +1,7 @@
-hostname ceos1
+hostname ceos3-qkd
 no aaa root
 !
 aaa authentication policy local allow-nopassword-remote-login
-aaa authentication dot1x default group RADIUS
-aaa accounting dot1x default start-stop group RADIUS
 aaa authorization exec default local
 username admin nopassword role network-admin privilege 15
 !
@@ -16,25 +14,21 @@ ip route vrf MGMT 0.0.0.0/0 ${MGMT_GATEWAY}
 !
 interface Management0
    vrf MGMT
-   ip address ${MGMT_IP_CEOS1}/${MGMT_PREFIX}
+   ip address ${MGMT_IP_CEOS3_QKD}/${MGMT_PREFIX}
 !
 interface Ethernet1
    no switchport
-   ip address 10.255.0.1/30
-   mac security profile dynamic
-   dot1x pae authenticator
-   dot1x reauthentication
-   dot1x port-control auto
-   dot1x timeout reauth-period 60
+   ip address 10.255.0.6/30
 !
-interface Ethernet2
+interface Ethernet8
    no switchport
-   ip address 10.0.1.254/24
+   ip address 10.0.3.254/24
 !
 ip routing
 ipv6 unicast-routing
 !
-ip route 10.0.2.0/24 10.255.0.2
+ip route 10.0.1.0/24 10.255.0.5
+ip route 10.0.2.0/24 10.255.0.5
 !
 management api gnmi
    transport grpc default
@@ -77,38 +71,32 @@ management security
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
-      certificate ceos1-eapi.pem key ceos1-eapi.key
+      certificate ceos3-qkd-eapi.pem key ceos3-qkd-eapi.key
    !
    ssl profile GNMI
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
-      certificate ceos1-gnmi.pem key ceos1-gnmi.key
+      certificate ceos3-qkd-gnmi.pem key ceos3-qkd-gnmi.key
       trust certificate radsec-ca.pem
    !
    ssl profile RESTCONF
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
-      certificate ceos1-gnmi.pem key ceos1-gnmi.key
+      certificate ceos3-qkd-gnmi.pem key ceos3-qkd-gnmi.key
       trust certificate radsec-ca.pem
    !
    ssl profile RADSEC
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
-      certificate ceos1-client.pem key ceos1-client.key
+      certificate ceos3-qkd-client.pem key ceos3-qkd-client.key
       trust certificate radsec-ca.pem
 !
 radius-server host ${RADIUS_SERVER_IP} vrf MGMT tls ssl-profile RADSEC
 !
 aaa group server radius RADIUS
    server ${RADIUS_SERVER_IP} tls vrf MGMT
-!
-dot1x system-auth-control
-!
-mac security
-   profile dynamic
-      key source dot1x
 !
 end

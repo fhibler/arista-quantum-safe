@@ -32,7 +32,7 @@ def test_build_radius_image() -> None:
             "docker",
             "build",
             "-t",
-            "qkd-radius:test",
+            "quantum-safe-radius:test",
             "-f",
             "docker/radius/Dockerfile",
             ".",
@@ -49,7 +49,7 @@ def test_radius_config_loads() -> None:
             "docker",
             "build",
             "-t",
-            "qkd-radius:test-run",
+            "quantum-safe-radius:test-run",
             "-f",
             "docker/radius/Dockerfile",
             ".",
@@ -58,7 +58,7 @@ def test_radius_config_loads() -> None:
         timeout=300,
     )
     result = subprocess.run(
-        ["docker", "run", "--rm", "qkd-radius:test-run", "radiusd", "-C"],
+        ["docker", "run", "--rm", "quantum-safe-radius:test-run", "radiusd", "-C"],
         capture_output=True,
         text=True,
         timeout=60,

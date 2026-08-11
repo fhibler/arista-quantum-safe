@@ -62,7 +62,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
             return (
                 "aaa authentication dot1x default group RADIUS\n"
                 "supplicant profile macsec-sp\n"
-                "identity ceos2\n"
+                "identity ceos2-pqc\n"
                 "eap-method tls\n"
                 "ssl profile DOT1X"
             )
@@ -79,7 +79,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
     with patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli):
-        run_macsec_checks(clab_name="qkd-macsec-radius", mgmt_subnet="172.20.127.0/24")
+        run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24")
 
     output = capsys.readouterr().out
     assert "MACsec: OK" in output
@@ -99,7 +99,7 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
         if "show dot1x interface" in commands:
             return "Port status: Authorized"
         if "show dot1x supplicant" in commands:
-            return "Identity: ceos2\nStatus: success\nEAP method: tls\nSSL profile: DOT1X\nTLS key establishment group: X25519MLKEM768"
+            return "Identity: ceos2-pqc\nStatus: success\nEAP method: tls\nSSL profile: DOT1X\nTLS key establishment group: X25519MLKEM768"
         if "show mac security interface" in commands:
             return "Controlled port: True\nTraffic: encrypted\nKey in use: key:1"
         if "show running-config" in commands:
@@ -108,7 +108,7 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
 
     with patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
-            run_macsec_checks(clab_name="qkd-macsec-radius", mgmt_subnet="172.20.127.0/24", skip_config=True)
+            run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24", skip_config=True)
 
 
 def test_check_dot1x_reauth_cycle_happy_path() -> None:
@@ -150,8 +150,8 @@ def test_check_dot1x_reauth_cycle_happy_path() -> None:
     ):
         check_dot1x_reauth_cycle(
             targets,
-            "clab-test-ceos1",
-            "clab-test-ceos2",
+            "clab-test-ceos1-both",
+            "clab-test-ceos2-pqc",
             "abcdef0123456789",
         )
         sleep.assert_called_once_with(DOT1X_REAUTH_PERIOD_SEC + 15)
@@ -195,7 +195,7 @@ def test_check_dot1x_reauth_cycle_raises_when_login_ok_unchanged() -> None:
         with pytest.raises(MacsecCheckError, match="expected additional RADIUS Login OK"):
             check_dot1x_reauth_cycle(
                 targets,
-                "clab-test-ceos1",
-                "clab-test-ceos2",
+                "clab-test-ceos1-both",
+                "clab-test-ceos2-pqc",
                 "abcdef0123456789",
             )

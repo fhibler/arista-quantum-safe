@@ -1,15 +1,15 @@
-"""Generate ETSI QKD 014 mTLS material for the lab KME and RADIUS (SAE) client."""
+"""Generate ETSI QKD 014 mTLS material for the lab KME pair and SAE clients."""
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from lab.topology_contract import KME_A_ID, KME_B_ID, KME_B_SAE_ID, KME_SAE_ID
+from lab.topology_contract import KME_A_ID, KME_B_ID, KME_B_SAE_ID, KME_SAE_ID, container_name
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-CA_SUBJECT = "/CN=qkd-macsec-radius-kme-ca/O=Lab/C=US"
+CA_SUBJECT = "/CN=quantum-safe-kme-ca/O=Lab/C=US"
 CERT_DAYS = 825
 
 
@@ -116,7 +116,7 @@ def _issue_sae_cert(
             f"/CN={sae_id}/O=SAE/C=US",
         ]
     )
-    names = dns_names or ["radius", "clab-qkd-macsec-radius-radius"]
+    names = dns_names or ["radius", container_name("radius")]
     sae_ext = work / f"{basename}.ext"
     _write_ext(
         sae_ext,
@@ -190,7 +190,7 @@ def generate_kme_pki(
         ca_key=ca_key,
         kme_id=KME_A_ID,
         kme_ip=kme_a_ip,
-        dns_names=["kme-a", "clab-qkd-macsec-radius-kme-a"],
+        dns_names=["kme-a", container_name("kme-a")],
         basename="kme-a",
     )
     kme_b_key, kme_b_crt = _issue_kme_cert(
@@ -199,7 +199,7 @@ def generate_kme_pki(
         ca_key=ca_key,
         kme_id=KME_B_ID,
         kme_ip=kme_b_ip,
-        dns_names=["kme-b", "clab-qkd-macsec-radius-kme-b"],
+        dns_names=["kme-b", container_name("kme-b")],
         basename="kme-b",
     )
 

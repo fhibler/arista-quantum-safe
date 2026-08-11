@@ -15,7 +15,9 @@ import pytest
 
 from tests.scaffold_contract import REPO_ROOT
 
-GEN_TOPO = REPO_ROOT / "lab" / ".gen.qkd-macsec-radius.clab.yml"
+from lab.topology_contract import GEN_TOPOLOGY_PATH
+
+GEN_TOPO = GEN_TOPOLOGY_PATH
 
 
 @pytest.fixture(scope="module")

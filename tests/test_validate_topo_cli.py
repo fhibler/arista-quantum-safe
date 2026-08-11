@@ -41,7 +41,7 @@ def test_validate_topo_cli_with_ceos_image_flag() -> None:
 def test_validate_topo_cli_fails_on_contract_violation(tmp_path: Path) -> None:
     broken = tmp_path / "broken.clab.yml"
     data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))
-    data["topology"]["nodes"]["ceos1"]["mgmt-ipv4"] = "10.0.0.1"
+    data["topology"]["nodes"]["ceos1-both"]["mgmt-ipv4"] = "10.0.0.1"
     broken.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
 
     errors = validate_topology(data)
@@ -49,7 +49,7 @@ def test_validate_topo_cli_fails_on_contract_violation(tmp_path: Path) -> None:
 
     result = _run_cli(str(broken))
     assert result.returncode == 1
-    assert "ceos1 mgmt-ipv4" in result.stderr
+    assert "ceos1-both mgmt-ipv4" in result.stderr
 
 
 def test_validate_topo_cli_missing_file() -> None:

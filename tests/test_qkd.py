@@ -7,14 +7,27 @@ import pytest
 from lab.test_qkd import (
     MASTER,
     QkdCheckError,
+    assert_plain_sak_key_exchange,
+    assert_static_sak_peer_mapping,
     check_agent_role,
     check_kme_key_request_logs,
     check_master_rotation_schedule,
-    check_rotation_success_logs,
+    find_rotation_success_log,
+    note_rotation_success_log,
+    check_static_sak_key_sync,
     extension_installed,
     kme_key_request_lines,
     parse_daemon_quadra_status,
+    parse_static_sak_profile,
     run_qkd_checks,
+)
+from lab.topology_contract import (
+    QUADRA_KEY_RX,
+    QUADRA_KEY_TX,
+    QUADRA_MACSEC_PROFILE_MASTER,
+    QUADRA_MACSEC_PROFILE_SLAVE,
+    QUADRA_SC_RX_ID,
+    QUADRA_SC_TX_ID,
 )
 
 SAMPLE_MASTER_DAEMON = """
@@ -46,6 +59,63 @@ ip                       10.255.0.6
 peer                     10.255.0.5
 peer mode                master
 """
+
+SAMPLE_MASTER_MACSEC = f"""
+mac security
+   profile {QUADRA_MACSEC_PROFILE_MASTER}
+      cipher aes256-gcm-xpn
+      key source sak static
+         secure channel rx
+            identifier {QUADRA_SC_RX_ID}
+            an 1 key 7 0914480D1C0740110E5E51732F75706B
+         secure channel tx
+            identifier {QUADRA_SC_TX_ID}
+            an 1 key 7 130411475E5F532F7E252C636720
+"""
+
+SAMPLE_SLAVE_MACSEC = f"""
+mac security
+   profile {QUADRA_MACSEC_PROFILE_SLAVE}
+      cipher aes256-gcm-xpn
+      key source sak static
+         secure channel rx
+            identifier {QUADRA_SC_TX_ID}
+            an 1 key 7 094D485C4C5640175E0D007A7926
+         secure channel tx
+            identifier {QUADRA_SC_RX_ID}
+            an 1 key 7 135D11160E0E53292E767D6A3173
+"""
+
+SAMPLE_PLAIN_MASTER_MACSEC = f"""
+mac security
+   profile {QUADRA_MACSEC_PROFILE_MASTER}
+      cipher aes256-gcm-xpn
+      key source sak static
+         secure channel rx
+            identifier {QUADRA_SC_RX_ID}
+            an 0 key {QUADRA_KEY_RX}
+         secure channel tx
+            identifier {QUADRA_SC_TX_ID}
+            an 0 key {QUADRA_KEY_TX}
+"""
+
+SAMPLE_PLAIN_SLAVE_MACSEC = f"""
+mac security
+   profile {QUADRA_MACSEC_PROFILE_SLAVE}
+      cipher aes256-gcm-xpn
+      key source sak static
+         secure channel rx
+            identifier {QUADRA_SC_TX_ID}
+            an 0 key {QUADRA_KEY_TX}
+         secure channel tx
+            identifier {QUADRA_SC_RX_ID}
+            an 0 key {QUADRA_KEY_RX}
+"""
+
+SAMPLE_MACSEC_INTERFACE_JSON = (
+    '{"interfaces":{"Ethernet2":{"controlledPort":true,'
+    '"keyMsgId":"static SAK: Rx AN: 1 Tx AN: 1","keyNum":0}}}'
+)
 
 
 def test_extension_installed_detects_installed_swix() -> None:
@@ -121,9 +191,36 @@ def test_check_kme_key_request_logs() -> None:
         mod.read_docker_logs = original
 
 
-def test_check_rotation_success_logs() -> None:
+def test_parse_static_sak_profile_encrypted() -> None:
+    master = parse_static_sak_profile(SAMPLE_MASTER_MACSEC, QUADRA_MACSEC_PROFILE_MASTER)
+    slave = parse_static_sak_profile(SAMPLE_SLAVE_MACSEC, QUADRA_MACSEC_PROFILE_SLAVE)
+    assert master.rx.encrypted
+    assert master.rx.an == 1
+    assert_static_sak_peer_mapping(master, slave)
+
+
+def test_assert_plain_sak_key_exchange() -> None:
+    master = parse_static_sak_profile(SAMPLE_PLAIN_MASTER_MACSEC, QUADRA_MACSEC_PROFILE_MASTER)
+    slave = parse_static_sak_profile(SAMPLE_PLAIN_SLAVE_MACSEC, QUADRA_MACSEC_PROFILE_SLAVE)
+    assert_static_sak_peer_mapping(master, slave)
+    assert_plain_sak_key_exchange(master, slave)
+
+
+def test_assert_plain_sak_key_exchange_rejects_mismatch() -> None:
+    master = parse_static_sak_profile(SAMPLE_PLAIN_MASTER_MACSEC, QUADRA_MACSEC_PROFILE_MASTER)
+    slave = parse_static_sak_profile(SAMPLE_PLAIN_SLAVE_MACSEC, QUADRA_MACSEC_PROFILE_SLAVE)
+    slave_mismatch = parse_static_sak_profile(
+        SAMPLE_PLAIN_SLAVE_MACSEC.replace(QUADRA_KEY_TX, "f" * len(QUADRA_KEY_TX)),
+        QUADRA_MACSEC_PROFILE_SLAVE,
+    )
+    assert_static_sak_peer_mapping(master, slave_mismatch)
+    with pytest.raises(QkdCheckError, match="plain SAK mismatch"):
+        assert_plain_sak_key_exchange(master, slave_mismatch)
+
+
+def test_find_rotation_success_log() -> None:
     logs = (
-        "Aug 11 13:10:25 ceos3-qkd quadra-quadra: "
+        "Aug 11 15:55:24 ceos3-qkd quadra-quadra: "
         "%QUADRA-4-ROTATION_SUCCESS: Successful QKD Macsec key rotation past agent startup or last failure"
     )
 
@@ -136,10 +233,41 @@ def test_check_rotation_success_logs() -> None:
     original = mod.ceos_cli
     mod.ceos_cli = FakeCli()  # type: ignore[assignment]
     try:
-        line = check_rotation_success_logs("container", "ceos3-qkd", verbose=False)
+        line = find_rotation_success_log("container", "ceos3-qkd", verbose=False)
+        assert line is not None
         assert "ROTATION_SUCCESS" in line
     finally:
         mod.ceos_cli = original
+
+
+def test_note_rotation_success_log_warns_when_absent(capsys) -> None:
+    import lab.test_qkd as mod
+
+    original = mod.ceos_cli
+    mod.ceos_cli = lambda *_a, **_k: "unrelated syslog line\n"  # type: ignore[assignment]
+    try:
+        found = note_rotation_success_log("container", "ceos3-qkd", verbose=False)
+        assert found is False
+    finally:
+        mod.ceos_cli = original
+    output = capsys.readouterr().out
+    assert "WARN" in output
+    assert "steady state" in output
+
+
+def test_note_rotation_success_log_reports_when_present(capsys) -> None:
+    logs = "%QUADRA-4-ROTATION_SUCCESS: Successful QKD Macsec key rotation"
+    import lab.test_qkd as mod
+
+    original = mod.ceos_cli
+    mod.ceos_cli = lambda *_a, **_k: logs  # type: ignore[assignment]
+    try:
+        found = note_rotation_success_log("container", "ceos3-qkd", verbose=False)
+        assert found is True
+    finally:
+        mod.ceos_cli = original
+    output = capsys.readouterr().out
+    assert "found rotation success" in output
 
 
 def test_run_qkd_checks_skips_when_extension_missing(capsys) -> None:
@@ -164,6 +292,12 @@ def test_run_qkd_checks_happy_path(capsys) -> None:
             if "ceos3-qkd" in container:
                 return SAMPLE_SLAVE_DAEMON
             return SAMPLE_MASTER_DAEMON
+        if "show running-config | section mac security" in commands:
+            if "ceos3-qkd" in container:
+                return SAMPLE_SLAVE_MACSEC
+            return SAMPLE_MASTER_MACSEC
+        if "show mac security interface" in commands:
+            return SAMPLE_MACSEC_INTERFACE_JSON
         if "show logging" in commands:
             return "%QUADRA-4-ROTATION_SUCCESS: Successful QKD Macsec key rotation"
         if "ping " in commands:
@@ -173,6 +307,12 @@ def test_run_qkd_checks_happy_path(capsys) -> None:
     with (
         patch.object(mod, "quadra_installed_on_nodes", return_value=True),
         patch.object(mod, "ceos_cli", side_effect=fake_cli),
+        patch(
+            "lab.test_pqc_connections.ceos_show_json",
+            side_effect=lambda _c, _cmd, verbose=None: __import__("json").loads(
+                SAMPLE_MACSEC_INTERFACE_JSON
+            ),
+        ),
         patch.object(
             mod,
             "read_docker_logs",

@@ -32,6 +32,7 @@ from lab.topology_contract import (
     GNMI_SSL_PROFILE,
     IP_FAMILIES,
     IP_FAMILY_IPV4,
+    IP_FAMILY_IPV6,
     LAB_NAME,
     PROBE_CLIENT_CERT,
     PROBE_CLIENT_KEY,
@@ -79,8 +80,8 @@ class LabTargets:
         return self.mgmt_ips6["radius"]
 
     @property
-    def syslog_ip(self) -> str:
-        return self.mgmt_ips6["syslog"]
+    def syslog_ips(self) -> tuple[str, str]:
+        return self.mgmt_ips["syslog"], self.mgmt_ips6["syslog"]
 
     def service_ip(self, service: str, family: str = IP_FAMILY_IPV4) -> str:
         if family == IP_FAMILY_IPV4:
@@ -618,7 +619,7 @@ def check_syslog_config(targets: LabTargets, node: str, *, verbose: bool | None 
         check_switch_syslog_logging_config(
             logging_cfg,
             node=node,
-            syslog_ip=targets.syslog_ip,
+            syslog_ips=targets.syslog_ips,
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
@@ -631,9 +632,10 @@ def check_syslog_config(targets: LabTargets, node: str, *, verbose: bool | None 
         check_switch_syslog_ssl_profile_detail(detail, node=node)
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
+    syslog_ipv4, syslog_ipv6 = targets.syslog_ips
     report_config(
         f"syslog ssl profile {SYSLOG_SSL_PROFILE} valid ({SYSLOG_PQC_GROUP}), "
-        f"no cleartext logging hosts, TLS host {targets.syslog_ip}:6514"
+        f"no cleartext logging hosts, TLS hosts {syslog_ipv4}:6514, {syslog_ipv6}:6514"
     )
 
 
@@ -664,7 +666,7 @@ def probe_syslog_delivery(
 ) -> None:
     container = targets.ceos_container(node)
     switch_ip = targets.ceos_mgmt_ip(node, family)
-    needle = f"quantum-safe-syslog-probe-{node}"
+    needle = f"quantum-safe-syslog-probe-{node}-{family}"
 
     def send_log() -> None:
         ceos_cli(
@@ -680,6 +682,8 @@ def probe_syslog_delivery(
             syslog_container=targets.syslog_container,
             switch_ip=switch_ip,
             node=node,
+            needle=needle,
+            marker_id=f"{node}-{family}",
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc

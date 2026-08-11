@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.report import CheckStatus, print_check_group, print_device, print_section_header, report_ok, report_summary
+from lab.report import CheckStatus, print_check_group, print_device, print_section_header, report_ok, report_summary, report_warn
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
@@ -21,6 +21,7 @@ from lab.syslog_checks import (
 from lab.topology_contract import (
     IP_FAMILIES,
     IP_FAMILY_IPV4,
+    IP_FAMILY_IPV6,
     LAB_NAME,
     SYSLOG_SSL_PROFILE,
     container_name,
@@ -35,8 +36,11 @@ def report_config(detail: str) -> None:
     report_ok("[config]", detail)
 
 
-def report_live(detail: str) -> None:
-    report_ok("[live]  ", detail)
+def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK) -> None:
+    if status is CheckStatus.WARN:
+        report_warn("[live]  ", detail)
+    else:
+        report_ok("[live]  ", detail)
 
 
 def docker_exec(
@@ -66,11 +70,13 @@ def ceos_cli(node: str, clab_name: str, commands: str) -> str:
 def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> None:
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     ips6 = mgmt_ipv6_ips_for_subnet()
-    syslog_ip = ips6["syslog"]
+    syslog_ips = (ips["syslog"], ips6["syslog"])
     syslog_container = container_name("syslog", lab_name=clab_name)
 
     print_section_header("Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)")
-    print(f"  collector: {syslog_ip} (IPv6 config)  profile: {SYSLOG_SSL_PROFILE}")
+    print(
+        f"  collector: {syslog_ips[0]} (IPv4), {syslog_ips[1]} (IPv6)  profile: {SYSLOG_SSL_PROFILE}"
+    )
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     if not skip_live:
@@ -92,8 +98,10 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
         print()
         print_device(node)
         logging_cfg = ceos_cli(node, clab_name, 'echo "show running-config section logging"')
-        check_switch_syslog_logging_config(logging_cfg, node=node, syslog_ip=syslog_ip)
-        report_config(f"no cleartext logging hosts, TLS host {syslog_ip}:6514")
+        check_switch_syslog_logging_config(logging_cfg, node=node, syslog_ips=syslog_ips)
+        report_config(
+            f"no cleartext logging hosts, TLS hosts {syslog_ips[0]}:6514, {syslog_ips[1]}:6514"
+        )
         profile = ceos_cli(
             node,
             clab_name,
@@ -118,6 +126,8 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
                 syslog_container=syslog_container,
                 switch_ip=switch_ip,
                 node=node,
+                needle=needle,
+                marker_id=f"{node}-{family}",
             )
             report_live(
                 f"{node} TLS syslog delivered ({family_label(family)}), no cleartext from {switch_ip}"

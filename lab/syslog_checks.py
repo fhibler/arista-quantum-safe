@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import threading
 import time
 from typing import Any, Callable
 
@@ -22,6 +23,11 @@ CLEARTEXT_SYSLOG_TCP_PORTS = (514,)
 
 class SyslogCheckError(RuntimeError):
     """Raised when a syslog PQC or encryption check fails."""
+
+
+def tcpdump_captured_packet(output: str) -> bool:
+    """Return True only when tcpdump stderr confirms a packet was captured."""
+    return bool(re.search(r"\b1 packet captured\b", output))
 
 
 def negotiated_pqc_group(output: str) -> bool:
@@ -72,11 +78,15 @@ def check_syslog_collector_listeners(netstat_udp: str, netstat_tcp: str) -> None
         raise SyslogCheckError(f"syslog collector must listen on TCP {SYSLOG_PORT}")
 
 
+def expected_syslog_host_lines(*syslog_ips: str) -> list[str]:
+    return [expected_syslog_host_line(ip) for ip in syslog_ips]
+
+
 def check_switch_syslog_logging_config(
     logging_config: str,
     *,
     node: str,
-    syslog_ip: str,
+    syslog_ips: tuple[str, ...],
 ) -> None:
     """Verify remote syslog uses TLS only (no UDP/plain TCP hosts)."""
     violations = cleartext_syslog_lines(logging_config)
@@ -84,9 +94,9 @@ def check_switch_syslog_logging_config(
         raise SyslogCheckError(
             f"{node}: cleartext syslog forwarding configured: {violations!r}"
         )
-    expected = expected_syslog_host_line(syslog_ip)
-    if expected not in logging_config:
-        raise SyslogCheckError(f"{node}: expected syslog host line {expected!r}")
+    for expected in expected_syslog_host_lines(*syslog_ips):
+        if expected not in logging_config:
+            raise SyslogCheckError(f"{node}: expected syslog host line {expected!r}")
 
 
 def _syslog_ssl_profile_valid(detail: Any) -> bool:
@@ -141,42 +151,63 @@ def probe_syslog_delivery_no_cleartext(
     syslog_container: str,
     switch_ip: str,
     node: str,
+    needle: str | None = None,
+    marker_id: str | None = None,
     delivery_timeout_sec: int = 45,
 ) -> None:
     """Send a probe log while watching for cleartext syslog packets from the switch."""
-    needle = f"{PROBE_MESSAGE}-{node}"
+    _ = marker_id  # retained for callers; capture no longer uses marker files
+    probe_needle = needle or f"{PROBE_MESSAGE}-{node}"
     capture_filter = cleartext_capture_filter(switch_ip)
-    marker = f"/tmp/cleartext-syslog-{node}.chk"
+    cleartext_seen = threading.Event()
+
+    def watch_cleartext() -> None:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                syslog_container,
+                "timeout",
+                "30",
+                "tcpdump",
+                "-i",
+                "eth0",
+                "-n",
+                "-c",
+                "1",
+                "-Z",
+                "root",
+                capture_filter,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tcpdump_captured_packet(result.stdout + result.stderr):
+            cleartext_seen.set()
 
     docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
-    docker_exec(syslog_container, f"rm -f {marker}", check=False)
-    docker_exec(
-        syslog_container,
-        f"(timeout 30 tcpdump -i eth0 -n -c 1 -Z root '{capture_filter}' 2>/dev/null "
-        f"&& echo CAPTURED > {marker}) &",
-        check=False,
-    )
-    time.sleep(1)
+    watcher = threading.Thread(target=watch_cleartext, daemon=True)
+    watcher.start()
+    time.sleep(0.5)
     send_log()
 
     deadline = time.time() + delivery_timeout_sec
     while time.time() < deadline:
-        captured = docker_exec(
-            syslog_container,
-            f"test -f {marker} && echo yes || echo no",
-            check=False,
-        )
-        if "yes" in captured.stdout:
+        if cleartext_seen.is_set():
+            docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
             raise SyslogCheckError(
                 f"{node}: cleartext syslog observed from {switch_ip} "
                 f"(classic UDP/TCP syslog ports)"
             )
         grep = docker_exec(
             syslog_container,
-            f"grep -F '{needle}' {SYSLOG_LOG_PATH} || true",
+            f"grep -F '{probe_needle}' {SYSLOG_LOG_PATH} || true",
             check=False,
         )
-        if needle in grep.stdout:
+        if probe_needle in grep.stdout:
+            docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
             return
         time.sleep(2)
-    raise SyslogCheckError(f"{node}: timed out waiting for TLS syslog delivery of {needle!r}")
+    docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
+    raise SyslogCheckError(f"{node}: timed out waiting for TLS syslog delivery of {probe_needle!r}")

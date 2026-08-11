@@ -128,7 +128,8 @@ def build_substitutions(
             + [ips6[node] for node in KME_SAE_CLIENT_NODES]
         ),
         "RADIUS_SERVER_IP": ips6["radius"],
-        "SYSLOG_SERVER_IP": ips6["syslog"],
+        "SYSLOG_SERVER_IPV4": ips["syslog"],
+        "SYSLOG_SERVER_IPV6": ips6["syslog"],
         "CONTROL_PLANE_ACL": control_plane_acl.rstrip("\n"),
         "QUADRA_MACSEC_MASTER": render_quadra("quadra-macsec-master", quadra_master_ctx),
         "QUADRA_MACSEC_SLAVE": render_quadra("quadra-macsec-slave", quadra_slave_ctx),
@@ -237,7 +238,7 @@ def render_lab(
     generate_radsec_pki(
         repo_root=root,
         radius_ip=ips6["radius"],
-        syslog_ip=ips6["syslog"],
+        syslog_ips=(ips["syslog"], ips6["syslog"]),
         ceos_hosts={"ceos1-both": "ceos1-both", "ceos2-pqc": "ceos2-pqc", "ceos3-qkd": "ceos3-qkd"},
         ceos_mgmt_ips={
             "ceos1-both": ips["ceos1-both"],

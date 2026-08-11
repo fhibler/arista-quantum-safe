@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+import pytest
+
 from lab.syslog_checks import (
     PQC_GROUP,
+    SyslogCheckError,
+    check_switch_syslog_logging_config,
     check_switch_syslog_ssl_profile_detail,
     cleartext_capture_filter,
     cleartext_syslog_lines,
     expected_syslog_host_line,
+    expected_syslog_host_lines,
     negotiated_pqc_group,
+    tcpdump_captured_packet,
 )
-from lab.topology_contract import SYSLOG_PORT, SYSLOG_SSL_PROFILE, SYSLOG_SERVER_IPV6
+from lab.topology_contract import (
+    SYSLOG_PORT,
+    SYSLOG_SSL_PROFILE,
+    SYSLOG_SERVER_IPV4,
+    SYSLOG_SERVER_IPV6,
+    SYSLOG_TLS_PQC_SAFE_EOS_GROUPS,
+    SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS,
+)
 
 
 def test_cleartext_capture_filter_uses_src_host() -> None:
@@ -39,9 +52,8 @@ def test_cleartext_syslog_lines_detects_plain_tcp() -> None:
     assert cleartext_syslog_lines(cfg) == [cfg]
 
 
-def test_cleartext_syslog_lines_allows_tls(ip_family: str) -> None:
-    syslog_ip = SYSLOG_SERVER_IPV6 if ip_family == "ipv6" else "172.20.127.53"
-    cfg = expected_syslog_host_line(syslog_ip)
+def test_cleartext_syslog_lines_allows_tls() -> None:
+    cfg = "\n".join(expected_syslog_host_lines(SYSLOG_SERVER_IPV4, SYSLOG_SERVER_IPV6))
     assert cleartext_syslog_lines(cfg) == []
 
 
@@ -51,11 +63,42 @@ def test_cleartext_syslog_lines_detects_host_without_protocol() -> None:
 
 
 def test_expected_syslog_host_line(ip_family: str) -> None:
-    syslog_ip = SYSLOG_SERVER_IPV6 if ip_family == "ipv6" else "172.20.127.53"
+    syslog_ip = SYSLOG_SERVER_IPV4 if ip_family == "ipv4" else SYSLOG_SERVER_IPV6
     line = expected_syslog_host_line(syslog_ip)
     assert "protocol tls ssl-profile SYSLOG" in line
     assert str(SYSLOG_PORT) in line
     assert syslog_ip in line
+
+
+def test_check_switch_syslog_logging_config_requires_dual_stack_hosts() -> None:
+    cfg = "\n".join(expected_syslog_host_lines(SYSLOG_SERVER_IPV4, SYSLOG_SERVER_IPV6))
+    check_switch_syslog_logging_config(
+        cfg,
+        node="ceos1-both",
+        syslog_ips=(SYSLOG_SERVER_IPV4, SYSLOG_SERVER_IPV6),
+    )
+
+
+def test_check_switch_syslog_logging_config_rejects_missing_ipv6_host() -> None:
+    cfg = expected_syslog_host_line(SYSLOG_SERVER_IPV4)
+    with pytest.raises(SyslogCheckError, match="expected syslog host line"):
+        check_switch_syslog_logging_config(
+            cfg,
+            node="ceos1-both",
+            syslog_ips=(SYSLOG_SERVER_IPV4, SYSLOG_SERVER_IPV6),
+        )
+
+
+def test_syslog_pqc_safe_group_constants() -> None:
+    assert "X25519MLKEM768" in SYSLOG_TLS_PQC_SAFE_EOS_GROUPS
+    assert "ecdh_x25519" in SYSLOG_TLS_PQC_SAFE_EOS_GROUPS
+    assert "X25519MLKEM768" in SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS
+    assert "secp256r1" in SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS
+
+
+def test_tcpdump_captured_packet() -> None:
+    assert tcpdump_captured_packet("listening on eth0\n1 packet captured\n")
+    assert not tcpdump_captured_packet("listening on eth0\n0 packets captured\n")
 
 
 def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:

@@ -17,13 +17,15 @@ def test_generate_radsec_pki_files(tmp_path: Path, ip_family: str) -> None:
     radius_ip = (
         MGMT_IPV6_IPS["radius"] if ip_family == "ipv6" else "172.20.127.50"
     )
-    syslog_ip = (
-        MGMT_IPV6_IPS["syslog"] if ip_family == "ipv6" else "172.20.127.53"
+    syslog_ips = (
+        (MGMT_IPV6_IPS["syslog"], "172.20.127.53")
+        if ip_family == "ipv6"
+        else ("172.20.127.53", MGMT_IPV6_IPS["syslog"])
     )
     out = generate_radsec_pki(
         repo_root=tmp_path,
         radius_ip=radius_ip,
-        syslog_ip=syslog_ip,
+        syslog_ips=syslog_ips,
         ceos_mgmt_ips={
             "ceos1-both": "172.20.127.11",
             "ceos2-pqc": "172.20.127.12",

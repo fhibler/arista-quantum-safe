@@ -218,6 +218,9 @@ DOT1X_EAP_IDENTITY = "ceos2-pqc"
 DOT1X_REAUTH_PERIOD_SEC = 60
 TLS_PQC_GROUP = "X25519MLKEM768"
 TLS_PQC_EOS_GROUPS = TLS_PQC_GROUP
+# Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.1F syslog client gap on PQC-only).
+SYSLOG_TLS_PQC_SAFE_EOS_GROUPS = "X25519MLKEM768:ecdh_x25519:secp256r1"
+SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_CIPHERS = (
     "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
@@ -227,9 +230,8 @@ RADIUS_SERVER_IPV4 = MGMT_IPS["radius"]
 SYSLOG_SERVER_IPV4 = MGMT_IPS["syslog"]
 RADIUS_SERVER_IPV6 = MGMT_IPV6_IPS["radius"]
 SYSLOG_SERVER_IPV6 = MGMT_IPV6_IPS["syslog"]
-# RadSec and syslog-over-TLS use IPv6 mgmt endpoints (dual-stack lab).
+# RadSec uses IPv6; syslog-over-TLS is dual-stack (IPv4 + IPv6 TLS logging hosts).
 RADIUS_SERVER_IP = RADIUS_SERVER_IPV6
-SYSLOG_SERVER_IP = SYSLOG_SERVER_IPV6
 KME_A_SERVER_IP = MGMT_IPS["kme-a"]
 KME_B_SERVER_IP = MGMT_IPS["kme-b"]
 
@@ -720,7 +722,8 @@ def validate_ceos_configs(
     mgmt_ips = mgmt_ips_for_subnet(mgmt_subnet)
     mgmt_ipv6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
     radius_ip = mgmt_ipv6["radius"]
-    syslog_ip = mgmt_ipv6["syslog"]
+    syslog_ipv4 = mgmt_ips["syslog"]
+    syslog_ipv6 = mgmt_ipv6["syslog"]
     kme_a_ip = mgmt_ips["kme-a"]
     kme_b_ip = mgmt_ips["kme-b"]
 
@@ -773,31 +776,45 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must define ssl profile RADSEC")
         if "tls versions 1.3" not in text:
             errors.append(f"{ceos}.cfg must restrict ssl profile to TLS 1.3")
-        if f"key-establishment-group {TLS_PQC_EOS_GROUPS}" not in text:
-            errors.append(
-                f"{ceos}.cfg must configure PQC-hybrid key establishment group {TLS_PQC_EOS_GROUPS!r} only"
-            )
-        if re.search(
-            r"key-establishment-group\s+\S*(?:ecdh_x25519|secp256r1)",
-            text,
+        security = text.split("management security", 1)[-1].split("\n!", 1)[0]
+        for profile_name, block in re.findall(
+            r"^   ssl profile (\S+)(.*?)(?=^   ssl profile |\Z)",
+            security,
+            flags=re.MULTILINE | re.DOTALL,
         ):
-            errors.append(
-                f"{ceos}.cfg must not list classical TLS fallbacks (PQC-hybrid group only)"
-            )
+            if profile_name == SYSLOG_SSL_PROFILE:
+                if f"key-establishment-group {SYSLOG_TLS_PQC_SAFE_EOS_GROUPS}" not in block:
+                    errors.append(
+                        f"{ceos}.cfg SYSLOG ssl profile must use PQC-safe groups "
+                        f"{SYSLOG_TLS_PQC_SAFE_EOS_GROUPS!r}"
+                    )
+                continue
+            if f"key-establishment-group {TLS_PQC_EOS_GROUPS}" not in block:
+                errors.append(
+                    f"{ceos}.cfg ssl profile {profile_name} must use PQC-hybrid group "
+                    f"{TLS_PQC_EOS_GROUPS!r} only"
+                )
+            if re.search(
+                r"key-establishment-group\s+\S*(?:ecdh_x25519|secp256r1)",
+                block,
+            ):
+                errors.append(
+                    f"{ceos}.cfg ssl profile {profile_name} must not list classical "
+                    "TLS fallbacks (PQC-hybrid only)"
+                )
         if f"server {radius_ip} tls vrf MGMT" not in text:
             errors.append(f"{ceos}.cfg aaa group must use RadSec transport in MGMT VRF")
         if "logging vrf MGMT" not in text:
             errors.append(f"{ceos}.cfg must configure remote syslog in vrf MGMT")
-        if (
-            f"logging vrf MGMT host {syslog_ip} {SYSLOG_PORT} protocol tls ssl-profile {SYSLOG_SSL_PROFILE}"
-            not in text
-        ):
-            errors.append(
-                f"{ceos}.cfg must forward syslog to {syslog_ip}:{SYSLOG_PORT} via TLS "
-                f"profile {SYSLOG_SSL_PROFILE}"
-            )
-        if f"logging vrf MGMT host {mgmt_ips['syslog']} " in text:
-            errors.append(f"{ceos}.cfg must not configure legacy IPv4 syslog host")
+        for syslog_ip in (syslog_ipv4, syslog_ipv6):
+            if (
+                f"logging vrf MGMT host {syslog_ip} {SYSLOG_PORT} protocol tls ssl-profile {SYSLOG_SSL_PROFILE}"
+                not in text
+            ):
+                errors.append(
+                    f"{ceos}.cfg must forward syslog to {syslog_ip}:{SYSLOG_PORT} via TLS "
+                    f"profile {SYSLOG_SSL_PROFILE}"
+                )
         logging_section = "\n".join(
             line for line in text.splitlines() if line.strip().startswith("logging")
         )
@@ -843,7 +860,6 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg eos-sdk-rpc transport must enable service all")
         if "no disabled" not in eossdkrpc:
             errors.append(f"{ceos}.cfg eos-sdk-rpc transport must be enabled (no disabled)")
-        security = text.split("management security", 1)[-1]
         syslog_profile = security.split(f"ssl profile {SYSLOG_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
         if f"certificate {ceos}-client.pem key {ceos}-client.key" not in syslog_profile:
             errors.append(f"{ceos}.cfg SYSLOG ssl profile must use per-switch client certificate")
@@ -1061,9 +1077,10 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
         openssl_cnf = openssl_cnf_path.read_text(encoding="utf-8")
         if TLS_PQC_GROUP not in openssl_cnf:
             errors.append(f"syslog openssl-pqc.cnf must advertise {TLS_PQC_GROUP}")
-        if re.search(r"Groups\s*=\s*.*(?:secp256r1|ffdhe2048|ecdh_x25519)", openssl_cnf):
+        if SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS not in openssl_cnf.replace(" ", ""):
             errors.append(
-                "syslog openssl-pqc.cnf must not list classical TLS fallbacks (PQC-hybrid only)"
+                "syslog openssl-pqc.cnf must use PQC-safe groups "
+                f"({SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS!r})"
             )
         if "MinProtocol = TLSv1.3" not in openssl_cnf:
             errors.append("syslog openssl-pqc.cnf must require TLS 1.3")

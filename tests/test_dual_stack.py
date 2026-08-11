@@ -20,6 +20,7 @@ from lab.topology_contract import (
     MGMT_IPV6_IPS,
     MGMT_IPS,
     RADIUS_SERVER_IPV6,
+    SYSLOG_SERVER_IPV4,
     SYSLOG_SERVER_IPV6,
     family_label,
     load_topology,
@@ -65,12 +66,12 @@ def test_mgmt_node_has_expected_address(ip_family: str, node: str) -> None:
         assert mgmt_node_ip(node, ip_family) == MGMT_IPV6_IPS[node]
 
 
-def test_radius_and_syslog_use_ipv6_endpoints(repo_root: Path) -> None:
+def test_radius_ipv6_and_syslog_dual_stack_endpoints(repo_root: Path) -> None:
     text = (repo_root / "lab" / ".gen" / "ceos1-both.cfg").read_text(encoding="utf-8")
     assert RADIUS_SERVER_IPV6 in text
+    assert expected_syslog_host_line(SYSLOG_SERVER_IPV4) in text
     assert expected_syslog_host_line(SYSLOG_SERVER_IPV6) in text
     assert f"radius-server host {MGMT_IPS['radius']} " not in text
-    assert f"logging vrf MGMT host {MGMT_IPS['syslog']} " not in text
 
 
 def test_ceos_configs_valid_for_both_families(repo_root: Path, ip_family: str) -> None:

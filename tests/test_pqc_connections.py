@@ -131,8 +131,9 @@ def test_probe_eapi_jsonrpc_requires_version_payload(ip_family: str) -> None:
 def test_run_live_checks_happy_path(capsys) -> None:
     targets = _lab_targets()
     config_json = _pqc_config_json()
-    syslog_host_line = (
-        f"logging vrf MGMT host {MGMT_IPV6_IPS['syslog']} 6514 protocol tls ssl-profile SYSLOG"
+    syslog_host_lines = "\n".join(
+        f"logging vrf MGMT host {ip} 6514 protocol tls ssl-profile SYSLOG"
+        for ip in (MGMT_IPS["syslog"], MGMT_IPV6_IPS["syslog"])
     )
 
     def fake_docker_exec(container: str, command: str, *, input_text: str = "", check: bool = True, **kwargs: object):
@@ -178,7 +179,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
         if "show running-config | section radius" in commands:
             return f"radius-server host {MGMT_IPV6_IPS['radius']} vrf MGMT tls ssl-profile RADSEC\n"
         if "show running-config section logging" in commands:
-            return f"{syslog_host_line}\nlogging trap informational\n"
+            return f"{syslog_host_lines}\nlogging trap informational\n"
         if f"show management security ssl profile {SYSLOG_SSL_PROFILE} detail" in commands:
             return json.dumps({"state": "valid", "tls13Groups": [PQC_GROUP]})
         if "show running-config section management ssh" in commands:

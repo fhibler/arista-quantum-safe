@@ -98,16 +98,17 @@ def _generate_syslog_server_cert(
     *,
     work: Path,
     out: Path,
-    syslog_ip: str,
+    syslog_ips: tuple[str, ...],
     ca_crt: Path,
     ca_key: Path,
 ) -> None:
-    """Create or refresh the syslog collector TLS server cert when the mgmt IP changes."""
+    """Create or refresh the syslog collector TLS server cert when mgmt IPs change."""
     marker = work / "syslog-server-san"
     server_key = work / "syslog-server.key"
     server_csr = work / "syslog-server.csr"
     server_crt = work / "syslog-server.crt"
-    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == syslog_ip:
+    marker_key = ",".join(syslog_ips)
+    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == marker_key:
         pass
     else:
         _run(
@@ -126,10 +127,11 @@ def _generate_syslog_server_cert(
             ]
         )
         server_ext = work / "syslog-server.ext"
+        san_ips = ",".join(_san_ip(ip) for ip in syslog_ips)
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = {_san_ip(syslog_ip)},DNS:syslog,DNS:{container_name('syslog')}",
+                f"subjectAltName = {san_ips},DNS:syslog,DNS:{container_name('syslog')}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -154,7 +156,7 @@ def _generate_syslog_server_cert(
                 str(server_ext),
             ]
         )
-        marker.write_text(f"{syslog_ip}\n", encoding="utf-8")
+        marker.write_text(f"{marker_key}\n", encoding="utf-8")
 
     (out / "syslog-server.pem").write_bytes(server_crt.read_bytes())
     (out / "syslog-server.key").write_bytes(server_key.read_bytes())
@@ -164,7 +166,7 @@ def generate_radsec_pki(
     *,
     repo_root: Path | None = None,
     radius_ip: str,
-    syslog_ip: str | None = None,
+    syslog_ips: tuple[str, ...] | None = None,
     ceos_hosts: dict[str, str] | None = None,
     ceos_mgmt_ips: dict[str, str] | None = None,
 ) -> Path:
@@ -333,11 +335,11 @@ def generate_radsec_pki(
                 ca_key=ca_key,
             )
 
-    if syslog_ip is not None:
+    if syslog_ips is not None:
         _generate_syslog_server_cert(
             work=work,
             out=out,
-            syslog_ip=syslog_ip,
+            syslog_ips=syslog_ips,
             ca_crt=ca_crt,
             ca_key=ca_key,
         )

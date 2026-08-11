@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 
 from lab.ceos_json import (
@@ -19,11 +20,14 @@ from lab.ceos_json import (
 from lab.syslog_checks import (
     PQC_GROUP as SYSLOG_PQC_GROUP,
     SyslogCheckError,
+    capture_eos_syslog_tls_key_share_group,
     check_switch_syslog_logging_config,
     check_switch_syslog_ssl_profile_detail,
     check_syslog_collector_listeners,
+    is_pqc_hybrid_key_share_group,
     probe_syslog_delivery_no_cleartext,
     probe_syslog_tls_pqc,
+    tls_key_share_group_name,
     wait_for_syslog_healthy,
 )
 from lab.topology_contract import (
@@ -40,6 +44,7 @@ from lab.topology_contract import (
     RADSEC_PORT,
     RESTCONF_PORT,
     RESTCONF_SSL_PROFILE,
+    SYSLOG_PORT,
     SYSLOG_SSL_PROFILE,
     container_name,
     family_label,
@@ -655,7 +660,9 @@ def probe_syslog_tls(
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
-    report_live(f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {SYSLOG_PQC_GROUP})")
+    report_live(
+        f"syslog-ng collector TLS handshake ({family_label(family)}, TLS 1.3, {SYSLOG_PQC_GROUP}; probe client, not cEOS syslog)"
+    )
 
 
 def probe_syslog_delivery(
@@ -667,12 +674,38 @@ def probe_syslog_delivery(
 ) -> None:
     container = targets.ceos_container(node)
     switch_ip = targets.ceos_mgmt_ip(node, family)
+    syslog_ipv4, syslog_ipv6 = targets.syslog_ips
+    syslog_ip = syslog_ipv4 if family == IP_FAMILY_IPV4 else syslog_ipv6
     needle = f"quantum-safe-syslog-probe-{node}-{family}"
 
     def send_log() -> None:
         ceos_cli(
             container,
             f"enable\nsend log level informational message {needle}\n",
+            verbose=verbose,
+        )
+
+    def bounce_logging_hosts() -> None:
+        """Drop and restore all remote syslog TLS sessions (dual-stack)."""
+        remove_lines = "".join(
+            f"no logging vrf MGMT host {ip} {SYSLOG_PORT} "
+            f"protocol tls ssl-profile {SYSLOG_SSL_PROFILE}\n"
+            for ip in (syslog_ipv4, syslog_ipv6)
+        )
+        add_lines = "".join(
+            f"logging vrf MGMT host {ip} {SYSLOG_PORT} "
+            f"protocol tls ssl-profile {SYSLOG_SSL_PROFILE}\n"
+            for ip in (syslog_ipv4, syslog_ipv6)
+        )
+        ceos_cli(
+            container,
+            f"enable\nconfigure\n{remove_lines}end\n",
+            verbose=verbose,
+        )
+        time.sleep(3)
+        ceos_cli(
+            container,
+            f"enable\nconfigure\n{add_lines}end\n",
             verbose=verbose,
         )
 
@@ -688,8 +721,38 @@ def probe_syslog_delivery(
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
+
+    negotiated_group: int | None = None
+    for attempt in range(2):
+        negotiated_group = capture_eos_syslog_tls_key_share_group(
+            switch_ip=switch_ip,
+            bounce_logging=bounce_logging_hosts,
+            syslog_container=targets.syslog_container,
+            settle_sec=4.0 + attempt * 2,
+        )
+        if negotiated_group is not None:
+            break
+        time.sleep(1)
+    if negotiated_group is not None and is_pqc_hybrid_key_share_group(negotiated_group):
+        report_live(
+            f"{node} TLS syslog delivered ({family_label(family)}), "
+            f"wire KEX {tls_key_share_group_name(negotiated_group)}"
+        )
+        return
+
+    if negotiated_group is not None:
+        group_name = tls_key_share_group_name(negotiated_group)
+        report_live(
+            f"{node} TLS syslog delivered ({family_label(family)}), "
+            f"wire KEX {group_name} (cEOS 4.36.1F syslog client gap; config lists {SYSLOG_PQC_GROUP})",
+            status=CheckStatus.WARN,
+        )
+        return
+
     report_live(
-        f"{node} TLS syslog delivered ({family_label(family)}), no cleartext packets from {switch_ip}"
+        f"{node} TLS syslog delivered ({family_label(family)}), "
+        f"wire KEX not verified (capture unavailable; cEOS may use classical KEX — see docs/caveats.md)",
+        status=CheckStatus.WARN,
     )
 
 
@@ -713,7 +776,7 @@ def run_live_checks(
 
     print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog")
+    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog (delivery + wire KEX when capture available)")
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     print_device("radius")
@@ -780,7 +843,7 @@ def run_live_checks(
     report_summary(
         "PQC",
         f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; TLS 1.3, no cleartext syslog)",
+        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; WARN on known cEOS syslog/eos-sdk-rpc PQC gaps)",
     )
 
 

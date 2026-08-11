@@ -22,6 +22,7 @@ from lab.test_pqc_connections import (
     probe_eossdkrpc_tls,
     probe_radsec_from_switch,
     probe_ssh_pqc,
+    probe_syslog_delivery,
     run_live_checks,
     tls13_handshake,
 )
@@ -202,6 +203,11 @@ def test_run_live_checks_happy_path(capsys) -> None:
     with (
         patch("lab.test_pqc_connections.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_pqc_connections.wait_for_syslog_healthy"),
+        patch(
+            "lab.test_pqc_connections.capture_eos_syslog_tls_key_share_group",
+            return_value=4588,
+        ),
         patch(
             "lab.test_pqc_connections.subprocess.run",
             return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),
@@ -221,8 +227,44 @@ def test_run_live_checks_happy_path(capsys) -> None:
     assert "--- RadSec ---" in output
     assert "[config]" in output
     assert "[live]" in output
-    assert "no cleartext syslog" in output
+    assert "no cleartext syslog" not in output
+    assert "wire KEX X25519MLKEM768" in output
     assert "PQC: ✓" in output
+
+
+def test_probe_syslog_delivery_warns_on_classical_wire_kex(capsys) -> None:
+    targets = _lab_targets()
+
+    with (
+        patch("lab.test_pqc_connections.probe_syslog_delivery_no_cleartext"),
+        patch(
+            "lab.test_pqc_connections.capture_eos_syslog_tls_key_share_group",
+            return_value=29,
+        ),
+    ):
+        probe_syslog_delivery(targets, "ceos2-pqc", family="ipv4")
+
+    output = capsys.readouterr().out
+    assert "WARN" in output
+    assert "wire KEX x25519" in output
+    assert "syslog client gap" in output
+
+
+def test_probe_syslog_delivery_warns_when_wire_kex_not_verified(capsys) -> None:
+    targets = _lab_targets()
+
+    with (
+        patch("lab.test_pqc_connections.probe_syslog_delivery_no_cleartext"),
+        patch(
+            "lab.test_pqc_connections.capture_eos_syslog_tls_key_share_group",
+            return_value=None,
+        ),
+    ):
+        probe_syslog_delivery(targets, "ceos2-pqc", family="ipv4")
+
+    output = capsys.readouterr().out
+    assert "WARN" in output
+    assert "wire KEX not verified" in output
 
 
 def test_probe_ssh_pqc_requires_pqc_kex(ip_family: str) -> None:

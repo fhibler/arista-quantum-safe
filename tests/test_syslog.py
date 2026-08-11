@@ -7,15 +7,20 @@ import pytest
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
+    TLS_KEY_SHARE_X25519,
+    TLS_KEY_SHARE_X25519MLKEM768,
     check_switch_syslog_logging_config,
     check_switch_syslog_ssl_profile_detail,
     cleartext_capture_filter,
     cleartext_syslog_lines,
     expected_syslog_host_line,
     expected_syslog_host_lines,
+    is_pqc_hybrid_key_share_group,
     negotiated_pqc_group,
     tcpdump_captured_packet,
     tls_handshake_incomplete,
+    tls_key_share_group_name,
+    tshark_client_hello_filter,
 )
 from lab.topology_contract import (
     SYSLOG_PORT,
@@ -101,6 +106,24 @@ def test_syslog_pqc_safe_group_constants() -> None:
     assert "ecdh_x25519" in SYSLOG_TLS_PQC_SAFE_EOS_GROUPS
     assert "X25519MLKEM768" in SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS
     assert "secp256r1" in SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS
+
+
+def test_tls_key_share_group_name() -> None:
+    assert tls_key_share_group_name(TLS_KEY_SHARE_X25519MLKEM768) == PQC_GROUP
+    assert tls_key_share_group_name(TLS_KEY_SHARE_X25519) == "x25519"
+    assert is_pqc_hybrid_key_share_group(TLS_KEY_SHARE_X25519MLKEM768)
+    assert not is_pqc_hybrid_key_share_group(TLS_KEY_SHARE_X25519)
+
+
+def test_tshark_client_hello_filter_ipv4_mapped() -> None:
+    filt = tshark_client_hello_filter("172.20.127.12")
+    assert "ip.src == 172.20.127.12" in filt
+    assert "ipv6.src == ::ffff:172.20.127.12" in filt
+
+
+def test_tshark_client_hello_filter_ipv6() -> None:
+    filt = tshark_client_hello_filter("2001:db8:127::12")
+    assert "ipv6.src == 2001:db8:127::12" in filt
 
 
 def test_tcpdump_captured_packet() -> None:

@@ -6,6 +6,7 @@ import re
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from lab.ceos_json import json_tree_contains, json_truthy
@@ -16,6 +17,13 @@ OPENSSL_PQC_CNF = "/etc/syslog-ng/openssl-pqc.cnf"
 SYSLOG_LOG_PATH = "/var/log/syslog/eos.log"
 PROBE_MESSAGE = "quantum-safe-syslog-probe"
 CEOS_SYSLOG_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
+MGMT_BRIDGE_NETWORK = "quantum-safe-mgmt"
+DEFAULT_MGMT_BRIDGE = "mgmt-bridge"
+
+# TLS 1.3 key_share group IDs (wire format)
+TLS_KEY_SHARE_X25519 = 29
+TLS_KEY_SHARE_SECP256R1 = 23
+TLS_KEY_SHARE_X25519MLKEM768 = 4588
 
 CLEARTEXT_SYSLOG_UDP_PORTS = (514, 601)
 CLEARTEXT_SYSLOG_TCP_PORTS = (514,)
@@ -23,6 +31,141 @@ CLEARTEXT_SYSLOG_TCP_PORTS = (514,)
 
 class SyslogCheckError(RuntimeError):
     """Raised when a syslog PQC or encryption check fails."""
+
+
+def tls_key_share_group_name(group_id: int) -> str:
+    """Map a TLS key_share group id from tshark to a readable name."""
+    return {
+        TLS_KEY_SHARE_X25519: "x25519",
+        TLS_KEY_SHARE_SECP256R1: "secp256r1",
+        TLS_KEY_SHARE_X25519MLKEM768: PQC_GROUP,
+    }.get(group_id, f"gid:{group_id}")
+
+
+def is_pqc_hybrid_key_share_group(group_id: int) -> bool:
+    return group_id == TLS_KEY_SHARE_X25519MLKEM768
+
+
+def resolve_mgmt_bridge() -> str | None:
+    """Return the Containerlab mgmt bridge name when tcpdump can attach to it."""
+    if not _command_exists("tcpdump"):
+        return None
+    result = subprocess.run(
+        [
+            "docker",
+            "network",
+            "inspect",
+            MGMT_BRIDGE_NETWORK,
+            "--format",
+            '{{(index .Options "com.docker.network.bridge.name")}}',
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    bridge = result.stdout.strip()
+    if bridge and result.returncode == 0 and Path(f"/sys/class/net/{bridge}").exists():
+        return bridge
+    if Path(f"/sys/class/net/{DEFAULT_MGMT_BRIDGE}").exists():
+        return DEFAULT_MGMT_BRIDGE
+    return None
+
+
+def _command_exists(name: str) -> bool:
+    from shutil import which
+
+    return which(name) is not None
+
+
+def tshark_client_hello_filter(switch_ip: str) -> str:
+    """Build a tshark display filter for a cEOS ClientHello to syslog-ng."""
+    if ":" in switch_ip:
+        return f"tls.handshake.type == 1 && ipv6.src == {switch_ip}"
+    return (
+        f"tls.handshake.type == 1 && "
+        f"(ip.src == {switch_ip} || ipv6.src == ::ffff:{switch_ip})"
+    )
+
+
+def capture_eos_syslog_tls_key_share_group(
+    *,
+    switch_ip: str,
+    bounce_logging: Callable[[], None],
+    syslog_container: str,
+    bridge: str | None = None,
+    pcap_path: Path | None = None,
+    settle_sec: float = 5.0,
+) -> int | None:
+    """Capture cEOS→syslog ClientHello and return the client key_share group id.
+
+    Returns None when capture or decode is unavailable. Requires host tcpdump on
+    the Containerlab mgmt bridge (see docs/caveats.md).
+    """
+    iface = bridge or resolve_mgmt_bridge()
+    if iface is None:
+        return None
+
+    pcap = pcap_path or Path("/tmp/quantum-safe-syslog-kex.pcap")
+    pcap.unlink(missing_ok=True)
+    tcpdump = subprocess.Popen(
+        [
+            "tcpdump",
+            "-i",
+            iface,
+            "-n",
+            "-s",
+            "0",
+            "-w",
+            str(pcap),
+            f"tcp port {SYSLOG_PORT} and host {switch_ip}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        time.sleep(0.5)
+        bounce_logging()
+        time.sleep(settle_sec)
+    finally:
+        tcpdump.terminate()
+        try:
+            tcpdump.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            tcpdump.kill()
+            tcpdump.wait(timeout=2)
+
+    if not pcap.exists() or pcap.stat().st_size < 50:
+        return None
+
+    container_pcap = "/tmp/quantum-safe-syslog-kex.pcap"
+    subprocess.run(
+        ["docker", "cp", str(pcap), f"{syslog_container}:{container_pcap}"],
+        check=False,
+        capture_output=True,
+    )
+    hello_filter = tshark_client_hello_filter(switch_ip)
+    decode = subprocess.run(
+        [
+            "docker",
+            "exec",
+            syslog_container,
+            "sh",
+            "-c",
+            (
+                "command -v tshark >/dev/null || apk add --no-cache tshark >/dev/null 2>&1; "
+                f"tshark -r {container_pcap} "
+                f"-Y '{hello_filter}' "
+                "-T fields -e tls.handshake.extensions_key_share_group 2>/dev/null | tail -1"
+            ),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    line = decode.stdout.strip()
+    if line.isdigit():
+        return int(line)
+    return None
 
 
 def wait_for_syslog_healthy(container: str, *, timeout_sec: int = 90) -> None:

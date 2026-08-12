@@ -12,7 +12,7 @@
 
 ## cEOS image
 
-### Option A — portal download (Arista customers)
+### Option A — automated download from arista.com
 
 Requires an [Arista portal token](https://www.arista.com/en/users/profile) with an active maintenance contract:
 
@@ -27,7 +27,7 @@ Downloaded tarballs land in `download/` (gitignored).
 
 ### Option B — manual import
 
-Import a cEOS-lab tarball you obtained from Arista:
+Should you not be able to obtain a portal token, cEOS-lab is freely available after registration on [arista.com](https://www.arista.com). Download the tarball for your architecture from the [Arista software portal](https://www.arista.com/en/support/software-download), then import it locally:
 
 ```bash
 docker import /path/to/cEOS64-lab-4.36.1F.tar.xz ceos:4.36.1F

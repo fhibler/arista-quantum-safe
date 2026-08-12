@@ -4,7 +4,7 @@
 
 | Item | Required | Notes |
 |------|----------|-------|
-| Docker + Containerlab 0.78.0 | Yes | `containerlab version` |
+| Docker + Containerlab 0.78.1 | Yes | `containerlab version` |
 | cEOS-lab `ceos:4.36.1F` | Yes | Match host arch (amd64 / arm64) |
 | ~10 GB RAM | Yes | Three cEOS containers are memory-heavy |
 | Arista portal token | No | For `make download-ceos` only |

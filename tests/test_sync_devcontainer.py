@@ -43,8 +43,9 @@ def test_sync_devcontainer_check_fails_when_out_of_sync(tmp_path: Path) -> None:
     makefile = tmp_path / "Makefile"
     devcontainer = tmp_path / "devcontainer.json"
     makefile.write_text("CLAB_VERSION  ?= 9.99.9\n", encoding="utf-8")
+    current = read_clab_version_from_devcontainer(DEVCONTAINER_JSON)
     devcontainer.write_text(
-        DEVCONTAINER_JSON.read_text(encoding="utf-8").replace('"0.78.0"', '"0.77.0"'),
+        DEVCONTAINER_JSON.read_text(encoding="utf-8").replace(f'"{current}"', '"0.77.0"'),
         encoding="utf-8",
     )
     assert not sync_devcontainer(
@@ -58,8 +59,9 @@ def test_sync_devcontainer_updates_version(tmp_path: Path) -> None:
     makefile = tmp_path / "Makefile"
     devcontainer = tmp_path / "devcontainer.json"
     makefile.write_text("CLAB_VERSION  ?= 9.99.9\n", encoding="utf-8")
+    current = read_clab_version_from_devcontainer(DEVCONTAINER_JSON)
     devcontainer.write_text(
-        DEVCONTAINER_JSON.read_text(encoding="utf-8").replace('"0.78.0"', '"0.77.0"'),
+        DEVCONTAINER_JSON.read_text(encoding="utf-8").replace(f'"{current}"', '"0.77.0"'),
         encoding="utf-8",
     )
     assert sync_devcontainer(makefile=makefile, devcontainer_json=devcontainer)

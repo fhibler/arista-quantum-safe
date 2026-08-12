@@ -5,15 +5,15 @@ Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista cEO
 Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
 
 <!-- site-config:begin -->
-**Documentation:** [https://fhibler.github.io/quantum-safe/](https://fhibler.github.io/quantum-safe/) (GitHub Pages)
+**Documentation:** [https://fhibler.github.io/arista-quantum-safe/](https://fhibler.github.io/arista-quantum-safe/) (GitHub Pages)
 
 ## Documentation map
 
 | Topic | Location |
 |-------|----------|
-| Setup, Makefile variables, troubleshooting | [Setup guide](https://fhibler.github.io/quantum-safe/setup/) |
-| Per-service PQC configuration | [Services](https://fhibler.github.io/quantum-safe/services/) |
-| Live test suite (`make test-lab`) | [Tests](https://fhibler.github.io/quantum-safe/tests/) |
+| Setup, Makefile variables, troubleshooting | [Setup guide](https://fhibler.github.io/arista-quantum-safe/setup/) |
+| Per-service PQC configuration | [Services](https://fhibler.github.io/arista-quantum-safe/services/) |
+| Live test suite (`make test-lab`) | [Tests](https://fhibler.github.io/arista-quantum-safe/tests/) |
 <!-- site-config:end -->
 ## Purpose
 

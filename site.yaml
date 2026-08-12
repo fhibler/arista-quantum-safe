@@ -6,10 +6,10 @@
 repository:
   host: github.com
   org: fhibler
-  name: quantum-safe
+  name: arista-quantum-safe
   default_branch: main
 
 site:
   name: Quantum Safe Lab
   description: Post-quantum cryptography lab for Arista cEOS management plane and MACsec
-  pages_base_url: https://fhibler.github.io/quantum-safe/
+  pages_base_url: https://fhibler.github.io/arista-quantum-safe/

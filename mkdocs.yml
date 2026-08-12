@@ -4,14 +4,14 @@
 # Generated from site.yaml — run: make sync-site-config
 site_name: Quantum Safe Lab
 site_description: Post-quantum cryptography lab for Arista cEOS management plane and MACsec
-site_url: https://fhibler.github.io/quantum-safe/
-repo_url: https://github.com/fhibler/quantum-safe
-repo_name: fhibler/quantum-safe
+site_url: https://fhibler.github.io/arista-quantum-safe/
+repo_url: https://github.com/fhibler/arista-quantum-safe
+repo_name: fhibler/arista-quantum-safe
 edit_uri: edit/main/docs/
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/fhibler/quantum-safe
+      link: https://github.com/fhibler/arista-quantum-safe
 # site-config:end
 docs_dir: docs
 site_dir: site

@@ -3,6 +3,7 @@
 FROM mcr.microsoft.com/devcontainers/python:3.11-trixie
 
 ARG CLAB_VERSION
+ARG GNMIC_VERSION=0.47.0
 
 RUN echo "deb [trusted=yes] https://netdevops.fury.site/apt/ /" | \
     tee -a /etc/apt/sources.list.d/netdevops.list
@@ -30,6 +31,12 @@ RUN bash -c 'ARCH=$(uname -m | sed "s/x86_64/amd64/" | sed "s/aarch64/arm64/") &
     mv /tmp/gh_${CLEAN_VERSION}_linux_${ARCH}/bin/gh /usr/local/bin/ && \
     chmod +x /usr/local/bin/gh && \
     rm -rf /tmp/gh_${CLEAN_VERSION}_linux_${ARCH}'
+
+RUN bash -c 'ARCH=$(uname -m | sed "s/x86_64/x86_64/" | sed "s/aarch64/aarch64/") && \
+    curl -fsSL "https://github.com/openconfig/gnmic/releases/download/v'"${GNMIC_VERSION}"'/gnmic_'"${GNMIC_VERSION}"'_Linux_${ARCH}.tar.gz" | tar xz -C /tmp && \
+    install -m 755 /tmp/gnmic /usr/local/bin/gnmic && \
+    rm -f /tmp/gnmic && \
+    gnmic version'
 
 # Inner DinD: skip credential helpers for Docker Hub (avoids macOS Keychain prompts on
 # anonymous base-image pulls during make deploy; see docs/devcontainer.md).

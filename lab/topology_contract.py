@@ -20,6 +20,7 @@ MGMT_BRIDGE = "mgmt-bridge"
 MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd", "radius", "syslog", "kme-a", "kme-b"})
 RADIUS_IMAGE = "quantum-safe-radius:latest"
 SYSLOG_IMAGE = "quantum-safe-syslog:latest"
+TEST_RUNNER_IMAGE = "quantum-safe-test-runner:latest"
 TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
 TOPOLOGY_ANNOTATIONS_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml.annotations.json"
 GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml"
@@ -45,6 +46,7 @@ MGMT_HOST_SUFFIXES = {
     "syslog": 53,
     "kme-a": 51,
     "kme-b": 52,
+    "test-runner": 54,
 }
 
 
@@ -164,7 +166,7 @@ LINKS = [
 ]
 
 CEOS_MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd"})
-MGMT_LINUX_NODES = frozenset({"radius", "syslog", "kme-a", "kme-b"})
+MGMT_LINUX_NODES = frozenset({"radius", "syslog", "kme-a", "kme-b", "test-runner"})
 CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 CEOS_QUADRA_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
@@ -327,6 +329,13 @@ EOSSDKRPC_PORT = 9543
 CONTROL_PLANE_ACL = "quantum-safe-cp"
 PROBE_CLIENT_CERT = "/etc/raddb/certs/probe/{node}-client.pem"
 PROBE_CLIENT_KEY = "/etc/raddb/certs/probe/{node}-client.key"
+PROBE_CA_TEST_RUNNER = "/etc/probe/certs/radsec-ca.pem"
+PROBE_SYSLOG_CA_TEST_RUNNER = "/etc/probe/certs/ca.pem"
+PROBE_CLIENT_CERT_TEST_RUNNER = "/etc/probe/certs/{node}-client.pem"
+PROBE_CLIENT_KEY_TEST_RUNNER = "/etc/probe/certs/{node}-client.key"
+PROBE_GNMI_CERT_TEST_RUNNER = "/etc/probe/certs/{node}-gnmi.pem"
+PROBE_GNMI_KEY_TEST_RUNNER = "/etc/probe/certs/{node}-gnmi.key"
+GNMI_GET_PATH = "/system/config/hostname"
 MACSEC_PROFILE = "dynamic"
 DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
 DOT1X_EAP_SSL_PROFILE = "DOT1X"
@@ -507,6 +516,22 @@ SYSLOG_BINDS = [
 
 KME_BINDS = [
     "../lab/.gen/kme-pki:/certs:ro",
+]
+
+def _test_runner_probe_cert_binds() -> list[str]:
+    binds: list[str] = []
+    for node in sorted(CEOS_MGMT_NODES):
+        for suffix in ("client.pem", "client.key", "gnmi.pem", "gnmi.key"):
+            binds.append(
+                f"../lab/.gen/pki/{node}-{suffix}:/etc/probe/certs/{node}-{suffix}:ro"
+            )
+    return binds
+
+
+TEST_RUNNER_BINDS = [
+    "../lab/.gen/pki/ca.pem:/etc/probe/certs/ca.pem:ro",
+    "../lab/.gen/pki/radsec-ca.pem:/etc/probe/certs/radsec-ca.pem:ro",
+    *_test_runner_probe_cert_binds(),
 ]
 
 KME_COMMON_ENV = {
@@ -1537,6 +1562,21 @@ def validate_topology(
         cap_add = kme_b_cfg.get("cap-add") or kme_b_cfg.get("cap_add") or []
         if "NET_ADMIN" not in cap_add:
             errors.append("kme-b must include cap-add NET_ADMIN for mgmt-plane iptables isolation")
+
+    test_runner_cfg = nodes.get("test-runner")
+    if test_runner_cfg is None:
+        errors.append("missing node test-runner")
+    else:
+        if test_runner_cfg.get("kind") != "linux":
+            errors.append("test-runner kind must be linux")
+        if test_runner_cfg.get("image") != TEST_RUNNER_IMAGE:
+            errors.append(f"test-runner image must be {TEST_RUNNER_IMAGE}")
+        if test_runner_cfg.get("mgmt-ipv4") != expected_mgmt_ips["test-runner"]:
+            errors.append(f"test-runner mgmt-ipv4 must be {expected_mgmt_ips['test-runner']}")
+        test_runner_binds = test_runner_cfg.get("binds", [])
+        for expected_bind in TEST_RUNNER_BINDS:
+            if expected_bind not in test_runner_binds:
+                errors.append(f"test-runner must bind {expected_bind}")
 
     kme_data_plane_endpoints = {
         endpoint

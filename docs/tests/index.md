@@ -16,6 +16,10 @@ Runs all sections in order:
 | 6 | `make test-qkd` | `lab.test_qkd` (skips when QuaDRA extension absent — see [QKD service](../services/qkd-etsi014.md)) |
 | 7 | `make test-hosts` | `lab.test_lab` — host routing matrix |
 
+On a **bare Linux host** without PQC-capable curl/OpenSSL on the host OS, use **`make test-lab-runner`** instead. It runs the same checks from the `test-runner` container on the lab mgmt network (Docker + deployed lab only).
+
+PQC live probes (TLS handshakes, eAPI command-api, gNMI GET via gnmic, SSH) use the **`test-runner`** node (`arista-quantum-safe-test-runner`, mgmt `172.20.127.54`) by default. Override with `PROBE_CLIENT=radius` or `PROBE_CLIENT=host` when debugging.
+
 Use **`VERBOSE=1`** to echo every command and full output:
 
 ```bash
@@ -27,7 +31,10 @@ make test-pqc VERBOSE=1
 | Label | Meaning |
 |-------|---------|
 | `[config]` | EOS `show` commands, listener presence, template contract |
-| `[live]` | Real handshake, API call, AAA test, or traffic probe |
+| `[live]` | Real handshake, API call, AAA test, or traffic probe (non-probe-client checks) |
+| `[live / test-runner]` | Live probe executed from the test-runner container (default `PROBE_CLIENT`) |
+| `[live / radius]` | Live probe executed from the radius container (`PROBE_CLIENT=radius`) |
+| `[live / host]` | Live probe executed on the host (`PROBE_CLIENT=host`) |
 | `WARN` | Known platform gap — check passes with warning (not a failure) |
 
 ## Default management addresses
@@ -39,6 +46,7 @@ make test-pqc VERBOSE=1
 | ceos3-qkd | 172.20.127.13 | 2001:db8:127::13 |
 | radius | 172.20.127.50 | 2001:db8:127::50 |
 | syslog | 172.20.127.53 | 2001:db8:127::53 |
+| test-runner | 172.20.127.54 | 2001:db8:127::54 |
 
 Override subnet with `MGMT_SUBNET=… make test-lab`.
 

@@ -119,6 +119,7 @@ def build_substitutions(
         "MGMT_IP_SYSLOG": ips["syslog"],
         "MGMT_IP_KME_A": ips["kme-a"],
         "MGMT_IP_KME_B": ips["kme-b"],
+        "MGMT_IP_TEST_RUNNER": ips["test-runner"],
         "MGMT_IPV6_CEOS1_BOTH": ips6["ceos1-both"],
         "MGMT_IPV6_CEOS2_PQC": ips6["ceos2-pqc"],
         "MGMT_IPV6_CEOS3_QKD": ips6["ceos3-qkd"],
@@ -129,6 +130,7 @@ def build_substitutions(
         "MGMT_IPV6_SYSLOG": ips6["syslog"],
         "MGMT_IPV6_KME_A": ips6["kme-a"],
         "MGMT_IPV6_KME_B": ips6["kme-b"],
+        "MGMT_IPV6_TEST_RUNNER": ips6["test-runner"],
         "KME_SAE_CLIENT_IPS": ",".join(
             [ips[node] for node in KME_SAE_CLIENT_NODES]
             + [ips6[node] for node in KME_SAE_CLIENT_NODES]
@@ -265,6 +267,11 @@ def render_lab(
             "ceos1-both": ips["ceos1-both"],
             "ceos2-pqc": ips["ceos2-pqc"],
             "ceos3-qkd": ips["ceos3-qkd"],
+        },
+        ceos_mgmt_ips6={
+            "ceos1-both": ips6["ceos1-both"],
+            "ceos2-pqc": ips6["ceos2-pqc"],
+            "ceos3-qkd": ips6["ceos3-qkd"],
         },
     )
     generate_kme_pki(repo_root=root, kme_a_ip=ips["kme-a"], kme_b_ip=ips["kme-b"])

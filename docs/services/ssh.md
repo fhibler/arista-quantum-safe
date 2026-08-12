@@ -59,11 +59,11 @@ Expect `key-exchange mlkem768x25519-sha256`, MGMT enabled, default VRF disabled.
 
 ### Live PQC KEX
 
-From inside the switch (MGMT netns):
+From the **test-runner** probe client on the mgmt network:
 
 ```bash
-docker exec arista-quantum-safe-ceos1-both sh -c \
-  'ip netns exec ns-MGMT ssh -vvv \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'ssh -vvv \
      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
      -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive \
      -o KexAlgorithms=mlkem768x25519-sha256 \
@@ -72,7 +72,7 @@ docker exec arista-quantum-safe-ceos1-both sh -c \
 
 Expected: `kex: algorithm: mlkem768x25519-sha256`
 
-Automated: `make test-pqc` -> `[live] SSH loopback (IPv4|IPv6, mlkem768x25519-sha256)`.
+Automated: `make test-pqc` -> `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
 
 See [PQC tests](../tests/pqc.md#ssh).
 

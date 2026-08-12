@@ -116,13 +116,13 @@ def _lab_targets(**overrides: object) -> LabTargets:
 def test_probe_eapi_jsonrpc_requires_version_payload(ip_family: str) -> None:
     switch_ip = MGMT_IPS["ceos1-both"] if ip_family == "ipv4" else MGMT_IPV6_IPS["ceos1-both"]
     with patch(
-        "lab.test_pqc_connections.subprocess.run",
+        "lab.test_pqc_connections.run_curl_eapi",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),
     ):
         probe_eapi_jsonrpc("ceos1-both", switch_ip, family=ip_family)
 
     with patch(
-        "lab.test_pqc_connections.subprocess.run",
+        "lab.test_pqc_connections.run_curl_eapi",
         return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="No authentication header found", stderr=""),
     ):
         with pytest.raises(Exception, match="unexpected response"):
@@ -153,20 +153,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
                 stderr="",
             )
         if "ip netns exec" in command and "ssh" in command:
-            hostname = "ceos1-both"
-            for node, ipv4 in MGMT_IPS.items():
-                if node.startswith("ceos") and (ipv4 in command or MGMT_IPV6_IPS[node] in command):
-                    hostname = node
-                    break
-            return subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout=(
-                    f"debug1: kex: algorithm: {SSH_PQC_KEX}\n"
-                    f'{{"hostname":"{hostname}"}}\n'
-                ),
-                stderr="",
-            )
+            raise AssertionError(f"unexpected ceos SSH loopback docker exec: {container} {command!r}")
         if "test -f /tmp/cleartext-syslog-" in command:
             return subprocess.CompletedProcess(args=[], returncode=0, stdout="no\n", stderr="")
         if "grep -F" in command and "quantum-safe-syslog-probe" in command:
@@ -204,6 +191,36 @@ def test_run_live_checks_happy_path(capsys) -> None:
             return json.dumps(config_json)
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
+    def fake_run_ssh_pqc_probe(*, node: str, switch_ip: str, **kwargs: object):
+        _ = kwargs
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f"debug1: kex: algorithm: {SSH_PQC_KEX}\n"
+                f'{{"hostname":"{node}"}}\n'
+            ),
+            stderr="",
+        )
+
+    def fake_openssl_s_client(**kwargs: object) -> str:
+        return (
+            f"CONNECTION ESTABLISHED\nProtocol version: TLSv1.3\n"
+            f"Negotiated TLS1.3 group: {PQC_GROUP}\n"
+        )
+
+    def fake_run_gnmi_get(*, node: str, **kwargs: object):
+        _ = kwargs
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f'[{{"source":"172.20.127.11:6030","updates":[{{"values":{{'
+                f'"system/config/hostname":"{node}"}}}}]}}]'
+            ),
+            stderr="",
+        )
+
     with (
         patch("lab.test_pqc_connections.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
@@ -213,8 +230,24 @@ def test_run_live_checks_happy_path(capsys) -> None:
             return_value=4588,
         ),
         patch(
-            "lab.test_pqc_connections.subprocess.run",
+            "lab.test_pqc_connections.run_curl_eapi",
             return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),
+        ),
+        patch(
+            "lab.test_pqc_connections.run_openssl_s_client",
+            side_effect=fake_openssl_s_client,
+        ),
+        patch(
+            "lab.syslog_checks.run_openssl_s_client",
+            side_effect=fake_openssl_s_client,
+        ),
+        patch(
+            "lab.test_pqc_connections.run_gnmi_get",
+            side_effect=fake_run_gnmi_get,
+        ),
+        patch(
+            "lab.test_pqc_connections.run_ssh_pqc_probe",
+            side_effect=fake_run_ssh_pqc_probe,
         ),
     ):
         run_live_checks(clab_name=targets.clab_name, mgmt_subnet="172.20.127.0/24")
@@ -230,6 +263,7 @@ def test_run_live_checks_happy_path(capsys) -> None:
     assert "--- SSH ---" in output
     assert "--- RadSec ---" in output
     assert "[config]" in output
+    assert "[live / test-runner]" in output
     assert "[live]" in output
     assert "no cleartext syslog" not in output
     assert "wire KEX X25519MLKEM768" in output
@@ -274,7 +308,7 @@ def test_probe_syslog_delivery_warns_when_wire_kex_not_verified(capsys) -> None:
 def test_probe_ssh_pqc_requires_pqc_kex(ip_family: str) -> None:
     targets = _lab_targets()
     with patch(
-        "lab.test_pqc_connections.docker_exec",
+        "lab.test_pqc_connections.run_ssh_pqc_probe",
         return_value=subprocess.CompletedProcess(
             args=[],
             returncode=0,
@@ -309,7 +343,7 @@ def test_probe_eossdkrpc_tls_warns_when_pqc_handshake_fails(capsys) -> None:
             "Negotiated TLS1.3 group: secp256r1\n"
         )
 
-    with patch("lab.test_pqc_connections.openssl_s_client", side_effect=fake_openssl):
+    with patch("lab.test_pqc_connections.run_openssl_s_client", side_effect=fake_openssl):
         probe_eossdkrpc_tls(targets, "ceos1-both")
 
     output = capsys.readouterr().out
@@ -321,7 +355,7 @@ def test_probe_eapi_https_requires_tls13(ip_family: str) -> None:
     targets = _lab_targets()
     switch_ip = MGMT_IPS["ceos1-both"] if ip_family == "ipv4" else MGMT_IPV6_IPS["ceos1-both"]
     with patch(
-        "lab.test_pqc_connections.openssl_s_client",
+        "lab.test_pqc_connections.run_openssl_s_client",
         side_effect=Exception(f"TLS 1.3 handshake to {switch_ip}:443 failed"),
     ):
         with pytest.raises(Exception):

@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 
+from lab.probe_client import live_check_prefix
 from lab.report import CheckStatus, print_check_group, print_device, print_section_header, report_ok, report_summary, report_warn
 from lab.syslog_checks import (
     PQC_GROUP,
@@ -37,11 +38,12 @@ def report_config(detail: str) -> None:
     report_ok("[config]", detail)
 
 
-def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK) -> None:
+def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK, probe_client: bool = False) -> None:
+    prefix = live_check_prefix() if probe_client else "[live]  "
     if status is CheckStatus.WARN:
-        report_warn("[live]  ", detail)
+        report_warn(prefix, detail)
     else:
-        report_ok("[live]  ", detail)
+        report_ok(prefix, detail)
 
 
 def docker_exec(
@@ -85,8 +87,15 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
         print_check_group("Collector TLS")
         for family in IP_FAMILIES:
             addr = ips["syslog"] if family == IP_FAMILY_IPV4 else ips6["syslog"]
-            probe_syslog_tls_pqc(docker_exec, syslog_container=syslog_container, syslog_ip=addr)
-            report_live(f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
+            probe_syslog_tls_pqc(
+                syslog_ip=addr,
+                clab_name=clab_name,
+                syslog_container=syslog_container,
+            )
+            report_live(
+                f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})",
+                probe_client=True,
+            )
     else:
         udp = docker_exec(syslog_container, "netstat -lun").stdout
         tcp = docker_exec(syslog_container, "netstat -ltn").stdout

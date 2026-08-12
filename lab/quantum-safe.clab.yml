@@ -195,6 +195,26 @@ topology:
         SAE_CLIENT_IPS: ${KME_SAE_CLIENT_IPS}
       binds:
         - ../lab/.gen/kme-pki:/certs:ro
+    test-runner:
+      kind: linux
+      image: quantum-safe-test-runner:latest
+      mgmt-ipv4: ${MGMT_IP_TEST_RUNNER}
+      mgmt-ipv6: ${MGMT_IPV6_TEST_RUNNER}
+      binds:
+        - ../lab/.gen/pki/ca.pem:/etc/probe/certs/ca.pem:ro
+        - ../lab/.gen/pki/radsec-ca.pem:/etc/probe/certs/radsec-ca.pem:ro
+        - ../lab/.gen/pki/ceos1-both-client.pem:/etc/probe/certs/ceos1-both-client.pem:ro
+        - ../lab/.gen/pki/ceos1-both-client.key:/etc/probe/certs/ceos1-both-client.key:ro
+        - ../lab/.gen/pki/ceos1-both-gnmi.pem:/etc/probe/certs/ceos1-both-gnmi.pem:ro
+        - ../lab/.gen/pki/ceos1-both-gnmi.key:/etc/probe/certs/ceos1-both-gnmi.key:ro
+        - ../lab/.gen/pki/ceos2-pqc-client.pem:/etc/probe/certs/ceos2-pqc-client.pem:ro
+        - ../lab/.gen/pki/ceos2-pqc-client.key:/etc/probe/certs/ceos2-pqc-client.key:ro
+        - ../lab/.gen/pki/ceos2-pqc-gnmi.pem:/etc/probe/certs/ceos2-pqc-gnmi.pem:ro
+        - ../lab/.gen/pki/ceos2-pqc-gnmi.key:/etc/probe/certs/ceos2-pqc-gnmi.key:ro
+        - ../lab/.gen/pki/ceos3-qkd-client.pem:/etc/probe/certs/ceos3-qkd-client.pem:ro
+        - ../lab/.gen/pki/ceos3-qkd-client.key:/etc/probe/certs/ceos3-qkd-client.key:ro
+        - ../lab/.gen/pki/ceos3-qkd-gnmi.pem:/etc/probe/certs/ceos3-qkd-gnmi.pem:ro
+        - ../lab/.gen/pki/ceos3-qkd-gnmi.key:/etc/probe/certs/ceos3-qkd-gnmi.key:ro
   links:
     - endpoints: ["ceos1-both:eth1", "ceos2-pqc:eth1"]
     - endpoints: ["ceos1-both:eth2", "ceos3-qkd:eth1"]

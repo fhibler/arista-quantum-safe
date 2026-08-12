@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from lab.ceos_json import json_tree_contains, json_truthy
-from lab.topology_contract import SYSLOG_PORT, SYSLOG_SSL_PROFILE, hostport
+from lab.probe_client import probe_syslog_ca_path, run_openssl_s_client
+from lab.topology_contract import LAB_NAME, SYSLOG_PORT, SYSLOG_SSL_PROFILE, hostport
 from lab.verbose import echo_command, verbose_enabled
 
 PQC_GROUP = "X25519MLKEM768"
@@ -213,6 +214,71 @@ def _run_bridge_tcpdump_capture(
     return pcap_ok, stderr
 
 
+def _run_syslog_eth0_tcpdump_capture(
+    *,
+    syslog_container: str,
+    container_pcap: str,
+    bpf_filter: str,
+    bounce_logging: Callable[[], None],
+    settle_sec: float,
+    verbose: bool | None = None,
+) -> bool:
+    """Capture inbound syslog TLS on the collector eth0; return True when pcap looks usable."""
+    show = verbose_enabled(verbose)
+    start_cmd = (
+        f"pkill -x tcpdump 2>/dev/null || true; "
+        f"rm -f {container_pcap}; "
+        f"tcpdump -i eth0 -n -s 0 -w {container_pcap} {bpf_filter} -Z root "
+        f"</dev/null >/dev/null 2>&1 & "
+        f"echo started"
+    )
+    argv = ["docker", "exec", syslog_container, "sh", "-c", start_cmd]
+    if show:
+        echo_command("syslog wire KEX tcpdump (eth0)", argv)
+    start = subprocess.run(argv, capture_output=True, text=True, check=False)
+    if start.returncode != 0:
+        return False
+
+    try:
+        time.sleep(0.5)
+        bounce_logging()
+        time.sleep(settle_sec)
+    finally:
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                syslog_container,
+                "sh",
+                "-c",
+                "pkill -x tcpdump 2>/dev/null || true",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    size_check = subprocess.run(
+        [
+            "docker",
+            "exec",
+            syslog_container,
+            "sh",
+            "-c",
+            f"test -s {container_pcap} && wc -c < {container_pcap}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if size_check.returncode != 0:
+        return False
+    try:
+        return int(size_check.stdout.strip()) >= 50
+    except ValueError:
+        return False
+
+
 def capture_eos_syslog_tls_key_share_group(
     *,
     switch_ip: str,
@@ -225,47 +291,24 @@ def capture_eos_syslog_tls_key_share_group(
 ) -> int | None:
     """Capture cEOS→syslog ClientHello and return the client key_share group id.
 
-    Returns None when capture or decode is unavailable. Requires host tcpdump on
-    the Containerlab mgmt bridge (see docs/services/syslog.md). When unprivileged
-    capture is denied, retries with interactive ``sudo tcpdump`` so a password
-    can be entered if required.
+    Returns None when capture or decode is unavailable. Capture runs via
+    ``tcpdump -i eth0`` inside the syslog collector container (no host bridge
+    access required).
     """
-    global _sudo_tcpdump_required
-
-    iface = bridge or resolve_mgmt_bridge()
-    if iface is None:
-        return None
-
-    pcap = pcap_path or Path("/tmp/quantum-safe-syslog-kex.pcap")
+    _ = bridge, pcap_path
+    container_pcap = "/tmp/quantum-safe-syslog-kex.pcap"
     bpf_filter = f"tcp port {SYSLOG_PORT} and host {switch_ip}"
-    capture_kwargs = {
-        "iface": iface,
-        "pcap": pcap,
-        "bpf_filter": bpf_filter,
-        "bounce_logging": bounce_logging,
-        "settle_sec": settle_sec,
-        "verbose": verbose,
-    }
-
-    if _sudo_tcpdump_required:
-        _announce_sudo_tcpdump_capture(iface)
-        pcap_ok, _ = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=True)
-    else:
-        pcap_ok, stderr = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=False)
-        if not pcap_ok and _command_exists("sudo") and _tcpdump_permission_denied(stderr):
-            _sudo_tcpdump_required = True
-            _announce_sudo_tcpdump_capture(iface)
-            pcap_ok, _ = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=True)
-
+    pcap_ok = _run_syslog_eth0_tcpdump_capture(
+        syslog_container=syslog_container,
+        container_pcap=container_pcap,
+        bpf_filter=bpf_filter,
+        bounce_logging=bounce_logging,
+        settle_sec=settle_sec,
+        verbose=verbose,
+    )
     if not pcap_ok:
         return None
 
-    container_pcap = "/tmp/quantum-safe-syslog-kex.pcap"
-    subprocess.run(
-        ["docker", "cp", str(pcap), f"{syslog_container}:{container_pcap}"],
-        check=False,
-        capture_output=True,
-    )
     hello_filter = tshark_client_hello_filter(switch_ip)
     decode = subprocess.run(
         [
@@ -429,25 +472,33 @@ def check_switch_syslog_ssl_profile_detail(detail: str | Any, *, node: str) -> N
 
 
 def probe_syslog_tls_pqc(
-    docker_exec: Callable[..., subprocess.CompletedProcess[str]],
     *,
-    syslog_container: str,
     syslog_ip: str,
+    clab_name: str = LAB_NAME,
+    syslog_container: str | None = None,
+    verbose: bool | None = None,
 ) -> str:
-    command = (
-        f"OPENSSL_CONF={OPENSSL_PQC_CNF} "
-        f"openssl s_client -connect {hostport(syslog_ip, SYSLOG_PORT)} -servername syslog -tls1_3 "
-        f"-groups {PQC_GROUP} </dev/null 2>&1"
+    """TLS 1.3 PQC handshake to the syslog collector from the probe client."""
+    output = run_openssl_s_client(
+        connect=hostport(syslog_ip, SYSLOG_PORT),
+        ca_file=probe_syslog_ca_path(),
+        groups=PQC_GROUP,
+        servername="syslog",
+        clab_name=clab_name,
+        verbose=verbose,
     )
-    result = docker_exec(syslog_container, command, check=False)
-    output = result.stdout + result.stderr
     if "CONNECTED" not in output and "CONNECTION ESTABLISHED" not in output:
         raise SyslogCheckError(f"syslog TLS handshake failed:\n{output[-800:]}")
     if tls_handshake_incomplete(output):
+        health_hint = ""
+        if syslog_container:
+            health_hint = (
+                f"collector may still be starting — retry or check "
+                f"'docker inspect --format={{.State.Health.Status}} {syslog_container}'"
+            )
         raise SyslogCheckError(
             "syslog TLS handshake incomplete (TCP connected but no TLS response); "
-            f"collector may still be starting — retry or check "
-            f"'docker inspect --format={{.State.Health.Status}} {syslog_container}'"
+            f"{health_hint}".rstrip()
         )
     if not negotiated_pqc_group(output):
         raise SyslogCheckError(f"syslog TLS: expected PQC group {PQC_GROUP!r}")

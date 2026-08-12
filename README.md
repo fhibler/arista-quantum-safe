@@ -59,9 +59,12 @@ make deploy
 
 # Run all live acceptance checks
 make test-lab
+
+# On a bare host without PQC curl on the OS (Docker + deployed lab only):
+make test-lab-runner
 ```
 
-Individual test targets: `make test-radius`, `make test-pqc`, `make test-syslog`, `make test-macsec`, `make test-hosts`. Use `VERBOSE=1` to echo commands.
+Individual test targets: `make test-radius`, `make test-pqc`, `make test-syslog`, `make test-macsec`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make shell-test-runner`.
 
 Offline validation (no cEOS required):
 
@@ -78,6 +81,7 @@ make test
 | host1, host2, host3 | Alpine hosts on routed data segments |
 | radius | FreeRADIUS (RadSec + EAP-TLS for 802.1X) |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) |
+| test-runner | PQC probe client (OpenSSL 3.5 + curl) for live checks and manual debug |
 
 Container names follow `{prefix}-quantum-safe-{node}` (default prefix `arista` -> `arista-quantum-safe-ceos1-both`).
 

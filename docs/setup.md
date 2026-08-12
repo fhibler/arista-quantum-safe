@@ -47,7 +47,7 @@ make test-lab          # all live checks
 `make deploy` runs:
 
 1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
-2. `make build-radius`, `build-syslog`, `build-kme` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
+2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
 3. `make check-ceos-image` — verify local `ceos:4.36.1F`
 4. Staged KME deploy + key-pool wait
 5. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
@@ -75,6 +75,8 @@ First cEOS boot can take **5–10 minutes** per node on arm64.
 | `make inspect` | Node status |
 | `make test` | Offline pytest (no deployed lab) |
 | `make test-pqc` | PQC management-plane checks only |
+| `make test-lab-runner` | All live checks from mgmt-network harness (Docker only; no host Python/curl) |
+| `make shell-test-runner` | Interactive PQC probe shell on `test-runner` node |
 | `make ssh-ceos1-both` | Open EOS CLI on a switch |
 
 ## Devcontainer
@@ -87,7 +89,7 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 |---------|--------|
 | `check-ceos-image` fails | Import or download cEOS; verify `docker image inspect ceos:4.36.1F` |
 | Deploy stuck at cEOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |
-| RadSec / PQC test failures | Confirm radius container healthy; run `make test-pqc VERBOSE=1` |
+| RadSec / PQC test failures | Confirm radius container healthy; run `make test-pqc VERBOSE=1`; on hosts without PQC curl use `make test-lab-runner` |
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |
 | Host ping failures | Verify data-plane routes in rendered `lab/.gen/ceos*.cfg` |
 

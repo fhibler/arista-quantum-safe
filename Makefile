@@ -23,6 +23,8 @@ SYSLOG_IMAGE  := quantum-safe-syslog:latest
 SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
 KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
+TEST_RUNNER_IMAGE := quantum-safe-test-runner:latest
+TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 # Do not inherit VERBOSE from the environment; use make test-lab VERBOSE=1 explicitly.
 VERBOSE       :=
@@ -37,7 +39,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config docs-build export-public publish-public test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd install-quadra test-lab test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
+        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -260,6 +262,26 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
+build-test-runner: ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
+	@$(MAKE) --no-print-directory test-test-runner-image
+
+test-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
+	@set -euo pipefail; \
+	echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
+	groups=$$(docker run --rm $(TEST_RUNNER_IMAGE) openssl list -tls-groups); \
+	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
+		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
+		echo "PQC group:  $$g present"; \
+	done; \
+	echo "curl:       $$(docker run --rm $(TEST_RUNNER_IMAGE) curl --version 2>&1 | sed -n '1p')"; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'curl --version | grep -qi openssl'; \
+	echo "Probe:      curl linked to OpenSSL"; \
+	echo "OpenSSH:    $$(docker run --rm $(TEST_RUNNER_IMAGE) ssh -V 2>&1 | sed -n '1p')"; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'ssh -Q kex | grep -q mlkem768x25519-sha256'; \
+	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
+	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"
+
 DEPLOY_KME_NODES := kme-a,kme-b
 
 deploy-kme: $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
@@ -269,7 +291,7 @@ wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, po
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-radius build-syslog build-kme check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
+deploy: gen-topo build-radius build-syslog build-kme build-test-runner check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
 	@$(MAKE) --no-print-directory deploy-kme
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
@@ -310,7 +332,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 	rm -f .env; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in quantum-safe-radius quantum-safe-syslog quantum-safe-kme; do \
+		for repo in quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \
@@ -341,10 +363,31 @@ ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
 ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
 	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
 
+shell-test-runner: ## Open interactive shell on test-runner probe node
+	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-test-runner sh
+
 install-quadra: ## Install QuaDRA swix on ceos1-both and ceos3-qkd (swix in download/quadra/ or QUADRA_SWIX=)
 	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
 		$(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-lab-runner: ## All live lab checks from mgmt-network harness (docker + deployed lab only)
+	@set -euo pipefail; \
+	if ! docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
+		echo "Lab mgmt network $(CLAB_MGMT_NETWORK) not found — run make deploy first" >&2; \
+		exit 1; \
+	fi; \
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(CURDIR):/workspace" \
+		-w /workspace \
+		--network "$(CLAB_MGMT_NETWORK)" \
+		-e CLAB_NAME="$(CLAB_NAME)" \
+		-e CLAB_PREFIX="$(CLAB_PREFIX)" \
+		-e MGMT_SUBNET="$(MGMT_SUBNET)" \
+		$(if $(filter 1,$(VERBOSE)),-e VERBOSE=1,) \
+		$(TEST_RUNNER_IMAGE) \
+		sh /workspace/docker/test-runner/harness-entrypoint.sh test-lab VERBOSE=$(VERBOSE)
 
 test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius

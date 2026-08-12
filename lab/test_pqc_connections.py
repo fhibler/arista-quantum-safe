@@ -39,37 +39,46 @@ from lab.topology_contract import (
     IP_FAMILY_IPV4,
     IP_FAMILY_IPV6,
     LAB_NAME,
-    PROBE_CLIENT_CERT,
-    PROBE_CLIENT_KEY,
     RADSEC_PORT,
     RESTCONF_PORT,
     RESTCONF_SSL_PROFILE,
     SYSLOG_PORT,
     SYSLOG_SSL_PROFILE,
+    TLS_PQC_GROUP,
     container_name,
     family_label,
     hostport,
     mgmt_ips_for_subnet,
     mgmt_ipv6_ips_for_subnet,
 )
+from lab.probe_client import (
+    ProbeClientMode,
+    live_check_prefix,
+    probe_ca_path,
+    probe_client_cert_path,
+    probe_client_key_path,
+    run_curl_eapi,
+    run_gnmi_get,
+    run_openssl_s_client,
+    run_ssh_pqc_probe,
+    ssh_probe_mode,
+)
 from lab.report import (
     CheckStatus,
     print_check_group,
     print_device,
     print_section_header,
+    report_check,
     report_ok,
     report_summary,
     report_warn,
 )
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
-OPENSSL_PQC_CNF = "/etc/raddb/openssl-pqc.cnf"
-RADSEC_CA_IN_RADIUS = "/etc/raddb/certs/radsec/ca.pem"
-PQC_GROUP = "X25519MLKEM768"
 SSH_PQC_KEX = "mlkem768x25519-sha256"
-SSH_PQC_NETNS = "ns-MGMT"
 SSH_PQC_USER = "admin"
 CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
+PQC_GROUP = TLS_PQC_GROUP
 
 
 @dataclass(frozen=True)
@@ -119,12 +128,21 @@ def report_config(detail: str) -> None:
     report_ok("[config]", detail)
 
 
-def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK) -> None:
+def report_live(
+    detail: str,
+    *,
+    status: CheckStatus = CheckStatus.OK,
+    probe_client: bool = False,
+    probe_mode: ProbeClientMode | None = None,
+) -> None:
     """Report a live connectivity check (handshake, API call, AAA test)."""
+    prefix = live_check_prefix(probe_mode) if probe_client else "[live]  "
     if status is CheckStatus.WARN:
-        report_warn("[live]  ", detail)
+        report_warn(prefix, detail)
+    elif status is CheckStatus.FAIL:
+        report_check(prefix, detail, CheckStatus.FAIL)
     else:
-        report_ok("[live]  ", detail)
+        report_ok(prefix, detail)
 
 
 def docker_exec(
@@ -217,6 +235,8 @@ def extract_negotiated_tls_group(output: str) -> str | None:
 
 def assert_pqc_hybrid_tls(output: str, *, label: str) -> None:
     """Require TLS 1.3 PQC-hybrid group negotiation (no classical fallback)."""
+    if not tls13_handshake(output):
+        raise PqcConnectionError(f"{label}: TLS 1.3 handshake failed:\n{output[-800:]}")
     if negotiated_pqc_group(output):
         return
     group = extract_negotiated_tls_group(output) or "unknown"
@@ -225,31 +245,196 @@ def assert_pqc_hybrid_tls(output: str, *, label: str) -> None:
     )
 
 
-def openssl_s_client(
-    radius_container: str,
+def probe_gnmi_tls(
+    targets: LabTargets,
+    node: str,
     *,
-    connect: str,
-    ca_file: str,
-    cert_file: str | None = None,
-    key_file: str | None = None,
-    use_pqc_conf: bool = True,
+    family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
-    require_tls13: bool = True,
-) -> str:
-    env = f"OPENSSL_CONF={OPENSSL_PQC_CNF} " if use_pqc_conf else ""
-    cert_args = ""
-    if cert_file and key_file:
-        cert_args = f"-cert {cert_file} -key {key_file} "
-    command = (
-        f"{env}openssl s_client -connect {connect} -tls1_3 "
-        f"-CAfile {ca_file} {cert_args}-brief </dev/null 2>&1"
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
+    output = run_openssl_s_client(
+        connect=hostport(ip, GNMI_PORT),
+        ca_file=probe_ca_path(),
+        clab_name=targets.clab_name,
+        verbose=verbose,
     )
-    # s_client may exit non-zero after a successful brief handshake; inspect output instead.
-    result = docker_exec(radius_container, command, check=False, verbose=verbose, title=f"openssl s_client {connect}")
-    output = result.stdout + result.stderr
-    if require_tls13 and not tls13_handshake(output):
-        raise PqcConnectionError(f"TLS 1.3 handshake to {connect} failed:\n{output}")
-    return output
+    assert_pqc_hybrid_tls(output, label=f"{node} gNMI TLS")
+    report_live(f"gNMI gRPC TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})", probe_client=True)
+
+
+def probe_gnmi_mtls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
+    output = run_openssl_s_client(
+        connect=hostport(ip, GNMI_PORT),
+        ca_file=probe_ca_path(),
+        cert_file=probe_client_cert_path(node),
+        key_file=probe_client_key_path(node),
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    assert_pqc_hybrid_tls(output, label=f"{node} gNMI mTLS")
+    report_live(f"gNMI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})", probe_client=True)
+
+
+def probe_gnmi_get(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    """gNMI GET over mTLS (TLS 1.3 only; PQC-hybrid required by server profile)."""
+    ip = targets.ceos_mgmt_ip(node, family)
+    result = run_gnmi_get(
+        node=node,
+        switch_ip=ip,
+        port=GNMI_PORT,
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    body = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        detail = body or f"gnmic exit {result.returncode}"
+        raise PqcConnectionError(f"{node} gNMI GET: {detail[-500:]}")
+    if node not in body:
+        raise PqcConnectionError(f"{node} gNMI GET: expected hostname {node!r} in response: {body[:200]}")
+    report_live(
+        f"gNMI gRPC GET hostname ({family_label(family)}, TLS 1.3, {PQC_GROUP})",
+        probe_client=True,
+    )
+
+
+def probe_restconf_tls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
+    output = run_openssl_s_client(
+        connect=hostport(ip, RESTCONF_PORT),
+        ca_file=probe_ca_path(),
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    assert_pqc_hybrid_tls(output, label=f"{node} RESTCONF TLS")
+    report_live(f"RESTCONF HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})", probe_client=True)
+
+
+def probe_eossdkrpc_tls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    """Probe eos-sdk-rpc mTLS.
+
+    cEOS 4.36.1F often does not negotiate PQC-hybrid on port 9543 despite the ssl
+    profile (EOF with a PQC-only client, or classical KEX with a permissive client).
+    Config is still validated; live probe warns instead of failing the suite.
+    """
+    ip = targets.ceos_mgmt_ip(node, family)
+    cert_file = probe_client_cert_path(node)
+    key_file = probe_client_key_path(node)
+    connect = hostport(ip, EOSSDKRPC_PORT)
+    pqc_output = run_openssl_s_client(
+        connect=connect,
+        ca_file=probe_ca_path(),
+        cert_file=cert_file,
+        key_file=key_file,
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    if tls13_handshake(pqc_output) and negotiated_pqc_group(pqc_output):
+        report_live(
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})",
+            probe_client=True,
+        )
+        return
+
+    classical_output = run_openssl_s_client(
+        connect=connect,
+        ca_file=probe_ca_path(),
+        cert_file=cert_file,
+        key_file=key_file,
+        use_pqc_conf=False,
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    if tls13_handshake(classical_output):
+        group = extract_negotiated_tls_group(classical_output) or "unknown"
+        report_live(
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
+            status=CheckStatus.WARN,
+            probe_client=True,
+        )
+        return
+
+    report_live(
+        f"eos-sdk-rpc gRPC mTLS ({family_label(family)}): no TLS 1.3 handshake on :9543 "
+        "(cEOS 4.36.1F PQC gap; config OK)",
+        status=CheckStatus.WARN,
+        probe_client=True,
+    )
+
+
+def probe_eapi_https(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+) -> None:
+    ip = targets.ceos_mgmt_ip(node, family)
+    output = run_openssl_s_client(
+        connect=hostport(ip, 443),
+        ca_file=probe_ca_path(),
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    assert_pqc_hybrid_tls(output, label=f"{node} eAPI HTTPS")
+    report_live(f"eAPI HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})", probe_client=True)
+
+
+def probe_eapi(
+    node: str,
+    switch_ip: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    verbose: bool | None = None,
+    clab_name: str = LAB_NAME,
+) -> None:
+    payload = (
+        '{"jsonrpc":"2.0","method":"runCmds",'
+        '"params":{"version":1,"cmds":["show version"],"format":"json"},"id":1}'
+    )
+    result = run_curl_eapi(
+        node=node,
+        switch_ip=switch_ip,
+        payload=payload,
+        clab_name=clab_name,
+        verbose=verbose,
+    )
+    body = result.stdout.strip()
+    if result.returncode != 0 or not body:
+        detail = result.stderr.strip() or body or f"curl exit {result.returncode}"
+        raise PqcConnectionError(f"{node} eAPI command-api: {detail}")
+    if "modelName" not in body and "version" not in body.lower():
+        raise PqcConnectionError(f"{node} eAPI command-api: unexpected response: {body[:200]}")
+    report_live(f"eAPI command-api runCmds ({family_label(family)})", probe_client=True)
+
+
+# Backward-compatible alias.
+probe_eapi_jsonrpc = probe_eapi
 
 
 def check_radius_config(targets: LabTargets, *, verbose: bool | None = None) -> None:
@@ -355,175 +540,25 @@ def check_eossdkrpc_config(targets: LabTargets, node: str, *, verbose: bool | No
     report_config(f"eos-sdk-rpc ssl profile {EOSSDKRPC_SSL_PROFILE} valid ({PQC_GROUP}), grpc bound")
 
 
-def probe_gnmi_tls(
+def probe_radsec_collector_tls(
     targets: LabTargets,
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
 ) -> None:
-    ip = targets.ceos_mgmt_ip(node, family)
-    output = openssl_s_client(
-        targets.radius_container,
-        connect=hostport(ip, GNMI_PORT),
-        ca_file=RADSEC_CA_IN_RADIUS,
+    """RadSec collector TLS handshake from probe client with switch client cert."""
+    radius_ip = targets.service_ip("radius", family)
+    output = run_openssl_s_client(
+        connect=hostport(radius_ip, RADSEC_PORT),
+        ca_file=probe_ca_path(),
+        cert_file=probe_client_cert_path(node),
+        key_file=probe_client_key_path(node),
+        clab_name=targets.clab_name,
         verbose=verbose,
     )
-    assert_pqc_hybrid_tls(output, label=f"{node} gNMI TLS")
-    report_live(f"gNMI gRPC TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
-
-
-def probe_gnmi_mtls(
-    targets: LabTargets,
-    node: str,
-    *,
-    family: str = IP_FAMILY_IPV4,
-    verbose: bool | None = None,
-) -> None:
-    ip = targets.ceos_mgmt_ip(node, family)
-    cert_file = PROBE_CLIENT_CERT.format(node=node)
-    key_file = PROBE_CLIENT_KEY.format(node=node)
-    output = openssl_s_client(
-        targets.radius_container,
-        connect=hostport(ip, GNMI_PORT),
-        ca_file=RADSEC_CA_IN_RADIUS,
-        cert_file=cert_file,
-        key_file=key_file,
-        verbose=verbose,
-    )
-    assert_pqc_hybrid_tls(output, label=f"{node} gNMI mTLS")
-    report_live(f"gNMI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
-
-
-def probe_restconf_tls(
-    targets: LabTargets,
-    node: str,
-    *,
-    family: str = IP_FAMILY_IPV4,
-    verbose: bool | None = None,
-) -> None:
-    ip = targets.ceos_mgmt_ip(node, family)
-    output = openssl_s_client(
-        targets.radius_container,
-        connect=hostport(ip, RESTCONF_PORT),
-        ca_file=RADSEC_CA_IN_RADIUS,
-        verbose=verbose,
-    )
-    assert_pqc_hybrid_tls(output, label=f"{node} RESTCONF TLS")
-    report_live(f"RESTCONF HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
-
-
-def probe_eossdkrpc_tls(
-    targets: LabTargets,
-    node: str,
-    *,
-    family: str = IP_FAMILY_IPV4,
-    verbose: bool | None = None,
-) -> None:
-    """Probe eos-sdk-rpc mTLS.
-
-    cEOS 4.36.1F often does not negotiate PQC-hybrid on port 9543 despite the ssl
-    profile (EOF with a PQC-only client, or classical KEX with a permissive client).
-    Config is still validated; live probe warns instead of failing the suite.
-    """
-    ip = targets.ceos_mgmt_ip(node, family)
-    cert_file = PROBE_CLIENT_CERT.format(node=node)
-    key_file = PROBE_CLIENT_KEY.format(node=node)
-    connect = hostport(ip, EOSSDKRPC_PORT)
-    pqc_output = openssl_s_client(
-        targets.radius_container,
-        connect=connect,
-        ca_file=RADSEC_CA_IN_RADIUS,
-        cert_file=cert_file,
-        key_file=key_file,
-        verbose=verbose,
-        require_tls13=False,
-    )
-    if tls13_handshake(pqc_output) and negotiated_pqc_group(pqc_output):
-        report_live(f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
-        return
-
-    classical_output = openssl_s_client(
-        targets.radius_container,
-        connect=connect,
-        ca_file=RADSEC_CA_IN_RADIUS,
-        cert_file=cert_file,
-        key_file=key_file,
-        use_pqc_conf=False,
-        verbose=verbose,
-        require_tls13=False,
-    )
-    if tls13_handshake(classical_output):
-        group = extract_negotiated_tls_group(classical_output) or "unknown"
-        report_live(
-            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
-            status=CheckStatus.WARN,
-        )
-        return
-
-    report_live(
-        f"eos-sdk-rpc gRPC mTLS ({family_label(family)}): no TLS 1.3 handshake on :9543 "
-        "(cEOS 4.36.1F PQC gap; config OK)",
-        status=CheckStatus.WARN,
-    )
-
-
-def probe_eapi_https(
-    targets: LabTargets,
-    node: str,
-    *,
-    family: str = IP_FAMILY_IPV4,
-    verbose: bool | None = None,
-) -> None:
-    ip = targets.ceos_mgmt_ip(node, family)
-    output = openssl_s_client(
-        targets.radius_container,
-        connect=hostport(ip, 443),
-        ca_file=RADSEC_CA_IN_RADIUS,
-        verbose=verbose,
-    )
-    assert_pqc_hybrid_tls(output, label=f"{node} eAPI HTTPS")
-    report_live(f"eAPI HTTPS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})")
-
-
-def probe_eapi_jsonrpc(
-    node: str,
-    switch_ip: str,
-    *,
-    family: str = IP_FAMILY_IPV4,
-    verbose: bool | None = None,
-) -> None:
-    payload = (
-        '{"jsonrpc":"2.0","method":"runCmds",'
-        '"params":{"version":1,"cmds":["show version"],"format":"json"},"id":1}'
-    )
-    argv = [
-        "curl",
-        "-sk",
-        "--tlsv1.3",
-        "--tls-max",
-        "1.3",
-        "-u",
-        "admin:",
-        f"https://{hostport(switch_ip, 443)}/command-api",
-        "-H",
-        "Content-Type: application/json",
-        "-d",
-        payload,
-    ]
-    show = verbose_enabled(verbose)
-    if show:
-        echo_command(f"{node} eAPI JSON-RPC", argv)
-    result = subprocess.run(argv, capture_output=True, text=True, check=False)
-    if show:
-        echo_result(result, format_json=True)
-    body = result.stdout.strip()
-    if result.returncode != 0 or not body:
-        detail = result.stderr.strip() or body or f"curl exit {result.returncode}"
-        raise PqcConnectionError(f"{node} eAPI JSON-RPC: {detail}")
-    if "modelName" not in body and "version" not in body.lower():
-        raise PqcConnectionError(f"{node} eAPI JSON-RPC: unexpected response: {body[:200]}")
-    report_live(f"eAPI JSON-RPC command-api ({family_label(family)})")
+    assert_pqc_hybrid_tls(output, label=f"{node} RadSec collector TLS")
+    report_live(f"RadSec collector TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})", probe_client=True)
 
 
 def negotiated_ssh_pqc_kex(output: str) -> bool:
@@ -537,33 +572,29 @@ def probe_ssh_pqc(
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
 ) -> None:
-    """SSH from node to its own mgmt address over VRF MGMT using the cEOS PQC netns."""
-    container = targets.ceos_container(node)
+    """SSH from the probe client (test-runner by default) to switch mgmt over VRF MGMT."""
     mgmt_ip = targets.ceos_mgmt_ip(node, family)
-    command = (
-        f"ip netns exec {SSH_PQC_NETNS} ssh -vvv "
-        f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        f"-o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive "
-        f"-o KexAlgorithms={SSH_PQC_KEX} "
-        f"{SSH_PQC_USER}@{mgmt_ip} 'show hostname | json' 2>&1"
-    )
-    result = docker_exec(
-        container,
-        command,
-        check=False,
+    result = run_ssh_pqc_probe(
+        node=node,
+        switch_ip=mgmt_ip,
+        clab_name=targets.clab_name,
+        user=SSH_PQC_USER,
         verbose=verbose,
-        title=f"{node} SSH loopback ({family_label(family)})",
     )
     output = result.stdout + result.stderr
     if result.returncode != 0:
         detail = output.strip() or f"exit {result.returncode}"
-        raise PqcConnectionError(f"{node} SSH loopback ({mgmt_ip}): {detail[-500:]}")
+        raise PqcConnectionError(f"{node} SSH ({mgmt_ip}): {detail[-500:]}")
     if not negotiated_ssh_pqc_kex(output):
         raise PqcConnectionError(
-            f"{node} SSH loopback: expected kex {SSH_PQC_KEX!r} in handshake output"
+            f"{node} SSH ({mgmt_ip}): expected kex {SSH_PQC_KEX!r} in handshake output"
         )
-    assert_contains(output, node, label=f"{node} SSH loopback hostname")
-    report_live(f"SSH loopback ({family_label(family)}, {SSH_PQC_KEX})")
+    assert_contains(output, node, label=f"{node} SSH hostname")
+    report_live(
+        f"SSH ({family_label(family)}, {SSH_PQC_KEX})",
+        probe_client=True,
+        probe_mode=ssh_probe_mode(),
+    )
 
 
 def probe_radsec_from_switch(
@@ -652,14 +683,16 @@ def probe_syslog_tls(
     syslog_ip = targets.service_ip("syslog", family)
     try:
         probe_syslog_tls_pqc(
-            docker_exec,
-            syslog_container=targets.syslog_container,
             syslog_ip=syslog_ip,
+            clab_name=targets.clab_name,
+            syslog_container=targets.syslog_container,
+            verbose=verbose,
         )
     except SyslogCheckError as exc:
         raise PqcConnectionError(str(exc)) from exc
     report_live(
-        f"syslog-ng collector TLS handshake ({family_label(family)}, TLS 1.3, {SYSLOG_PQC_GROUP}; probe client, not cEOS syslog)"
+        f"syslog-ng collector TLS handshake ({family_label(family)}, TLS 1.3, {SYSLOG_PQC_GROUP})",
+        probe_client=True,
     )
 
 
@@ -775,7 +808,8 @@ def run_live_checks(
 
     print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   TLS/mTLS handshakes, eAPI JSON-RPC, gNMI/gNOI gRPC, RESTCONF, eos-sdk-rpc, RadSec AAA, SSH, Syslog (delivery + wire KEX when capture available)")
+    print("  [live]   cEOS-side checks (RadSec AAA, syslog delivery, wire KEX when capture available)")
+    print("  [live / test-runner]  TLS/mTLS handshakes, eAPI, gNMI GET, RESTCONF, eos-sdk-rpc, RadSec collector, SSH, syslog collector")
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     print_device("radius")
@@ -806,17 +840,19 @@ def run_live_checks(
         print_check_group("eAPI")
         for family in IP_FAMILIES:
             probe_eapi_https(targets, node, family=family, verbose=verbose)
-            probe_eapi_jsonrpc(
+            probe_eapi(
                 node,
                 targets.ceos_mgmt_ip(node, family),
                 family=family,
                 verbose=verbose,
+                clab_name=targets.clab_name,
             )
 
         print_check_group("gNMI")
         for family in IP_FAMILIES:
             probe_gnmi_tls(targets, node, family=family, verbose=verbose)
             probe_gnmi_mtls(targets, node, family=family, verbose=verbose)
+            probe_gnmi_get(targets, node, family=family, verbose=verbose)
 
         print_check_group("RESTCONF")
         for family in IP_FAMILIES:
@@ -836,6 +872,7 @@ def run_live_checks(
 
         print_check_group("RadSec")
         for family in IP_FAMILIES:
+            probe_radsec_collector_tls(targets, node, family=family, verbose=verbose)
             probe_radsec_from_switch(targets, node, family=family, verbose=verbose)
 
     print()

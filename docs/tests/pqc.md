@@ -21,11 +21,11 @@ OpenSSL probes run **inside `arista-quantum-safe-radius`** with `OPENSSL_CONF=/e
 
 | Service | Config checks | Live checks |
 |---------|---------------|-------------|
-| eAPI | ssl profile EAPI, http-commands binding | HTTPS :443 + JSON-RPC `runCmds` |
+| eAPI | ssl profile EAPI, http-commands binding | HTTPS :443 + command-api `runCmds` |
 | gNMI | ssl profile GNMI, mTLS trust | TLS + mTLS :6030 |
 | RESTCONF | ssl profile RESTCONF | HTTPS :6020 |
 | eos-sdk-rpc | ssl profile GNMI, service enabled | mTLS :9543 (**WARN** on gap) |
-| SSH | `management ssh` KEX, VRF MGMT | Loopback SSH in `ns-MGMT` netns |
+| SSH | `management ssh` KEX, VRF MGMT | SSH from **test-runner** probe client |
 | Syslog | logging hosts, SYSLOG profile | Message delivery + optional wire KEX |
 | RadSec | RADSEC profile, radius config | `test aaa … tls port 2083` |
 
@@ -33,15 +33,15 @@ OpenSSL probes run **inside `arista-quantum-safe-radius`** with `OPENSSL_CONF=/e
 
 ## SSH
 
-**Live:** SSH from switch to its own mgmt IP inside **`ns-MGMT`** with `-o KexAlgorithms=mlkem768x25519-sha256`.
+**Live:** SSH from **`test-runner`** (`arista-quantum-safe-test-runner`) to switch mgmt IP with `-o KexAlgorithms=mlkem768x25519-sha256`.
 
 **Pass criteria:** Exit 0, output contains `kex: algorithm: mlkem768x25519-sha256` and hostname JSON.
 
 Manual equivalent:
 
 ```bash
-docker exec arista-quantum-safe-ceos1-both sh -c \
-  'ip netns exec ns-MGMT ssh -vvv \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'ssh -vvv \
      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
      -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive \
      -o KexAlgorithms=mlkem768x25519-sha256 \
@@ -49,38 +49,58 @@ docker exec arista-quantum-safe-ceos1-both sh -c \
   | grep "kex: algorithm"
 ```
 
+Set `PROBE_CLIENT=host` to use the host SSH client (devcontainer with OpenSSH 10+).
+
 ---
 
 ## eAPI
 
 **Config:** `show management security ssl profile EAPI detail` -> valid + `X25519MLKEM768`.
 
-**Live HTTPS:**
+**Live HTTPS** (test-runner by default):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:443 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1'
+   -CAfile /etc/probe/certs/radsec-ca.pem -brief </dev/null 2>&1'
 ```
 
-**Live JSON-RPC:** `curl --tlsv1.3 --tls-max 1.3` to `/command-api` with `runCmds` / `show version`.
+**Live eAPI command-api:** PQC `curl` from the **test-runner** container (default probe client):
+
+```bash
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
+   curl -sk --tlsv1.3 --tls-max 1.3 -u admin: \
+   https://172.20.127.11/command-api \
+   -H "Content-Type: application/json" \
+   -d "{\"jsonrpc\":\"2.0\",\"method\":\"runCmds\",\"params\":{\"version\":1,\"cmds\":[\"show version\"],\"format\":\"json\"},\"id\":1}"'
+```
+
+Set `PROBE_CLIENT=host` to use host curl (devcontainer only) or `PROBE_CLIENT=radius` to fall back to the radius container.
 
 ---
 
 ## gNMI / RESTCONF / eos-sdk-rpc
 
-**gNMI TLS** (:6030) and **mTLS** (client cert `ceos*-gnmi.pem`):
+**gNMI TLS** (:6030), **mTLS** (client cert `ceos*-client.pem`), and **GET** (gnmic, same client cert):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:6030 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-gnmi.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-gnmi.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
   | grep -E 'TLSv1.3|X25519MLKEM768'
+
+docker exec arista-quantum-safe-test-runner gnmic -a 172.20.127.11:6030 \
+  --tls-ca /etc/probe/certs/radsec-ca.pem \
+  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
+  --tls-key /etc/probe/certs/ceos1-both-client.key \
+  --tls-version 1.3 --tls-min-version 1.3 --tls-max-version 1.3 \
+  get --path '/system/config/hostname' --format json
 ```
 
 **RESTCONF** (:6020): same pattern without client cert.
@@ -101,15 +121,15 @@ test aaa group RADIUS server 172.20.127.50 tls port 2083 vrf MGMT
 
 Expect `successfully authenticated`.
 
-OpenSSL equivalent (from radius container, switch client cert):
+OpenSSL equivalent (from test-runner, switch client cert):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.50:2083 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-client.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-client.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
   | grep X25519MLKEM768
 ```
@@ -122,15 +142,16 @@ docker exec arista-quantum-safe-radius sh -c \
 
 **Live delivery:** `send log` with unique needle; verify message in collector without cleartext fallback.
 
-**Wire KEX (optional):** tcpdump on mgmt bridge during logging-host bounce — if captured, **WARN** when group ≠ PQC hybrid (4.36.1F client gap).
+**Wire KEX (optional):** tcpdump on syslog collector `eth0` during logging-host bounce — if captured, **WARN** when group ≠ PQC hybrid (4.36.1F client gap).
 
-Collector probe (always PQC from test client):
+Collector probe (always PQC from test-runner):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
-   openssl s_client -connect 172.20.127.53:6514 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1'
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.53:6514 -servername syslog -tls1_3 \
+   -groups X25519MLKEM768 \
+   -CAfile /etc/probe/certs/ca.pem -brief </dev/null 2>&1'
 ```
 
 ---

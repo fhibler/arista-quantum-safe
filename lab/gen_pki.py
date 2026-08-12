@@ -32,16 +32,17 @@ def _generate_server_cert(
     out: Path,
     name: str,
     role: str,
-    mgmt_ip: str,
+    mgmt_ips: tuple[str, ...],
     ca_crt: Path,
     ca_key: Path,
 ) -> None:
-    """Create or refresh a per-switch TLS server cert when the mgmt IP changes."""
+    """Create or refresh a per-switch TLS server cert when mgmt SANs change."""
     marker = work / f"{name}-{role}-san"
     server_key = work / f"{name}-{role}.key"
     server_csr = work / f"{name}-{role}.csr"
     server_crt = work / f"{name}-{role}.crt"
-    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == mgmt_ip:
+    marker_key = ",".join(mgmt_ips)
+    if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == marker_key:
         pass
     else:
         _run(
@@ -60,10 +61,11 @@ def _generate_server_cert(
             ]
         )
         server_ext = work / f"{name}-{role}.ext"
+        san_ips = ",".join(_san_ip(ip) for ip in mgmt_ips)
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = {_san_ip(mgmt_ip)},DNS:{name},DNS:{container_name(name)}",
+                f"subjectAltName = {san_ips},DNS:{name},DNS:{container_name(name)}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -88,7 +90,7 @@ def _generate_server_cert(
                 str(server_ext),
             ]
         )
-        marker.write_text(f"{mgmt_ip}\n", encoding="utf-8")
+        marker.write_text(f"{marker_key}\n", encoding="utf-8")
 
     (out / f"{name}-{role}.pem").write_bytes(server_crt.read_bytes())
     (out / f"{name}-{role}.key").write_bytes(server_key.read_bytes())
@@ -169,6 +171,7 @@ def generate_radsec_pki(
     syslog_ips: tuple[str, ...] | None = None,
     ceos_hosts: dict[str, str] | None = None,
     ceos_mgmt_ips: dict[str, str] | None = None,
+    ceos_mgmt_ips6: dict[str, str] | None = None,
 ) -> Path:
     """Create CA, server, and per-switch client/eAPI certificates under lab/.gen/pki/."""
     root = repo_root or REPO_ROOT
@@ -323,14 +326,22 @@ def generate_radsec_pki(
         (out / f"{name}-client.key").write_bytes((work / f"{name}-client.key").read_bytes())
 
     mgmt_ips = ceos_mgmt_ips or {}
-    for name, mgmt_ip in mgmt_ips.items():
+    mgmt_ips6 = ceos_mgmt_ips6 or {}
+    for name in hosts:
+        san_ips = tuple(
+            ip
+            for ip in (mgmt_ips.get(name), mgmt_ips6.get(name))
+            if ip
+        )
+        if not san_ips:
+            continue
         for role in ("eapi", "gnmi"):
             _generate_server_cert(
                 work=work,
                 out=out,
                 name=name,
                 role=role,
-                mgmt_ip=mgmt_ip,
+                mgmt_ips=san_ips,
                 ca_crt=ca_crt,
                 ca_key=ca_key,
             )

@@ -104,6 +104,17 @@ def test_devcontainer_uses_dind_not_dood() -> None:
     assert "mcr.microsoft.com/devcontainers/base:noble" not in text
 
 
+def test_devcontainer_dockerfile_installs_gnmic() -> None:
+    dockerfile = DEVCONTAINER_DOCKERFILE.read_text(encoding="utf-8")
+    test_runner = (REPO_ROOT / "docker" / "test-runner" / "Dockerfile").read_text(encoding="utf-8")
+    dev_match = re.search(r"ARG GNMIC_VERSION=(\S+)", dockerfile)
+    runner_match = re.search(r"ARG GNMIC_VERSION=(\S+)", test_runner)
+    assert dev_match is not None
+    assert runner_match is not None
+    assert dev_match.group(1) == runner_match.group(1)
+    assert "install -m 755 /tmp/gnmic /usr/local/bin/gnmic" in dockerfile
+
+
 def test_devcontainer_lock_has_dind_not_dood() -> None:
     lock = json.loads(DEVCONTAINER_LOCK.read_text(encoding="utf-8"))
     features = lock.get("features", {})

@@ -43,22 +43,22 @@ management api gnmi
 TLS (server auth only):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:6030 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1' \
+   -CAfile /etc/probe/certs/radsec-ca.pem -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
 mTLS (client cert per switch, e.g. ceos1-both):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:6030 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-gnmi.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-gnmi.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
@@ -92,10 +92,10 @@ management api restconf
 ### Verification (RESTCONF)
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:6020 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1' \
+   -CAfile /etc/probe/certs/radsec-ca.pem -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
@@ -130,23 +130,23 @@ management api eos-sdk-rpc
 PQC-only probe (may fail on 4.36.1F):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:9543 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-gnmi.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-gnmi.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1'
 ```
 
 Compare with a classical-tolerant client (diagnostic only):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
+docker exec arista-quantum-safe-test-runner sh -c \
   'openssl s_client -connect 172.20.127.11:9543 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-gnmi.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-gnmi.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```

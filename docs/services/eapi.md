@@ -51,15 +51,15 @@ EOF
 
 Expect `State: valid`, `X25519MLKEM768` in profile detail, `SSL Profile: EAPI`.
 
-### TLS handshake (from radius container)
+### TLS handshake (from test-runner)
 
-The lab runs OpenSSL 3.5 with PQC support inside `arista-quantum-safe-radius`:
+The lab runs OpenSSL 3.5 with PQC support inside the **test-runner** probe client (`arista-quantum-safe-test-runner`):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:443 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1' \
+   -CAfile /etc/probe/certs/radsec-ca.pem -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
@@ -73,10 +73,12 @@ Negotiated TLS1.3 group: X25519MLKEM768
 ### JSON-RPC
 
 ```bash
-curl -sk --tlsv1.3 --tls-max 1.3 -u admin: \
-  https://172.20.127.11/command-api \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"runCmds","params":{"version":1,"cmds":["show version"],"format":"json"},"id":1}'
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
+   curl -sk --tlsv1.3 --tls-max 1.3 -u admin: \
+   https://172.20.127.11/command-api \
+   -H "Content-Type: application/json" \
+   -d "{\"jsonrpc\":\"2.0\",\"method\":\"runCmds\",\"params\":{\"version\":1,\"cmds\":[\"show version\"],\"format\":\"json\"},\"id\":1}"'
 ```
 
 Automated: `make test-pqc` -> eAPI HTTPS + JSON-RPC checks per node (IPv4 and IPv6).

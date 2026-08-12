@@ -82,17 +82,17 @@ EOF
 
 Expect `successfully authenticated`.
 
-### OpenSSL RadSec handshake (from radius container to itself)
+### OpenSSL RadSec handshake (from test-runner)
 
-Simulates switch-side PQC client toward RadSec (use switch mgmt IP as connect target with switch client cert):
+Simulates switch-side PQC client toward RadSec (switch client cert mounted in the test-runner probe client):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.50:2083 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-client.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-client.key \
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```

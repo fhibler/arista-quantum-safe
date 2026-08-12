@@ -4,7 +4,7 @@
 
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** — no classical fallback on strict profiles. SSH uses **`mlkem768x25519-sha256`**.
 
-OpenSSL probes run **inside `arista-quantum-safe-radius`** with `OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf`.
+OpenSSL probes run **inside `arista-quantum-safe-test-runner`** (default `PROBE_CLIENT`) with `OPENSSL_CONF=/etc/probe/openssl-pqc.cnf`. Override with `PROBE_CLIENT=radius` or `PROBE_CLIENT=host` when debugging.
 
 ## What is checked
 

@@ -61,10 +61,11 @@ docker exec arista-quantum-safe-syslog tail -5 /var/log/syslog/eos.log
 ## OpenSSL probe
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
-   openssl s_client -connect 172.20.127.53:6514 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1' \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.53:6514 -servername syslog -tls1_3 \
+   -groups X25519MLKEM768 \
+   -CAfile /etc/probe/certs/ca.pem -brief </dev/null 2>&1' \
   | grep -E 'TLSv1.3|X25519MLKEM768'
 ```
 

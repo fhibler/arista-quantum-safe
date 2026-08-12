@@ -50,13 +50,14 @@ EOF
 Verify TLS 1.3 + `X25519MLKEM768` on RadSec (switch client credentials):
 
 ```bash
-docker exec arista-quantum-safe-radius sh -c \
-  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+docker exec arista-quantum-safe-test-runner sh -c \
+  'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.50:2083 -tls1_3 \
-   -CAfile /etc/raddb/certs/radsec/ca.pem \
-   -cert /etc/raddb/certs/radsec/ceos1-both-client.pem \
-   -key /etc/raddb/certs/radsec/ceos1-both-client.key \
-   -brief </dev/null 2>&1'
+   -CAfile /etc/probe/certs/radsec-ca.pem \
+   -cert /etc/probe/certs/ceos1-both-client.pem \
+   -key /etc/probe/certs/ceos1-both-client.key \
+   -brief </dev/null 2>&1' \
+  | grep X25519MLKEM768
 ```
 
 Configuration reference: [RADIUS / RadSec service](../services/radius-radsec.md).

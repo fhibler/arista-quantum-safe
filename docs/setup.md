@@ -87,6 +87,7 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 
 | Symptom | Action |
 |---------|--------|
+| `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
 | `check-ceos-image` fails | Import or download cEOS; verify `docker image inspect ceos:4.36.1F` |
 | Deploy stuck at cEOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |
 | RadSec / PQC test failures | Confirm radius container healthy; run `make test-pqc VERBOSE=1`; on hosts without PQC curl use `make test-lab-runner` |

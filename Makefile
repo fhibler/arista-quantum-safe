@@ -296,7 +296,7 @@ deploy: gen-topo build-radius build-syslog build-kme build-test-runner check-ceo
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
 
-destroy: ## Destroy lab and cleanup runtime artifacts
+destroy: $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
 
 clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker images
@@ -346,7 +346,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 	fi; \
 	echo "=== Clean complete ==="
 
-redeploy: destroy deploy ## Destroy then deploy
+redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so destroy has a local topology file)
 
 inspect: ## Inspect lab node status
 	containerlab inspect -t $(CLAB_TOPO_GEN)

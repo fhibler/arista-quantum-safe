@@ -74,12 +74,12 @@ make test
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | cEOS switches — MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 ↔ ceos2) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | cEOS switches — MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
 | host1, host2, host3 | Alpine hosts on routed data segments |
 | radius | FreeRADIUS (RadSec + EAP-TLS for 802.1X) |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) |
 
-Container names follow `{prefix}-quantum-safe-{node}` (default prefix `arista` → `arista-quantum-safe-ceos1-both`).
+Container names follow `{prefix}-quantum-safe-{node}` (default prefix `arista` -> `arista-quantum-safe-ceos1-both`).
 
 ## Proprietary dependencies
 
@@ -89,6 +89,9 @@ This repository ships **lab tooling and configuration templates only**. It does 
 - Arista **QuaDRA** or other EOS extension packages
 
 You must obtain those separately under your Arista license or support agreement.
+
+- **cEOS-lab** is available after registration from [arista.com](https://www.arista.com) (software download). If you are a customer, use the website token under **arista.com -> My Profile**.
+- **QuaDRA** must be obtained via your **Arista account team**.
 
 ## License
 

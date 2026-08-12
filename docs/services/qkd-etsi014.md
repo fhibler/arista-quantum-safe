@@ -1,6 +1,6 @@
 # QKD (ETSI GS QKD 014) & QuaDRA
 
-This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the management network and, when the QuaDRA extension is installed, **static SAK MACsec key rotation** on **ceos1-both:Ethernet2 ↔ ceos3-qkd:Ethernet1** (`10.255.0.5/30` ↔ `10.255.0.6/30`).
+This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the management network and, when the QuaDRA extension is installed, **static SAK MACsec key rotation** on **ceos1-both:Ethernet2 <-> ceos3-qkd:Ethernet1** (`10.255.0.5/30` <-> `10.255.0.6/30`).
 
 !!! danger "QuaDRA is not publicly available"
     **QuaDRA** (Quantum keys Distribution and Rotation Agent) is an **Arista EOS SDK extension** that is **not distributed in this public repository** and is **not generally available for download**.
@@ -26,8 +26,8 @@ Default management addresses (override with `MGMT_SUBNET=`):
 |------|------|-----------|
 | kme-a | 172.20.127.51 | `:8010` |
 | kme-b | 172.20.127.52 | `:8020` |
-| ceos1-both | 172.20.127.11 | QuaDRA → `kme-a` |
-| ceos3-qkd | 172.20.127.13 | QuaDRA → `kme-b` |
+| ceos1-both | 172.20.127.11 | QuaDRA -> `kme-a` |
+| ceos3-qkd | 172.20.127.13 | QuaDRA -> `kme-b` |
 
 ---
 
@@ -134,7 +134,7 @@ daemon quadra
 |--------|---------------------|-------------------|
 | `macsec-intf` | Ethernet2 | Ethernet1 |
 | `peer` | `10.255.0.6` | `10.255.0.5` |
-| `peer-mode` | `slave` (→ **master** role) | `master` (→ **slave** role) |
+| `peer-mode` | `slave` (-> **master** role) | `master` (-> **slave** role) |
 | `kme` | `kme-a:8010` | `kme-b:8020` |
 | `cert` | `kme-sae-bundle.pem` | `kme-sae-b-bundle.pem` |
 | `peer-sae` | Slave SAE UUID | Master SAE UUID |
@@ -199,7 +199,7 @@ show daemon quadra
 | MACsec license | Static SAK MACsec requires a MACsec license on cEOS |
 | KME simulator | Open-source lab stand-in; not a production QKD system |
 | Startup default | `daemon quadra` **shutdown** in startup-config until extension is installed |
-| Dynamic vs static MACsec | Ethernet1 (ceos1 ↔ ceos2) uses 802.1X; Ethernet2/1 (ceos1 ↔ ceos3) uses QuaDRA static SAK |
+| Dynamic vs static MACsec | Ethernet1 (ceos1 <-> ceos2) uses 802.1X; Ethernet2/1 (ceos1 <-> ceos3) uses QuaDRA static SAK |
 | Key rotation interval | Lab default **120 s** on master (`option key-rotation value 120s`) |
 
 ## Verification
@@ -226,8 +226,8 @@ show mac security interface Ethernet2
 ping 10.255.0.6 source 10.255.0.5
 ```
 
-Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
+Healthy progression: `underconfigured` -> `peer discovery` -> `master` / `slave` -> `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
 See [Test suite overview](../tests/index.md) (`make test-kme`, `make test-qkd`).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

@@ -46,7 +46,7 @@ make test-lab          # all live checks
 
 `make deploy` runs:
 
-1. `make gen-topo` — templates → `lab/.gen/`, validate contract
+1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
 2. `make build-radius`, `build-syslog`, `build-kme` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
 3. `make check-ceos-image` — verify local `ceos:4.36.1F`
 4. Staged KME deploy + key-pool wait

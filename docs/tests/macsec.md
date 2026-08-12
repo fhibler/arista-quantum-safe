@@ -1,6 +1,6 @@
 # MACsec tests
 
-`make test-macsec` runs `python -m lab.test_macsec` on the **ceos1-both ↔ ceos2-pqc** Ethernet1 link.
+`make test-macsec` runs `python -m lab.test_macsec` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link.
 
 Optional extended reauth wait: `make test-macsec-reauth` (`VERIFY_REAUTH=1`, ~75 s).
 
@@ -11,8 +11,8 @@ Optional extended reauth wait: `make test-macsec-reauth` (`VERIFY_REAUTH=1`, ~75
 | Check | Method |
 |-------|--------|
 | dot1x + macsec config | Running-config: authenticator, reauth period, `mac security profile dynamic` |
-| 802.1X host state | `show dot1x hosts` → identity SUCCESS |
-| Port authorization | `show dot1x interface Ethernet1 detail` → Authorized |
+| 802.1X host state | `show dot1x hosts` -> identity SUCCESS |
+| Port authorization | `show dot1x interface Ethernet1 detail` -> Authorized |
 | MKA peers | `show mac security participants interface Ethernet1 detail` |
 | MACsec status | Traffic protected, active key |
 | CKN match | Same connectivity association key as supplicant |
@@ -22,13 +22,13 @@ Optional extended reauth wait: `make test-macsec-reauth` (`VERIFY_REAUTH=1`, ~75
 | Check | Method |
 |-------|--------|
 | Supplicant config | EAP-TLS + ssl profile DOT1X |
-| 802.1X status | `show dot1x supplicant` → success, tls |
+| 802.1X status | `show dot1x supplicant` -> success, tls |
 | PQC in EAP-TLS | Output contains `X25519MLKEM768` |
 | MKA / MACsec | Matching CKN, protected traffic |
 
 ### Inter-switch connectivity
 
-Ping across the MACsec-protected /30 (`10.255.0.1` ↔ `10.255.0.2`).
+Ping across the MACsec-protected /30 (`10.255.0.1` <-> `10.255.0.2`).
 
 ## Pass criteria
 

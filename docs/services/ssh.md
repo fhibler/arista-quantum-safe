@@ -4,7 +4,7 @@ SSH on **VRF MGMT** uses OpenSSH-style **PQC-hybrid key exchange**, not TLS ssl 
 
 ## Configuration
 
-Templates: `configs/ceos/ceos*.cfg.in` → `management ssh`
+Templates: `configs/ceos/ceos*.cfg.in` -> `management ssh`
 
 ```text
 management ssh
@@ -72,8 +72,8 @@ docker exec arista-quantum-safe-ceos1-both sh -c \
 
 Expected: `kex: algorithm: mlkem768x25519-sha256`
 
-Automated: `make test-pqc` → `[live] SSH loopback (IPv4|IPv6, mlkem768x25519-sha256)`.
+Automated: `make test-pqc` -> `[live] SSH loopback (IPv4|IPv6, mlkem768x25519-sha256)`.
 
 See [PQC tests](../tests/pqc.md#ssh).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

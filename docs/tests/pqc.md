@@ -53,7 +53,7 @@ docker exec arista-quantum-safe-ceos1-both sh -c \
 
 ## eAPI
 
-**Config:** `show management security ssl profile EAPI detail` → valid + `X25519MLKEM768`.
+**Config:** `show management security ssl profile EAPI detail` -> valid + `X25519MLKEM768`.
 
 **Live HTTPS:**
 

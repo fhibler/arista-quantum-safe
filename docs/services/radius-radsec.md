@@ -101,4 +101,4 @@ Automated: `make test-radius` and RadSec section of `make test-pqc`.
 
 See [RADIUS tests](../tests/radius.md) and [PQC tests](../tests/pqc.md#radsec).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

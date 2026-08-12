@@ -35,8 +35,8 @@ Cleartext UDP/TCP **514 is disabled** — only TLS **6514** listens.
     | Topic | Status |
     |-------|--------|
     | Config | Profile lists `X25519MLKEM768` first |
-    | Live wire (cEOS → syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
-    | Collector probe (client → syslog-ng) | **PQC-safe** when using PQC OpenSSL |
+    | Live wire (cEOS -> syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
+    | Collector probe (client -> syslog-ng) | **PQC-safe** when using PQC OpenSSL |
 
     The EOS syslog TLS **client** does not offer ML-KEM hybrid groups in ClientHello even when the ssl profile advertises them. The collector accepts classical `x25519`, so logs still flow.
 
@@ -73,7 +73,7 @@ docker exec arista-quantum-safe-radius sh -c \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
-### Wire capture (cEOS → collector)
+### Wire capture (cEOS -> collector)
 
 cEOS keeps long-lived sessions — bounce logging hosts to force a new handshake:
 
@@ -108,4 +108,4 @@ Automated: `make test-pqc` (delivery + optional wire KEX capture) and `make test
 
 See [Syslog tests](../tests/syslog.md).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

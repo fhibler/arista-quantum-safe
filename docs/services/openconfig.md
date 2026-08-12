@@ -120,8 +120,8 @@ management api eos-sdk-rpc
 !!! warning "Known cEOS 4.36.1F gap"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation**:
 
-    - PQC-only OpenSSL client → EOF / no handshake
-    - Permissive client → TLS 1.3 with classical group (e.g. `secp256r1`)
+    - PQC-only OpenSSL client -> EOF / no handshake
+    - Permissive client -> TLS 1.3 with classical group (e.g. `secp256r1`)
 
     `make test-pqc` validates `[config]` and reports **`WARN`** on the live probe instead of failing the suite.
 
@@ -163,4 +163,4 @@ docker exec arista-quantum-safe-radius sh -c \
 
 Automated checks: `make test-pqc`. Details: [PQC tests](../tests/pqc.md).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

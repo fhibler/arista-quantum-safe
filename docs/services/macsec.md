@@ -1,6 +1,6 @@
 # MACsec
 
-Dynamic **802.1X EAP-TLS + MKA** MACsec protects the **ceos1-both ↔ ceos2-pqc** inter-switch link on **Ethernet1** (`10.255.0.1/30` ↔ `10.255.0.2/30`).
+Dynamic **802.1X EAP-TLS + MKA** MACsec protects the **ceos1-both <-> ceos2-pqc** inter-switch link on **Ethernet1** (`10.255.0.1/30` <-> `10.255.0.2/30`).
 
 ## Configuration
 
@@ -41,7 +41,7 @@ Ssl profile **`DOT1X`** restricts EAP-TLS to **`X25519MLKEM768`**.
 
 ### MKA / MACsec
 
-Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS policy copies `EAP-Session-Id` → `EAP-Key-Name` on Access-Accept).
+Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS policy copies `EAP-Session-Id` -> `EAP-Key-Name` on Access-Accept).
 
 ## Caveats
 
@@ -99,4 +99,4 @@ Automated: `make test-macsec` (and `VERIFY_REAUTH=1 make test-macsec-reauth` for
 
 See [MACsec tests](../tests/macsec.md).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

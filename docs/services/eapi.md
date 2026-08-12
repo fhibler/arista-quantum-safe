@@ -79,8 +79,8 @@ curl -sk --tlsv1.3 --tls-max 1.3 -u admin: \
   -d '{"jsonrpc":"2.0","method":"runCmds","params":{"version":1,"cmds":["show version"],"format":"json"},"id":1}'
 ```
 
-Automated: `make test-pqc` → eAPI HTTPS + JSON-RPC checks per node (IPv4 and IPv6).
+Automated: `make test-pqc` -> eAPI HTTPS + JSON-RPC checks per node (IPv4 and IPv6).
 
 See [PQC tests](../tests/pqc.md#eapi).
 
-← [Services overview](index.md)
+<- [Services overview](index.md)

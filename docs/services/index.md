@@ -2,7 +2,7 @@
 
 PQC-hybrid configuration for each management-plane and data-plane security service in the lab. All services use **VRF MGMT** unless noted.
 
-Templates: `configs/ceos/ceos*.cfg.in` → rendered to `lab/.gen/` via `make gen-topo`.
+Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-topo`.
 
 ## Summary (cEOS 4.36.1F)
 
@@ -40,7 +40,7 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 | [OpenConfig & gRPC](openconfig.md) | gNMI, gNOI, RESTCONF, eos-sdk-rpc |
 | [Syslog](syslog.md) | Remote TLS logging to syslog-ng |
 | [RADIUS / RadSec](radius-radsec.md) | RadSec AAA and EAP-TLS for 802.1X |
-| [MACsec](macsec.md) | Dynamic MACsec on ceos1-both ↔ ceos2-pqc |
+| [MACsec](macsec.md) | Dynamic MACsec on ceos1-both <-> ceos2-pqc |
 | [QKD / ETSI 014 & QuaDRA](qkd-etsi014.md) | KME simulators + QuaDRA static SAK rotation (extension via Arista) |
 
 ## Related

@@ -32,7 +32,7 @@
 # Radius listener
 docker exec arista-quantum-safe-radius netstat -ltn | grep 2083
 
-# Switch → radius ping
+# Switch -> radius ping
 docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
 enable
 ping vrf MGMT 172.20.127.50 repeat 3

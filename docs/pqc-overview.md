@@ -107,8 +107,8 @@ The lab therefore **self-compiles** service containers against **OpenSSL 3.5.7**
 
 | Image | Dockerfile | Build approach |
 |-------|------------|----------------|
-| `quantum-safe-radius:latest` | `docker/radius/Dockerfile` | Static OpenSSL 3.5.7 → FreeRADIUS 3.2.6 linked against `/opt/openssl` |
-| `quantum-safe-syslog:latest` | `docker/syslog/Dockerfile` | Static OpenSSL 3.5.7 → syslog-ng 4.8.1 linked against `/opt/openssl` |
+| `quantum-safe-radius:latest` | `docker/radius/Dockerfile` | Static OpenSSL 3.5.7 -> FreeRADIUS 3.2.6 linked against `/opt/openssl` |
+| `quantum-safe-syslog:latest` | `docker/syslog/Dockerfile` | Static OpenSSL 3.5.7 -> syslog-ng 4.8.1 linked against `/opt/openssl` |
 
 At runtime both images set:
 

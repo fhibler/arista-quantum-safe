@@ -285,9 +285,13 @@ def test_run_qkd_checks_happy_path(capsys) -> None:
     import lab.test_qkd as mod
     from unittest.mock import patch
 
+    from lab.topology_contract import quadra_swix_name
+
+    swix = quadra_swix_name()
+
     def fake_cli(container: str, commands: str, *, verbose: bool | None = None) -> str:
         if "show extensions" in commands:
-            return "QuaDRA-1.0.10.rel1-aarch64.swix  1.0.10/1  A, I, B"
+            return f"{swix}  1.0.10/1  A, I, B"
         if "show daemon quadra" in commands:
             if "ceos3-qkd" in container:
                 return SAMPLE_SLAVE_DAEMON

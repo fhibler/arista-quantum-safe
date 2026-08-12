@@ -88,13 +88,16 @@ def test_internal_tree_is_marked_private() -> None:
 
 
 def test_mkdocs_build_strict() -> None:
-    result = subprocess.run(
-        ["mkdocs", "build", "--strict"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["mkdocs", "build", "--strict"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("mkdocs not installed")
     if result.returncode != 0 and "No such file or directory: 'mkdocs'" in (
         result.stderr or result.stdout
     ):

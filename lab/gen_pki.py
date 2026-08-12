@@ -167,7 +167,7 @@ def _generate_syslog_server_cert(
 def generate_radsec_pki(
     *,
     repo_root: Path | None = None,
-    radius_ip: str,
+    radius_ips: tuple[str, ...],
     syslog_ips: tuple[str, ...] | None = None,
     ceos_hosts: dict[str, str] | None = None,
     ceos_mgmt_ips: dict[str, str] | None = None,
@@ -210,10 +210,11 @@ def generate_radsec_pki(
     server_csr = work / "server.csr"
     server_crt = work / "server.crt"
     server_marker = work / "server-san"
+    server_marker_key = ",".join(radius_ips)
     if (
         server_marker.is_file()
         and server_crt.is_file()
-        and server_marker.read_text(encoding="utf-8").strip() == radius_ip
+        and server_marker.read_text(encoding="utf-8").strip() == server_marker_key
     ):
         pass
     else:
@@ -233,10 +234,11 @@ def generate_radsec_pki(
             ]
         )
         server_ext = work / "server.ext"
+        san_ips = ",".join(_san_ip(ip) for ip in radius_ips)
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = {_san_ip(radius_ip)},DNS:radius,DNS:{container_name('radius')}",
+                f"subjectAltName = {san_ips},DNS:radius,DNS:{container_name('radius')}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -261,7 +263,7 @@ def generate_radsec_pki(
                 str(server_ext),
             ]
         )
-        server_marker.write_text(f"{radius_ip}\n", encoding="utf-8")
+        server_marker.write_text(f"{server_marker_key}\n", encoding="utf-8")
 
     for name, cn in hosts.items():
         client_key = work / f"{name}-client.key"

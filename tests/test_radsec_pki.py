@@ -14,8 +14,10 @@ def repo_root() -> Path:
 
 
 def test_generate_radsec_pki_files(tmp_path: Path, ip_family: str) -> None:
-    radius_ip = (
-        MGMT_IPV6_IPS["radius"] if ip_family == "ipv6" else "172.20.127.50"
+    radius_ips = (
+        (MGMT_IPV6_IPS["radius"], "172.20.127.50")
+        if ip_family == "ipv6"
+        else ("172.20.127.50", MGMT_IPV6_IPS["radius"])
     )
     syslog_ips = (
         (MGMT_IPV6_IPS["syslog"], "172.20.127.53")
@@ -24,7 +26,7 @@ def test_generate_radsec_pki_files(tmp_path: Path, ip_family: str) -> None:
     )
     out = generate_radsec_pki(
         repo_root=tmp_path,
-        radius_ip=radius_ip,
+        radius_ips=radius_ips,
         syslog_ips=syslog_ips,
         ceos_mgmt_ips={
             "ceos1-both": "172.20.127.11",
@@ -50,7 +52,7 @@ def test_generate_radsec_pki_files(tmp_path: Path, ip_family: str) -> None:
 def test_ceos_server_certs_include_dual_stack_sans(tmp_path: Path) -> None:
     out = generate_radsec_pki(
         repo_root=tmp_path,
-        radius_ip=MGMT_IPV6_IPS["radius"],
+        radius_ips=(MGMT_IPV6_IPS["radius"], "172.20.127.50"),
         ceos_mgmt_ips={"ceos1-both": "172.20.127.11"},
         ceos_mgmt_ips6={"ceos1-both": MGMT_IPV6_IPS["ceos1-both"]},
     )
@@ -64,6 +66,22 @@ def test_ceos_server_certs_include_dual_stack_sans(tmp_path: Path) -> None:
         text = result.stdout
         assert "172.20.127.11" in text
         assert "2001:db8:127" in text.lower()
+
+
+def test_radius_server_cert_includes_dual_stack_sans(tmp_path: Path) -> None:
+    out = generate_radsec_pki(
+        repo_root=tmp_path,
+        radius_ips=("172.20.127.50", MGMT_IPV6_IPS["radius"]),
+    )
+    result = __import__("subprocess").run(
+        ["openssl", "x509", "-in", str(out / "server.pem"), "-noout", "-text"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    text = result.stdout
+    assert "172.20.127.50" in text
+    assert "2001:db8:127" in text.lower()
 
 
 def test_tls_site_contract(repo_root: Path) -> None:

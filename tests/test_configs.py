@@ -73,7 +73,13 @@ def test_clients_radsec_conf_ceos_entries(repo_root: Path) -> None:
     assert MGMT_IPV6_IPS["ceos2-pqc"] in clients
     assert MGMT_IPV6_IPS["ceos3-qkd"] in clients
     assert "ipv6addr" in clients
-    assert "ipaddr" not in clients
+    assert "client test-runner-v4" in clients
+    assert "client test-runner-v6" in clients
+    assert MGMT_IPS["test-runner"] in clients
+    assert MGMT_IPV6_IPS["test-runner"] in clients
+    for ceos in ("ceos1-both", "ceos2-pqc", "ceos3-qkd"):
+        block = clients.split(f"client {ceos} {{", 1)[1].split("}", 1)[0]
+        assert "ipaddr" not in block
     assert "proto   = tls" in clients
 
 

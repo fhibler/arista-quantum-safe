@@ -1300,6 +1300,22 @@ def validate_radius_configs(
             if "limit_proxy_state = true" not in body:
                 errors.append(f"clients-radsec.conf {ceos} must set limit_proxy_state")
 
+        for client_name, ip_key, ip in (
+            ("test-runner-v4", "ipaddr", mgmt_ips_for_subnet(mgmt_subnet or DEFAULT_MGMT_SUBNET)["test-runner"]),
+            ("test-runner-v6", "ipv6addr", mgmt_ipv6["test-runner"]),
+        ):
+            block = re.search(rf"client\s+{client_name}\s*\{{([^}}]+)\}}", clients_radsec, re.DOTALL)
+            if block is None:
+                errors.append(f"clients-radsec.conf must define client {client_name} for PQC collector probes")
+                continue
+            probe_body = block.group(1)
+            if not re.search(rf"{ip_key}\s+=\s+{re.escape(ip)}\b", probe_body):
+                errors.append(f"clients-radsec.conf {client_name} {ip_key} must be {ip}")
+            if "proto   = tls" not in probe_body and "proto = tls" not in probe_body:
+                errors.append(f"clients-radsec.conf {client_name} must use proto tls")
+            if f"secret  = {RADSEC_SECRET}" not in probe_body and f"secret = {RADSEC_SECRET}" not in probe_body:
+                errors.append(f"clients-radsec.conf {client_name} secret must be {RADSEC_SECRET}")
+
     eap_path = root / "configs" / "radius" / "raddb" / "mods-available" / "eap"
     authorize_path = root / "configs" / "radius" / "raddb" / "mods-config" / "files" / "authorize"
 

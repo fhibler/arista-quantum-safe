@@ -260,7 +260,7 @@ def render_lab(
     ips6 = mgmt_ipv6_ips_for_subnet()
     generate_radsec_pki(
         repo_root=root,
-        radius_ip=ips6["radius"],
+        radius_ips=(ips["radius"], ips6["radius"]),
         syslog_ips=(ips["syslog"], ips6["syslog"]),
         ceos_hosts={"ceos1-both": "ceos1-both", "ceos2-pqc": "ceos2-pqc", "ceos3-qkd": "ceos3-qkd"},
         ceos_mgmt_ips={

@@ -64,7 +64,7 @@
       "id": "freeText_1786430552297",
       "text": "QKD ETSI 014 Simulator",
       "position": {
-        "x": 134.9876266693118,
+        "x": 54.987626669311766,
         "y": 148.61068070079787
       },
       "fontSize": 14,
@@ -79,7 +79,7 @@
       "id": "freeText_1786430678545",
       "text": "Syslog",
       "position": {
-        "x": 395.6605301042135,
+        "x": 315.6605301042135,
         "y": 147.1368381521251
       },
       "fontSize": 14,
@@ -94,8 +94,23 @@
       "id": "freeText_1786430698704",
       "text": "RadSec",
       "position": {
-        "x": 551.7513127422632,
+        "x": 471.75131274226317,
         "y": 146.71841594649493
+      },
+      "fontSize": 14,
+      "fontColor": "#f0f0f0",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_1786544904282",
+      "text": "Test Runner",
+      "position": {
+        "x": 617.7777777777778,
+        "y": 147.77777777777777
       },
       "fontSize": 14,
       "fontColor": "#f0f0f0",
@@ -145,7 +160,7 @@
       "id": "freeShape_1786430535051",
       "shapeType": "rectangle",
       "position": {
-        "x": 108.54859461793637,
+        "x": 28.548594617936338,
         "y": 153.46466723789527
       },
       "width": 213,
@@ -162,7 +177,7 @@
       "id": "freeShape_1786430661798",
       "shapeType": "rectangle",
       "position": {
-        "x": 364.0526348732291,
+        "x": 284.0526348732291,
         "y": 153.14999687043237
       },
       "width": 118,
@@ -179,8 +194,25 @@
       "id": "freeShape_1786430661798-1",
       "shapeType": "rectangle",
       "position": {
-        "x": 521.1903416014325,
+        "x": 441.19034160143246,
         "y": 152.7284293557046
+      },
+      "width": 118,
+      "height": 119,
+      "fillColor": "#7f7f7f",
+      "fillOpacity": 0.2,
+      "borderColor": "#f0f0f0",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_1786430661798-1-1",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 601.0763888888889,
+        "y": 152.17013888888889
       },
       "width": 118,
       "height": 119,
@@ -242,28 +274,35 @@
     {
       "id": "radius",
       "position": {
-        "x": 560,
+        "x": 480,
         "y": 200
       }
     },
     {
       "id": "syslog",
       "position": {
-        "x": 400,
+        "x": 320,
         "y": 200
       }
     },
     {
       "id": "kme-a",
       "position": {
-        "x": 140,
+        "x": 59.99999999999997,
         "y": 200
       }
     },
     {
       "id": "kme-b",
       "position": {
-        "x": 240,
+        "x": 159.99999999999997,
+        "y": 200
+      }
+    },
+    {
+      "id": "test-runner",
+      "position": {
+        "x": 640,
         "y": 200
       }
     }

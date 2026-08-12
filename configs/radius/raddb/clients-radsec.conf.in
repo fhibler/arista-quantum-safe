@@ -26,3 +26,22 @@ client ceos3-qkd {
     require_message_authenticator = true
     limit_proxy_state = true
 }
+
+# PQC collector probe from test-runner (switch client cert, probe source IP).
+client test-runner-v4 {
+    ipaddr   = ${MGMT_IP_TEST_RUNNER}
+    proto   = tls
+    secret  = radsec
+    nas_type = other
+    require_message_authenticator = true
+    limit_proxy_state = true
+}
+
+client test-runner-v6 {
+    ipv6addr = ${MGMT_IPV6_TEST_RUNNER}
+    proto   = tls
+    secret  = radsec
+    nas_type = other
+    require_message_authenticator = true
+    limit_proxy_state = true
+}

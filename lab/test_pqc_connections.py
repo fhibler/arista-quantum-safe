@@ -750,7 +750,7 @@ def probe_syslog_delivery(
 
     report_live(
         f"{node} TLS syslog delivered ({family_label(family)}), "
-        f"wire KEX not verified (capture unavailable; cEOS may use classical KEX — see docs/caveats.md)",
+        f"wire KEX not verified (capture unavailable; cEOS may use classical KEX — see docs/services/syslog.md)",
         status=CheckStatus.WARN,
     )
 

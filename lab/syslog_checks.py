@@ -226,7 +226,7 @@ def capture_eos_syslog_tls_key_share_group(
     """Capture cEOS→syslog ClientHello and return the client key_share group id.
 
     Returns None when capture or decode is unavailable. Requires host tcpdump on
-    the Containerlab mgmt bridge (see docs/caveats.md). When unprivileged
+    the Containerlab mgmt bridge (see docs/services/syslog.md). When unprivileged
     capture is denied, retries with interactive ``sudo tcpdump`` so a password
     can be entered if required.
     """

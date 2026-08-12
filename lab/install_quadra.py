@@ -7,7 +7,15 @@ import re
 import subprocess
 import sys
 
-from lab.topology_contract import CEOS_QUADRA_NODES, LAB_NAME, container_name, quadra_swix_path
+from lab.topology_contract import (
+    CEOS_QUADRA_NODES,
+    LAB_NAME,
+    container_name,
+    quadra_arch_suffix,
+    quadra_swix_glob_pattern,
+    quadra_swix_path,
+    resolve_quadra_swix,
+)
 
 DOCKER_EXEC_TIMEOUT_SEC = 120
 INSTALLED_RE = re.compile(r"\bI\b")
@@ -150,9 +158,16 @@ def enable_daemon(container: str, node: str, *, verbose: bool) -> None:
 
 
 def install_quadra(*, clab_name: str, verbose: bool = False) -> None:
-    swix = quadra_swix_path()
-    if not swix.is_file():
-        raise InstallQuadraError(f"QuaDRA swix not found: {swix}")
+    swix = resolve_quadra_swix()
+    if swix is None:
+        arch = quadra_arch_suffix()
+        pattern = quadra_swix_glob_pattern()
+        default_dir = quadra_swix_path().parent
+        raise InstallQuadraError(
+            f"QuaDRA swix not found for {arch}. "
+            f"Place {pattern} under {default_dir}/ "
+            f"or set QUADRA_SWIX=/path/to/file.swix"
+        )
 
     log(f"Using QuaDRA swix: {swix}", force=True, verbose=verbose)
     for node in sorted(CEOS_QUADRA_NODES):

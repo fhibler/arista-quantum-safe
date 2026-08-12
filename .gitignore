@@ -19,9 +19,8 @@ download/
 .env.*
 !.env.example
 
-# Unreleases extensions
-experimental/quadra/**/*.swix
-experimental/quadra/**/*.*sum
+# Public Pages build output
+site/
 
 # Editor / OS
 .vscode/

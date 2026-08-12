@@ -1,2 +1,3 @@
 pytest>=8.0
 PyYAML>=6.0
+git-filter-repo>=2.38.0

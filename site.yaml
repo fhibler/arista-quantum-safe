@@ -1,0 +1,15 @@
+# Public site and repository identifiers — single source of truth.
+# Consumed by MkDocs (docs/hooks/site_config.py), README sync, and CI checks.
+#
+# Override pages_base_url when using a custom domain or a different Pages layout.
+
+repository:
+  host: github.com
+  org: fhibler
+  name: quantum-safe
+  default_branch: main
+
+site:
+  name: Quantum Safe Lab
+  description: Post-quantum cryptography lab for Arista cEOS management plane and MACsec
+  pages_base_url: https://fhibler.github.io/quantum-safe/

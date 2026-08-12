@@ -7,8 +7,8 @@ from pathlib import Path
 from tests.scaffold_contract import REPO_ROOT
 
 README = REPO_ROOT / "README.md"
-DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
-VERIFICATION_DOC = REPO_ROOT / "docs" / "verification.md"
+INTERNAL_DOCS_INDEX = REPO_ROOT / "internal" / "docs" / "README.md"
+INTERNAL_VERIFICATION_DOC = REPO_ROOT / "internal" / "docs" / "verification.md"
 
 
 def test_readme_has_no_todo_placeholders() -> None:
@@ -20,24 +20,21 @@ def test_readme_has_no_todo_placeholders() -> None:
 def test_readme_covers_required_sections() -> None:
     content = README.read_text(encoding="utf-8").lower()
     for fragment in (
-        "## overview",
+        "## purpose",
         "## prerequisites",
-        "## ceos import",
-        "## freeradius multi-arch",
         "## quick start",
-        "## topology",
-        "## verification",
-        "## multi-arch notes",
-        "## troubleshooting",
+        "make deploy",
+        "make test-lab",
     ):
         assert fragment in content, f"README missing section containing {fragment!r}"
 
-def test_verification_doc_exists() -> None:
-    assert VERIFICATION_DOC.is_file()
+
+def test_internal_verification_doc_exists() -> None:
+    assert INTERNAL_VERIFICATION_DOC.is_file()
 
 
-def test_verification_doc_lists_checklist() -> None:
-    content = VERIFICATION_DOC.read_text(encoding="utf-8")
+def test_internal_verification_doc_lists_checklist() -> None:
+    content = INTERNAL_VERIFICATION_DOC.read_text(encoding="utf-8")
     assert "make inspect" in content
     assert "make test-radius" in content
     assert "make test-pqc" in content
@@ -47,7 +44,7 @@ def test_verification_doc_lists_checklist() -> None:
     assert "Path C" in content
 
 
-def test_docs_index_links_verification() -> None:
-    content = DOCS_INDEX.read_text(encoding="utf-8")
+def test_internal_docs_index_links_verification() -> None:
+    content = INTERNAL_DOCS_INDEX.read_text(encoding="utf-8")
     assert "verification.md" in content
     assert "syslog.md" in content

@@ -285,3 +285,63 @@ def test_render_topo_omits_quadra_when_swix_missing(monkeypatch: pytest.MonkeyPa
         exec_cmds = data["topology"]["nodes"][node]["exec"]
         assert len(exec_cmds) == 1
         assert all("extension" not in cmd for cmd in exec_cmds)
+
+
+def test_resolve_quadra_swix_prefers_download_over_internal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lab.topology_contract as contract
+
+    repo = tmp_path / "repo"
+    download_dir = repo / "download" / "quadra"
+    internal_dir = repo / "internal" / "experimental" / "quadra"
+    download_dir.mkdir(parents=True)
+    internal_dir.mkdir(parents=True)
+    download_swix = download_dir / "QuaDRA-9.9.9.rel9-aarch64.swix"
+    internal_swix = internal_dir / "QuaDRA-1.0.10.rel1-aarch64.swix"
+    download_swix.write_bytes(b"download")
+    internal_swix.write_bytes(b"internal")
+
+    monkeypatch.setattr(contract, "REPO_ROOT", repo)
+    monkeypatch.delenv("QUADRA_SWIX", raising=False)
+    monkeypatch.setattr(contract.platform, "machine", lambda: "aarch64")
+
+    assert contract.resolve_quadra_swix() == download_swix.resolve()
+
+
+def test_resolve_quadra_swix_honors_quadra_swix_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lab.topology_contract as contract
+
+    repo = tmp_path / "repo"
+    custom = repo / "custom" / "QuaDRA-2.0.0.rel1-x86_64.swix"
+    custom.parent.mkdir(parents=True)
+    custom.write_bytes(b"custom")
+
+    monkeypatch.setattr(contract, "REPO_ROOT", repo)
+    monkeypatch.setenv("QUADRA_SWIX", str(custom))
+    monkeypatch.setattr(contract.platform, "machine", lambda: "aarch64")
+
+    assert contract.resolve_quadra_swix() == custom.resolve()
+
+
+def test_quadra_swix_clab_bind_uses_relative_lab_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lab.topology_contract as contract
+
+    repo = tmp_path / "repo"
+    swix = repo / "download" / "quadra" / "QuaDRA-1.2.3.rel1-aarch64.swix"
+    swix.parent.mkdir(parents=True)
+    swix.write_bytes(b"swix")
+
+    monkeypatch.setattr(contract, "REPO_ROOT", repo)
+    monkeypatch.delenv("QUADRA_SWIX", raising=False)
+    monkeypatch.setattr(contract.platform, "machine", lambda: "aarch64")
+
+    bind = contract.quadra_swix_clab_bind()
+    assert bind == "../download/quadra/QuaDRA-1.2.3.rel1-aarch64.swix:/mnt/flash/QuaDRA-1.2.3.rel1-aarch64.swix:ro"

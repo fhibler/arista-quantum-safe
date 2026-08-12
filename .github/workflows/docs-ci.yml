@@ -1,0 +1,38 @@
+name: Docs CI
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "site.yaml"
+      - "scripts/site_config.py"
+      - ".github/workflows/pages.yml"
+      - ".github/workflows/docs-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs
+        run: pip install -r docs/requirements.txt
+
+      - name: Verify site.yaml / README sync
+        run: python3 scripts/site_config.py --check
+
+      - name: Build site (strict)
+        run: mkdocs build --strict
+
+      - name: Offline pytest (public docs contract)
+        run: |
+          pip install -r requirements-dev.txt
+          pytest tests/test_public_docs.py tests/test_readme.py -q

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import platform
 import re
 from pathlib import Path
@@ -168,7 +169,12 @@ CEOS_MACSEC_NODES = frozenset({"ceos1-both", "ceos2-pqc"})
 CEOS_QUADRA_NODES = frozenset({"ceos1-both", "ceos3-qkd"})
 
 # QuaDRA static SAK MACsec on ceos1-both:eth2 ↔ ceos3-qkd:eth1 (10.255.0.5/30 ↔ 10.255.0.6/30).
-QUADRA_VERSION = "1.0.10.rel1"
+def quadra_swix_search_dirs() -> tuple[Path, ...]:
+    """Return host directories searched for QuaDRA swix files (first match wins)."""
+    return (
+        REPO_ROOT / "download" / "quadra",
+        REPO_ROOT / "internal" / "experimental" / "quadra",
+    )
 
 
 def quadra_arch_suffix(arch: str | None = None) -> str:
@@ -181,39 +187,79 @@ def quadra_arch_suffix(arch: str | None = None) -> str:
     raise ValueError(f"unsupported architecture for QuaDRA swix: {machine}")
 
 
-def quadra_swix_name(arch: str | None = None) -> str:
-    """Return the QuaDRA extension filename for the given machine name."""
-    return f"QuaDRA-{QUADRA_VERSION}-{quadra_arch_suffix(arch)}.swix"
+def quadra_swix_glob_pattern(arch: str | None = None) -> str:
+    """Return the glob pattern for arch-matching QuaDRA swix files."""
+    return f"QuaDRA-*-{quadra_arch_suffix(arch)}.swix"
+
+
+def _normalize_quadra_swix_override(raw: str) -> Path:
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def resolve_quadra_swix(arch: str | None = None) -> Path | None:
+    """Return the host path to a QuaDRA swix for the given machine, if present."""
+    override = os.environ.get("QUADRA_SWIX", "").strip()
+    if override:
+        path = _normalize_quadra_swix_override(override)
+        return path if path.is_file() else None
+
+    pattern = quadra_swix_glob_pattern(arch)
+    for directory in quadra_swix_search_dirs():
+        if not directory.is_dir():
+            continue
+        matches = sorted(
+            directory.glob(pattern),
+            key=lambda candidate: candidate.stat().st_mtime,
+            reverse=True,
+        )
+        if matches:
+            return matches[0].resolve()
+    return None
 
 
 def quadra_swix_path(arch: str | None = None) -> Path:
-    """Return the host path to the QuaDRA swix for the given machine name."""
-    return REPO_ROOT / "experimental" / "quadra" / quadra_swix_name(arch)
+    """Return the resolved QuaDRA swix path, or the default download location."""
+    resolved = resolve_quadra_swix(arch)
+    if resolved is not None:
+        return resolved
+    return quadra_swix_search_dirs()[0] / quadra_swix_glob_pattern(arch)
 
 
-QUADRA_SWIX = quadra_swix_name()
+def quadra_swix_name(arch: str | None = None) -> str:
+    """Return the QuaDRA extension filename for the given machine name."""
+    resolved = resolve_quadra_swix(arch)
+    if resolved is not None:
+        return resolved.name
+    return quadra_swix_glob_pattern(arch)
+
+
 QUADRA_SWIX_HOST = quadra_swix_path()
-QUADRA_SWIX_CLAB_BIND = "../experimental/quadra/{swix}:/mnt/flash/{swix}:ro"
 
 
 def quadra_swix_available(arch: str | None = None) -> bool:
     """Return True when the arch-appropriate QuaDRA swix is present on the host."""
-    return quadra_swix_path(arch).is_file()
+    return resolve_quadra_swix(arch) is not None
 
 
 def quadra_swix_clab_bind(arch: str | None = None) -> str | None:
     """Return the Containerlab bind string for QuaDRA, or None when the swix is absent."""
-    if not quadra_swix_available(arch):
+    swix_path = resolve_quadra_swix(arch)
+    if swix_path is None:
         return None
-    swix = quadra_swix_name(arch)
-    return QUADRA_SWIX_CLAB_BIND.format(swix=swix)
+    lab_dir = REPO_ROOT / "lab"
+    rel = os.path.relpath(swix_path, lab_dir)
+    return f"{rel}:/mnt/flash/{swix_path.name}:ro"
 
 
 def quadra_swix_install_exec(arch: str | None = None) -> str | None:
     """Return a containerlab exec command that installs QuaDRA and starts the daemon."""
-    if not quadra_swix_available(arch):
+    swix_path = resolve_quadra_swix(arch)
+    if swix_path is None:
         return None
-    swix = quadra_swix_name(arch)
+    swix = swix_path.name
     return (
         "bash -c '{ "
         f'S="{swix}"; '

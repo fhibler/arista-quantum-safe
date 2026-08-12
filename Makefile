@@ -8,6 +8,7 @@ CEOS_IMAGE ?= ceos:4.36.1F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download
+QUADRA_SWIX ?=
 CLAB_TOPO_SRC := lab/quantum-safe.clab.yml
 CLAB_TOPO_ANN := lab/quantum-safe.clab.yml.annotations.json
 CLAB_TOPO_GEN := lab/.gen.quantum-safe.clab.yml
@@ -34,7 +35,7 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
-.PHONY: help gen-topo validate-topo sync-devcontainer test check-ceos-image import-ceos import-ceos-help \
+.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config docs-build export-public publish-public test check-ceos-image import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
         clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd install-quadra test-lab test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
 
@@ -46,12 +47,31 @@ $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
 gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
-	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
+	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
+		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 	@$(MAKE) --no-print-directory validate-topo
 	@$(MAKE) --no-print-directory sync-devcontainer
 
 sync-devcontainer: ## Sync CLAB_VERSION from Makefile into .devcontainer/devcontainer.json
 	@$(PYTHON) -m lab.sync_devcontainer --clab-version '$(CLAB_VERSION)'
+
+sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
+	@$(PYTHON) scripts/site_config.py --sync-readme
+	@$(PYTHON) scripts/site_config.py --sync-mkdocs
+
+docs-build: ## Build public docs site (MkDocs strict + export boundary check)
+	@$(PYTHON) scripts/site_config.py --check
+	mkdocs build --strict
+	@$(PYTHON) scripts/check_public_export.py
+
+export-public: ## Filter history and verify public mirror locally (Option B dry-run; internal only)
+	@test -f scripts/export_public.py || (echo 'export-public is internal-only (scripts/export_public.py not present)'; exit 1)
+	@$(PYTHON) scripts/export_public.py --source-dir '$(CURDIR)' --branch '$$(git branch --show-current)' --dry-run --keep-work-dir
+
+publish-public: ## Filter history and force-push to PUBLIC_GITHUB_URL (Option B; internal only)
+	@test -f scripts/export_public.py || (echo 'publish-public is internal-only (scripts/export_public.py not present)'; exit 1)
+	@test -n '$(PUBLIC_GITHUB_URL)' || (echo 'Set PUBLIC_GITHUB_URL to the public GitHub remote URL'; exit 1)
+	@$(PYTHON) scripts/export_public.py --source-dir '$(CURDIR)' --branch '$$(git branch --show-current)' --push --remote-url '$(PUBLIC_GITHUB_URL)'
 
 validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
 	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
@@ -321,8 +341,9 @@ ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
 ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
 	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
 
-install-quadra: ## Copy and install QuaDRA swix on ceos1-both and ceos3-qkd (requires deployed lab)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
+install-quadra: ## Install QuaDRA swix on ceos1-both and ceos3-qkd (swix in download/quadra/ or QUADRA_SWIX=)
+	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
+		$(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)

@@ -1,0 +1,149 @@
+# PQC connectivity tests
+
+`make test-pqc` runs `python -m lab.test_pqc_connections` against all three cEOS nodes (**ceos1-both**, **ceos2-pqc**, **ceos3-qkd**) on **IPv4 and IPv6**.
+
+**Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** — no classical fallback on strict profiles. SSH uses **`mlkem768x25519-sha256`**.
+
+OpenSSL probes run **inside `arista-quantum-safe-radius`** with `OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf`.
+
+## What is checked
+
+### Radius + syslog collectors (once)
+
+| Check | Type | Method |
+|-------|------|--------|
+| RadSec listener :2083 | `[config]` | `netstat -ltn` in radius container |
+| OpenSSL groups include hybrid | `[config]` | `openssl list -tls-groups` |
+| Syslog TLS :6514 only | `[config]` | No UDP/TCP 514; TLS listener present |
+| Collector PQC handshake | `[live]` | `openssl s_client` to syslog :6514 |
+
+### Per switch (×3 nodes, ×2 address families)
+
+| Service | Config checks | Live checks |
+|---------|---------------|-------------|
+| eAPI | ssl profile EAPI, http-commands binding | HTTPS :443 + JSON-RPC `runCmds` |
+| gNMI | ssl profile GNMI, mTLS trust | TLS + mTLS :6030 |
+| RESTCONF | ssl profile RESTCONF | HTTPS :6020 |
+| eos-sdk-rpc | ssl profile GNMI, service enabled | mTLS :9543 (**WARN** on gap) |
+| SSH | `management ssh` KEX, VRF MGMT | Loopback SSH in `ns-MGMT` netns |
+| Syslog | logging hosts, SYSLOG profile | Message delivery + optional wire KEX |
+| RadSec | RADSEC profile, radius config | `test aaa … tls port 2083` |
+
+---
+
+## SSH
+
+**Live:** SSH from switch to its own mgmt IP inside **`ns-MGMT`** with `-o KexAlgorithms=mlkem768x25519-sha256`.
+
+**Pass criteria:** Exit 0, output contains `kex: algorithm: mlkem768x25519-sha256` and hostname JSON.
+
+Manual equivalent:
+
+```bash
+docker exec arista-quantum-safe-ceos1-both sh -c \
+  'ip netns exec ns-MGMT ssh -vvv \
+     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+     -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive \
+     -o KexAlgorithms=mlkem768x25519-sha256 \
+     admin@172.20.127.11 "show hostname | json" 2>&1' \
+  | grep "kex: algorithm"
+```
+
+---
+
+## eAPI
+
+**Config:** `show management security ssl profile EAPI detail` → valid + `X25519MLKEM768`.
+
+**Live HTTPS:**
+
+```bash
+docker exec arista-quantum-safe-radius sh -c \
+  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.11:443 -tls1_3 \
+   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1'
+```
+
+**Live JSON-RPC:** `curl --tlsv1.3 --tls-max 1.3` to `/command-api` with `runCmds` / `show version`.
+
+---
+
+## gNMI / RESTCONF / eos-sdk-rpc
+
+**gNMI TLS** (:6030) and **mTLS** (client cert `ceos*-gnmi.pem`):
+
+```bash
+docker exec arista-quantum-safe-radius sh -c \
+  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.11:6030 -tls1_3 \
+   -CAfile /etc/raddb/certs/radsec/ca.pem \
+   -cert /etc/raddb/certs/radsec/ceos1-both-gnmi.pem \
+   -key /etc/raddb/certs/radsec/ceos1-both-gnmi.key \
+   -brief </dev/null 2>&1' \
+  | grep -E 'TLSv1.3|X25519MLKEM768'
+```
+
+**RESTCONF** (:6020): same pattern without client cert.
+
+**eos-sdk-rpc** (:9543): same mTLS command. Test **WARN**s if PQC group not negotiated (known 4.36.1F gap).
+
+---
+
+## RadSec
+
+**Config:** RADSEC profile valid; `tls ssl-profile RADSEC` in radius section.
+
+**Live:** EOS CLI:
+
+```text
+test aaa group RADIUS server 172.20.127.50 tls port 2083 vrf MGMT
+```
+
+Expect `successfully authenticated`.
+
+OpenSSL equivalent (from radius container, switch client cert):
+
+```bash
+docker exec arista-quantum-safe-radius sh -c \
+  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.50:2083 -tls1_3 \
+   -CAfile /etc/raddb/certs/radsec/ca.pem \
+   -cert /etc/raddb/certs/radsec/ceos1-both-client.pem \
+   -key /etc/raddb/certs/radsec/ceos1-both-client.key \
+   -brief </dev/null 2>&1' \
+  | grep X25519MLKEM768
+```
+
+---
+
+## Syslog
+
+**Config:** Dual-stack TLS logging hosts; SYSLOG profile valid; no cleartext `logging host`.
+
+**Live delivery:** `send log` with unique needle; verify message in collector without cleartext fallback.
+
+**Wire KEX (optional):** tcpdump on mgmt bridge during logging-host bounce — if captured, **WARN** when group ≠ PQC hybrid (4.36.1F client gap).
+
+Collector probe (always PQC from test client):
+
+```bash
+docker exec arista-quantum-safe-radius sh -c \
+  'OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf \
+   openssl s_client -connect 172.20.127.53:6514 -tls1_3 \
+   -CAfile /etc/raddb/certs/radsec/ca.pem -brief </dev/null 2>&1'
+```
+
+---
+
+## Result summary
+
+| Service | Expected live KEX (4.36.1F) | Test outcome |
+|---------|----------------------------|--------------|
+| SSH | `mlkem768x25519-sha256` | PASS |
+| eAPI | `X25519MLKEM768` | PASS |
+| gNMI / RESTCONF | `X25519MLKEM768` | PASS |
+| RadSec | `X25519MLKEM768` | PASS |
+| Syslog (cEOS client) | Often `x25519` | PASS + **WARN** |
+| eos-sdk-rpc | Often classical / EOF | PASS + **WARN** |
+
+See service pages for configuration context: [Services overview](../services/index.md), [SSH](../services/ssh.md), [eAPI](../services/eapi.md), [OpenConfig](../services/openconfig.md), [Syslog](../services/syslog.md), [RadSec](../services/radius-radsec.md).

@@ -1,5 +1,5 @@
 ! QuaDRA agent — slave on ceos3-qkd (shutdown in startup-config; post-boot exec starts when swix present).
-! Note: peer-mode CLI value is inverted — "master" selects the slave role (see docs/quadra.md).
+! Note: peer-mode CLI value is inverted — "master" selects the slave role (see internal/docs/quadra.md).
 daemon quadra
    exec /usr/bin/quadra
    shutdown

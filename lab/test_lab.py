@@ -17,7 +17,20 @@ from lab.test_pqc_connections import (
     check_radsec_config,
     check_radius_config,
 )
-from lab.report import CheckStatus, ICON_FAIL, ICON_OK, align_right, bold, print_device, report_check, report_ok, report_summary, status_marker, visible_len
+from lab.report import (
+    CheckStatus,
+    ICON_FAIL,
+    ICON_OK,
+    align_right,
+    bold,
+    print_device,
+    print_section_header,
+    report_check,
+    report_ok,
+    report_summary,
+    status_marker,
+    visible_len,
+)
 from lab.topology_contract import (
     HOST_DATA_PLANE,
     IP_FAMILIES,
@@ -315,9 +328,10 @@ def _ping_host(
 
 
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
-    section("HOST ROUTING", verbose=verbose)
-    if not verbose:
-        print()
+    if verbose:
+        section("HOST ROUTING", verbose=verbose)
+    print_section_header("Host routing verification (data-plane ping matrix)")
+    print("  [live]  alpine host ping across all off-diagonal pairs (IPv4 + IPv6)\n")
     results: dict[str, dict[tuple[str, str], bool]] = {
         IP_FAMILY_IPV4: {},
         IP_FAMILY_IPV6: {},

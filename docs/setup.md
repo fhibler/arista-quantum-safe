@@ -6,7 +6,7 @@
 |------|----------|-------|
 | Docker + Containerlab 0.78.1 | Yes | `containerlab version` |
 | cEOS-lab `ceos:4.36.1F` | Yes | Match host arch (amd64 / arm64) |
-| ~10 GB RAM | Yes | Three cEOS containers are memory-heavy |
+| ~10 GB RAM | Yes | |
 | Arista portal token | No | For `make download-ceos` only |
 | Mgmt subnet | Default OK | Override with `MGMT_SUBNET=` if `.127.0/24` overlaps your host |
 

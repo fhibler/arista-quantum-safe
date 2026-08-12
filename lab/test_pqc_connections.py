@@ -727,6 +727,7 @@ def probe_syslog_delivery(
             bounce_logging=bounce_logging_hosts,
             syslog_container=targets.syslog_container,
             settle_sec=4.0 + attempt * 2,
+            verbose=verbose,
         )
         if negotiated_group is not None:
             break

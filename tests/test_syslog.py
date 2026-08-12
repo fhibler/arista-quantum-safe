@@ -155,6 +155,18 @@ def test_tcpdump_argv_sudo() -> None:
     assert elevated[-1] == filt
 
 
+def test_announce_sudo_tcpdump_capture_once(capsys) -> None:
+    from lab import syslog_checks
+
+    syslog_checks._sudo_capture_announced = False
+    syslog_checks._announce_sudo_tcpdump_capture("mgmt-bridge")
+    syslog_checks._announce_sudo_tcpdump_capture("mgmt-bridge")
+
+    output = capsys.readouterr().out
+    assert output.count("using sudo fallback") == 1
+    assert "enter password if prompted" in output
+
+
 def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:
     detail = {
         "profileStatus": {

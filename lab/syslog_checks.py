@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from lab.ceos_json import json_tree_contains, json_truthy
 from lab.topology_contract import SYSLOG_PORT, SYSLOG_SSL_PROFILE, hostport
+from lab.verbose import echo_command, verbose_enabled
 
 PQC_GROUP = "X25519MLKEM768"
 OPENSSL_PQC_CNF = "/etc/syslog-ng/openssl-pqc.cnf"
@@ -30,6 +31,9 @@ TLS_KEY_SHARE_X25519MLKEM768 = 4588
 
 CLEARTEXT_SYSLOG_UDP_PORTS = (514, 601)
 CLEARTEXT_SYSLOG_TCP_PORTS = (514,)
+
+_sudo_tcpdump_required: bool | None = None
+_sudo_capture_announced: bool = False
 
 
 class SyslogCheckError(RuntimeError):
@@ -100,23 +104,41 @@ def _tcpdump_permission_denied(stderr: str) -> bool:
     )
 
 
+def _announce_sudo_tcpdump_capture(iface: str) -> None:
+    """Print a one-time note before the first sudo tcpdump wire KEX capture."""
+    global _sudo_capture_announced
+    if _sudo_capture_announced:
+        return
+    _sudo_capture_announced = True
+    print(
+        "  [live]   syslog wire KEX capture: unprivileged tcpdump denied on "
+        f"{iface}; using sudo fallback (enter password if prompted)",
+        flush=True,
+    )
+
+
 def _capture_drop_user() -> str:
     """Login name to drop tcpdump privileges to after opening the capture device."""
     return pwd.getpwuid(os.getuid()).pw_name
 
 
-def _remove_pcap(pcap: Path) -> None:
+def _remove_pcap(pcap: Path, *, verbose: bool | None = None) -> None:
     """Remove a pcap file, using sudo when a prior root-owned capture left it behind."""
+    show = verbose_enabled(verbose)
     try:
         pcap.unlink(missing_ok=True)
     except PermissionError:
         if not _command_exists("sudo"):
             raise
+        argv = ["sudo", "rm", "-f", str(pcap)]
+        if show:
+            echo_command("syslog wire KEX pcap cleanup", argv)
         subprocess.run(
-            ["sudo", "rm", "-f", str(pcap)],
+            argv,
             check=False,
             stdin=None,
-            stderr=None,
+            stdout=subprocess.DEVNULL,
+            stderr=None if show else subprocess.DEVNULL,
         )
 
 
@@ -147,22 +169,25 @@ def _run_bridge_tcpdump_capture(
     bounce_logging: Callable[[], None],
     settle_sec: float,
     use_sudo: bool,
+    verbose: bool | None = None,
 ) -> tuple[bool, str]:
     """Capture on a bridge interface; return (pcap_ok, tcpdump_stderr)."""
-    _remove_pcap(pcap)
+    show = verbose_enabled(verbose)
+    _remove_pcap(pcap, verbose=verbose)
+    argv = _tcpdump_argv(iface, pcap, bpf_filter, use_sudo=use_sudo)
+    if show:
+        echo_command("syslog wire KEX tcpdump", argv)
+
     popen_kwargs: dict[str, Any] = {"stdout": subprocess.DEVNULL}
     if use_sudo:
-        # Inherit stdin/stderr so sudo can prompt on the controlling terminal.
+        # stdin stays inherited so sudo can prompt on the controlling terminal.
         popen_kwargs["stdin"] = None
-        popen_kwargs["stderr"] = None
+        popen_kwargs["stderr"] = None if show else subprocess.DEVNULL
     else:
         popen_kwargs["stdin"] = subprocess.DEVNULL
-        popen_kwargs["stderr"] = subprocess.PIPE
+        popen_kwargs["stderr"] = None if show else subprocess.PIPE
 
-    tcpdump = subprocess.Popen(
-        _tcpdump_argv(iface, pcap, bpf_filter, use_sudo=use_sudo),
-        **popen_kwargs,
-    )
+    tcpdump = subprocess.Popen(argv, **popen_kwargs)
     stderr = ""
     try:
         time.sleep(0.5)
@@ -179,7 +204,7 @@ def _run_bridge_tcpdump_capture(
             stderr = tcpdump.stderr.read().decode(errors="replace")
 
     pcap_ok = pcap.exists() and pcap.stat().st_size >= 50
-    if use_sudo and not pcap_ok:
+    if use_sudo and not pcap_ok and show:
         print(
             "  [live]   syslog wire KEX capture: sudo tcpdump did not capture "
             "a usable ClientHello",
@@ -196,6 +221,7 @@ def capture_eos_syslog_tls_key_share_group(
     bridge: str | None = None,
     pcap_path: Path | None = None,
     settle_sec: float = 5.0,
+    verbose: bool | None = None,
 ) -> int | None:
     """Capture cEOS→syslog ClientHello and return the client key_share group id.
 
@@ -204,34 +230,32 @@ def capture_eos_syslog_tls_key_share_group(
     capture is denied, retries with interactive ``sudo tcpdump`` so a password
     can be entered if required.
     """
+    global _sudo_tcpdump_required
+
     iface = bridge or resolve_mgmt_bridge()
     if iface is None:
         return None
 
     pcap = pcap_path or Path("/tmp/quantum-safe-syslog-kex.pcap")
     bpf_filter = f"tcp port {SYSLOG_PORT} and host {switch_ip}"
-    pcap_ok, stderr = _run_bridge_tcpdump_capture(
-        iface=iface,
-        pcap=pcap,
-        bpf_filter=bpf_filter,
-        bounce_logging=bounce_logging,
-        settle_sec=settle_sec,
-        use_sudo=False,
-    )
-    if not pcap_ok and _command_exists("sudo") and _tcpdump_permission_denied(stderr):
-        print(
-            "  [live]   syslog wire KEX capture: unprivileged tcpdump denied on "
-            f"{iface}; retrying with sudo (enter password if prompted)",
-            file=sys.stderr,
-        )
-        pcap_ok, _ = _run_bridge_tcpdump_capture(
-            iface=iface,
-            pcap=pcap,
-            bpf_filter=bpf_filter,
-            bounce_logging=bounce_logging,
-            settle_sec=settle_sec,
-            use_sudo=True,
-        )
+    capture_kwargs = {
+        "iface": iface,
+        "pcap": pcap,
+        "bpf_filter": bpf_filter,
+        "bounce_logging": bounce_logging,
+        "settle_sec": settle_sec,
+        "verbose": verbose,
+    }
+
+    if _sudo_tcpdump_required:
+        _announce_sudo_tcpdump_capture(iface)
+        pcap_ok, _ = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=True)
+    else:
+        pcap_ok, stderr = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=False)
+        if not pcap_ok and _command_exists("sudo") and _tcpdump_permission_denied(stderr):
+            _sudo_tcpdump_required = True
+            _announce_sudo_tcpdump_capture(iface)
+            pcap_ok, _ = _run_bridge_tcpdump_capture(**capture_kwargs, use_sudo=True)
 
     if not pcap_ok:
         return None

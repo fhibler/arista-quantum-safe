@@ -146,8 +146,13 @@ def test_tcpdump_permission_denied() -> None:
 def test_tcpdump_argv_sudo() -> None:
     pcap = Path("/tmp/test.pcap")
     filt = "tcp port 6514 and host 172.20.127.11"
-    assert _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=False)[0] == "tcpdump"
-    assert _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=True)[:2] == ["sudo", "tcpdump"]
+    plain = _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=False)
+    assert plain[0] == "tcpdump"
+    assert "-Z" not in plain
+    elevated = _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=True)
+    assert elevated[:2] == ["sudo", "tcpdump"]
+    assert "-Z" in elevated
+    assert elevated[-1] == filt
 
 
 def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:

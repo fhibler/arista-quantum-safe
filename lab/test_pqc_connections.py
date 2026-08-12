@@ -69,7 +69,6 @@ PQC_GROUP = "X25519MLKEM768"
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_NETNS = "ns-MGMT"
 SSH_PQC_USER = "admin"
-CEOS_PEERS = {"ceos1-both": "ceos2-pqc", "ceos2-pqc": "ceos1-both", "ceos3-qkd": "ceos1-both"}
 CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
 
 
@@ -534,38 +533,37 @@ def negotiated_ssh_pqc_kex(output: str) -> bool:
 def probe_ssh_pqc(
     targets: LabTargets,
     node: str,
-    peer: str,
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
 ) -> None:
-    """SSH from node to peer over VRF MGMT using the cEOS PQC netns."""
+    """SSH from node to its own mgmt address over VRF MGMT using the cEOS PQC netns."""
     container = targets.ceos_container(node)
-    peer_ip = targets.ceos_mgmt_ip(peer, family)
+    mgmt_ip = targets.ceos_mgmt_ip(node, family)
     command = (
         f"ip netns exec {SSH_PQC_NETNS} ssh -vvv "
         f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
         f"-o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive "
         f"-o KexAlgorithms={SSH_PQC_KEX} "
-        f"{SSH_PQC_USER}@{peer_ip} 'show hostname | json' 2>&1"
+        f"{SSH_PQC_USER}@{mgmt_ip} 'show hostname | json' 2>&1"
     )
     result = docker_exec(
         container,
         command,
         check=False,
         verbose=verbose,
-        title=f"{node} SSH to {peer}",
+        title=f"{node} SSH loopback ({family_label(family)})",
     )
     output = result.stdout + result.stderr
     if result.returncode != 0:
         detail = output.strip() or f"exit {result.returncode}"
-        raise PqcConnectionError(f"{node} SSH to {peer} ({peer_ip}): {detail[-500:]}")
+        raise PqcConnectionError(f"{node} SSH loopback ({mgmt_ip}): {detail[-500:]}")
     if not negotiated_ssh_pqc_kex(output):
         raise PqcConnectionError(
-            f"{node} SSH to {peer}: expected kex {SSH_PQC_KEX!r} in handshake output"
+            f"{node} SSH loopback: expected kex {SSH_PQC_KEX!r} in handshake output"
         )
-    assert_contains(output, peer, label=f"{node} SSH to {peer} hostname")
-    report_live(f"SSH to {peer} ({family_label(family)}, {SSH_PQC_KEX})")
+    assert_contains(output, node, label=f"{node} SSH loopback hostname")
+    report_live(f"SSH loopback ({family_label(family)}, {SSH_PQC_KEX})")
 
 
 def probe_radsec_from_switch(
@@ -829,7 +827,7 @@ def run_live_checks(
 
         print_check_group("SSH")
         for family in IP_FAMILIES:
-            probe_ssh_pqc(targets, node, CEOS_PEERS[node], family=family, verbose=verbose)
+            probe_ssh_pqc(targets, node, family=family, verbose=verbose)
 
         print_check_group("Syslog")
         for family in IP_FAMILIES:

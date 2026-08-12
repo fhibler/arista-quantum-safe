@@ -153,13 +153,17 @@ def test_run_live_checks_happy_path(capsys) -> None:
                 stderr="",
             )
         if "ip netns exec" in command and "ssh" in command:
-            peer = "ceos2-pqc" if MGMT_IPS["ceos2-pqc"] in command or MGMT_IPV6_IPS["ceos2-pqc"] in command else "ceos1-both"
+            hostname = "ceos1-both"
+            for node, ipv4 in MGMT_IPS.items():
+                if node.startswith("ceos") and (ipv4 in command or MGMT_IPV6_IPS[node] in command):
+                    hostname = node
+                    break
             return subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
                 stdout=(
                     f"debug1: kex: algorithm: {SSH_PQC_KEX}\n"
-                    f'{{"hostname":"{peer}"}}\n'
+                    f'{{"hostname":"{hostname}"}}\n'
                 ),
                 stderr="",
             )
@@ -279,7 +283,7 @@ def test_probe_ssh_pqc_requires_pqc_kex(ip_family: str) -> None:
         ),
     ):
         with pytest.raises(Exception, match="expected kex"):
-            probe_ssh_pqc(targets, "ceos1-both", "ceos2-pqc", family=ip_family)
+            probe_ssh_pqc(targets, "ceos1-both", family=ip_family)
 
 
 def test_probe_radsec_from_switch_requires_auth_success(ip_family: str) -> None:

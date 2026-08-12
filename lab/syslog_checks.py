@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import pwd
 import re
 import subprocess
 import sys
@@ -98,6 +100,26 @@ def _tcpdump_permission_denied(stderr: str) -> bool:
     )
 
 
+def _capture_drop_user() -> str:
+    """Login name to drop tcpdump privileges to after opening the capture device."""
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
+def _remove_pcap(pcap: Path) -> None:
+    """Remove a pcap file, using sudo when a prior root-owned capture left it behind."""
+    try:
+        pcap.unlink(missing_ok=True)
+    except PermissionError:
+        if not _command_exists("sudo"):
+            raise
+        subprocess.run(
+            ["sudo", "rm", "-f", str(pcap)],
+            check=False,
+            stdin=None,
+            stderr=None,
+        )
+
+
 def _tcpdump_argv(iface: str, pcap: Path, bpf_filter: str, *, use_sudo: bool) -> list[str]:
     cmd = [
         "tcpdump",
@@ -108,8 +130,10 @@ def _tcpdump_argv(iface: str, pcap: Path, bpf_filter: str, *, use_sudo: bool) ->
         "0",
         "-w",
         str(pcap),
-        bpf_filter,
     ]
+    if use_sudo:
+        cmd.extend(["-Z", _capture_drop_user()])
+    cmd.append(bpf_filter)
     if use_sudo:
         return ["sudo", *cmd]
     return cmd
@@ -125,7 +149,7 @@ def _run_bridge_tcpdump_capture(
     use_sudo: bool,
 ) -> tuple[bool, str]:
     """Capture on a bridge interface; return (pcap_ok, tcpdump_stderr)."""
-    pcap.unlink(missing_ok=True)
+    _remove_pcap(pcap)
     popen_kwargs: dict[str, Any] = {"stdout": subprocess.DEVNULL}
     if use_sudo:
         # Inherit stdin/stderr so sudo can prompt on the controlling terminal.

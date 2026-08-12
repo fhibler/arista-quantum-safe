@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -87,6 +88,82 @@ def tshark_client_hello_filter(switch_ip: str) -> str:
     )
 
 
+def _tcpdump_permission_denied(stderr: str) -> bool:
+    """Return True when tcpdump stderr indicates missing capture privileges."""
+    lower = stderr.lower()
+    return (
+        "don't have permission" in lower
+        or "operation not permitted" in lower
+        or "permission denied" in lower
+    )
+
+
+def _tcpdump_argv(iface: str, pcap: Path, bpf_filter: str, *, use_sudo: bool) -> list[str]:
+    cmd = [
+        "tcpdump",
+        "-i",
+        iface,
+        "-n",
+        "-s",
+        "0",
+        "-w",
+        str(pcap),
+        bpf_filter,
+    ]
+    if use_sudo:
+        return ["sudo", *cmd]
+    return cmd
+
+
+def _run_bridge_tcpdump_capture(
+    *,
+    iface: str,
+    pcap: Path,
+    bpf_filter: str,
+    bounce_logging: Callable[[], None],
+    settle_sec: float,
+    use_sudo: bool,
+) -> tuple[bool, str]:
+    """Capture on a bridge interface; return (pcap_ok, tcpdump_stderr)."""
+    pcap.unlink(missing_ok=True)
+    popen_kwargs: dict[str, Any] = {"stdout": subprocess.DEVNULL}
+    if use_sudo:
+        # Inherit stdin/stderr so sudo can prompt on the controlling terminal.
+        popen_kwargs["stdin"] = None
+        popen_kwargs["stderr"] = None
+    else:
+        popen_kwargs["stdin"] = subprocess.DEVNULL
+        popen_kwargs["stderr"] = subprocess.PIPE
+
+    tcpdump = subprocess.Popen(
+        _tcpdump_argv(iface, pcap, bpf_filter, use_sudo=use_sudo),
+        **popen_kwargs,
+    )
+    stderr = ""
+    try:
+        time.sleep(0.5)
+        bounce_logging()
+        time.sleep(settle_sec)
+    finally:
+        tcpdump.terminate()
+        try:
+            tcpdump.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            tcpdump.kill()
+            tcpdump.wait(timeout=2)
+        if not use_sudo and tcpdump.stderr is not None:
+            stderr = tcpdump.stderr.read().decode(errors="replace")
+
+    pcap_ok = pcap.exists() and pcap.stat().st_size >= 50
+    if use_sudo and not pcap_ok:
+        print(
+            "  [live]   syslog wire KEX capture: sudo tcpdump did not capture "
+            "a usable ClientHello",
+            file=sys.stderr,
+        )
+    return pcap_ok, stderr
+
+
 def capture_eos_syslog_tls_key_share_group(
     *,
     switch_ip: str,
@@ -99,42 +176,40 @@ def capture_eos_syslog_tls_key_share_group(
     """Capture cEOS→syslog ClientHello and return the client key_share group id.
 
     Returns None when capture or decode is unavailable. Requires host tcpdump on
-    the Containerlab mgmt bridge (see docs/caveats.md).
+    the Containerlab mgmt bridge (see docs/caveats.md). When unprivileged
+    capture is denied, retries with interactive ``sudo tcpdump`` so a password
+    can be entered if required.
     """
     iface = bridge or resolve_mgmt_bridge()
     if iface is None:
         return None
 
     pcap = pcap_path or Path("/tmp/quantum-safe-syslog-kex.pcap")
-    pcap.unlink(missing_ok=True)
-    tcpdump = subprocess.Popen(
-        [
-            "tcpdump",
-            "-i",
-            iface,
-            "-n",
-            "-s",
-            "0",
-            "-w",
-            str(pcap),
-            f"tcp port {SYSLOG_PORT} and host {switch_ip}",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    bpf_filter = f"tcp port {SYSLOG_PORT} and host {switch_ip}"
+    pcap_ok, stderr = _run_bridge_tcpdump_capture(
+        iface=iface,
+        pcap=pcap,
+        bpf_filter=bpf_filter,
+        bounce_logging=bounce_logging,
+        settle_sec=settle_sec,
+        use_sudo=False,
     )
-    try:
-        time.sleep(0.5)
-        bounce_logging()
-        time.sleep(settle_sec)
-    finally:
-        tcpdump.terminate()
-        try:
-            tcpdump.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            tcpdump.kill()
-            tcpdump.wait(timeout=2)
+    if not pcap_ok and _command_exists("sudo") and _tcpdump_permission_denied(stderr):
+        print(
+            "  [live]   syslog wire KEX capture: unprivileged tcpdump denied on "
+            f"{iface}; retrying with sudo (enter password if prompted)",
+            file=sys.stderr,
+        )
+        pcap_ok, _ = _run_bridge_tcpdump_capture(
+            iface=iface,
+            pcap=pcap,
+            bpf_filter=bpf_filter,
+            bounce_logging=bounce_logging,
+            settle_sec=settle_sec,
+            use_sudo=True,
+        )
 
-    if not pcap.exists() or pcap.stat().st_size < 50:
+    if not pcap_ok:
         return None
 
     container_pcap = "/tmp/quantum-safe-syslog-kex.pcap"

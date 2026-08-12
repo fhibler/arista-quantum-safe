@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lab.syslog_checks import (
@@ -9,6 +11,8 @@ from lab.syslog_checks import (
     SyslogCheckError,
     TLS_KEY_SHARE_X25519,
     TLS_KEY_SHARE_X25519MLKEM768,
+    _tcpdump_argv,
+    _tcpdump_permission_denied,
     check_switch_syslog_logging_config,
     check_switch_syslog_ssl_profile_detail,
     cleartext_capture_filter,
@@ -129,6 +133,21 @@ def test_tshark_client_hello_filter_ipv6() -> None:
 def test_tcpdump_captured_packet() -> None:
     assert tcpdump_captured_packet("listening on eth0\n1 packet captured\n")
     assert not tcpdump_captured_packet("listening on eth0\n0 packets captured\n")
+
+
+def test_tcpdump_permission_denied() -> None:
+    assert _tcpdump_permission_denied(
+        "tcpdump: mgmt-bridge: You don't have permission to perform this capture"
+    )
+    assert _tcpdump_permission_denied("socket: Operation not permitted")
+    assert not _tcpdump_permission_denied("listening on mgmt-bridge")
+
+
+def test_tcpdump_argv_sudo() -> None:
+    pcap = Path("/tmp/test.pcap")
+    filt = "tcp port 6514 and host 172.20.127.11"
+    assert _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=False)[0] == "tcpdump"
+    assert _tcpdump_argv("mgmt-bridge", pcap, filt, use_sudo=True)[:2] == ["sudo", "tcpdump"]
 
 
 def test_syslog_ssl_profile_detail_accepts_eos_json() -> None:

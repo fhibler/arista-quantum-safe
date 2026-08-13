@@ -1,6 +1,6 @@
 # OpenConfig & gRPC
 
-This page covers **gNMI**, **gNOI** (same gRPC transport), **RESTCONF**, and **eos-sdk-rpc** TLS configuration on cEOS 4.36.1F.
+This page covers **gNMI**, **gNOI** (same gRPC transport), **RESTCONF**, and **eos-sdk-rpc** TLS configuration on EOS.
 
 | Item | Value |
 |------|-------|
@@ -51,7 +51,7 @@ gNOI uses the same gRPC endpoint and ssl profile as gNMI.
 
 ### Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only |
 | Live TLS | **PQC-safe** |
@@ -130,7 +130,7 @@ management api restconf
 
 ### Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only |
 | Live wire | **PQC-safe** |
@@ -186,20 +186,35 @@ management api eos-sdk-rpc
       ssl profile GNMI
 ```
 
+Unlike gNMI, eos-sdk-rpc uses **`local interface Management0`** rather than **`vrf MGMT`**. Arista binds the gRPC server to the interface **primary IPv4 address** — not dual-stack. `show management api eos-sdk-rpc` reports:
+
+```text
+Listening on:
+   Local interface:
+      Management0, IP address is 172.20.127.11
+      port: 9543, VRF: MGMT
+```
+
+gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when configured with `vrf MGMT`.
+
 ### Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile lists `X25519MLKEM768` |
-| Live wire | **Not PQC-safe** — often negotiates classical group or fails PQC-only probe |
+| IPv4 live wire | **Not PQC-safe** — PQC-only probe EOF; explicit `secp256r1` client completes TLS 1.3 |
+| IPv6 live wire | **No listener** — `local interface Management0` binds IPv4 only; `make test-pqc` **SKIP**s IPv6 |
 
-!!! warning "Known cEOS 4.36.1F gap"
-    Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation**:
+!!! note "IPv6 limitation (binding model)"
+    **Not an ACL issue.** Control-plane ACLs permit TCP **9543** on both IPv4 and IPv6. Management0 has an IPv6 address, but eos-sdk-rpc does not listen on it because the transport is bound via **`local interface Management0`**, which resolves to the primary IPv4. There is no equivalent of gNMI's **`vrf MGMT`** dual-stack listener for eos-sdk-rpc in this lab config.
+
+!!! warning "Known EOS gap (TLS / PQC)"
+    Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation** on IPv4:
 
     - PQC-only OpenSSL client → EOF / no handshake
-    - Permissive client → TLS 1.3 with classical group (e.g. `secp256r1`)
+    - Explicit `-groups secp256r1` → TLS 1.3 with classical KEX (diagnostic / `make test-pqc` fallback)
 
-    `make test-pqc` validates `[config]` and reports **`WARN`** on the live probe instead of failing the suite.
+    `make test-pqc` validates `[config]` and reports **`WARN`** on the IPv4 live probe instead of failing the suite. IPv6 live probes are **`SKIP`**ped.
 
 ### Verification
 
@@ -215,7 +230,7 @@ EOF
 
 #### Live PQC handshake
 
-PQC-only probe (may fail on 4.36.1F):
+PQC-only probe (may fail on some EOS builds):
 
 ```bash
 docker exec arista-quantum-safe-test-runner sh -c \
@@ -243,7 +258,7 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ## Summary
 
-| Service | Port | Profile | Live PQC on 4.36.1F |
+| Service | Port | Profile | Live PQC |
 |---------|------|---------|---------------------|
 | gNMI / gNOI | 6030 | GNMI | Yes |
 | RESTCONF | 6020 | RESTCONF | Yes |

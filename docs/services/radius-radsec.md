@@ -99,7 +99,7 @@ EAP-TLS for 802.1X is terminated in `mods-available/eap`. Policy `policy.d/macse
 
 ## Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | RadSec config | PQC-hybrid only on switch and server |
 | RadSec live wire | **PQC-safe** |

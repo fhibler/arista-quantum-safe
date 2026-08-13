@@ -65,6 +65,13 @@ def _pqc_config_json() -> dict:
     }
 
 
+def test_extract_negotiated_tls_group_maps_prime256v1() -> None:
+    from lab.test_pqc_connections import extract_negotiated_tls_group
+
+    output = "Protocol version: TLSv1.3\nPeer Temp Key: ECDH, prime256v1, 256 bits\n"
+    assert extract_negotiated_tls_group(output) == "secp256r1"
+
+
 def test_tls13_handshake_detects_tlsv13() -> None:
     assert tls13_handshake("Protocol version: TLSv1.3")
     assert not tls13_handshake("Protocol version: TLSv1.2")
@@ -284,8 +291,10 @@ def test_probe_syslog_delivery_warns_on_classical_wire_kex(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "WARN" in output
+    assert "not PQC-safe" in output
+    assert "TLS 1.3 compliant" in output
     assert "wire KEX x25519" in output
-    assert "syslog client gap" in output
+    assert "syslog client gap" not in output
 
 
 def test_probe_syslog_delivery_warns_when_wire_kex_not_verified(capsys) -> None:
@@ -302,6 +311,8 @@ def test_probe_syslog_delivery_warns_when_wire_kex_not_verified(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "WARN" in output
+    assert "not PQC-safe" in output
+    assert "TLS 1.3 compliant" in output
     assert "wire KEX not verified" in output
 
 
@@ -330,7 +341,20 @@ def test_probe_radsec_from_switch_requires_auth_success(ip_family: str) -> None:
             probe_radsec_from_switch(targets, "ceos1-both", family=ip_family)
 
 
-def test_probe_eossdkrpc_tls_warns_when_pqc_handshake_fails(capsys) -> None:
+def test_probe_eossdkrpc_tls_skips_ipv6(capsys) -> None:
+    targets = _lab_targets()
+
+    with patch("lab.test_pqc_connections.run_openssl_s_client") as fake_openssl:
+        probe_eossdkrpc_tls(targets, "ceos1-both", family="ipv6")
+
+    fake_openssl.assert_not_called()
+    output = capsys.readouterr().out
+    assert "SKIP" in output
+    assert "IPv6" in output
+    assert "local interface Management0 binds IPv4 only" in output
+
+
+def test_probe_eossdkrpc_tls_warns_on_classical_secp256r1_probe(capsys) -> None:
     targets = _lab_targets()
     calls = {"n": 0}
 
@@ -339,16 +363,35 @@ def test_probe_eossdkrpc_tls_warns_when_pqc_handshake_fails(capsys) -> None:
         if calls["n"] == 1:
             return f"Connecting to {MGMT_IPS['ceos1-both']}\nunexpected eof while reading\n"
         return (
+            "CONNECTION ESTABLISHED\n"
             "Protocol version: TLSv1.3\n"
-            "Negotiated TLS1.3 group: secp256r1\n"
+            "Peer Temp Key: ECDH, prime256v1, 256 bits\n"
         )
 
     with patch("lab.test_pqc_connections.run_openssl_s_client", side_effect=fake_openssl):
         probe_eossdkrpc_tls(targets, "ceos1-both")
 
     output = capsys.readouterr().out
+    assert calls["n"] == 2
     assert "WARN" in output
+    assert "not PQC-safe" in output
+    assert "TLS 1.3 compliant" in output
     assert "secp256r1" in output
+    assert "explicit client group secp256r1" in output
+
+
+def test_probe_eossdkrpc_tls_warns_when_all_handshakes_fail(capsys) -> None:
+    targets = _lab_targets()
+
+    with patch(
+        "lab.test_pqc_connections.run_openssl_s_client",
+        return_value="Connecting\nunexpected eof while reading\n",
+    ):
+        probe_eossdkrpc_tls(targets, "ceos1-both")
+
+    output = capsys.readouterr().out
+    assert "WARN" in output
+    assert "no TLS 1.3 handshake on :9543" in output
 
 
 def test_probe_eapi_https_requires_tls13(ip_family: str) -> None:

@@ -11,6 +11,7 @@ from typing import TextIO
 ICON_OK = "✓"
 ICON_WARN = "⚠"
 ICON_FAIL = "✗"
+ICON_SKIP = "−"
 
 GREEN = "\033[32m"
 BRIGHT_ORANGE = "\033[38;5;214m"
@@ -25,12 +26,14 @@ class CheckStatus(Enum):
     OK = "ok"
     WARN = "warn"
     FAIL = "fail"
+    SKIP = "skip"
 
 
 _STATUS_ICONS = {
     CheckStatus.OK: ICON_OK,
     CheckStatus.WARN: ICON_WARN,
     CheckStatus.FAIL: ICON_FAIL,
+    CheckStatus.SKIP: ICON_SKIP,
 }
 
 
@@ -101,6 +104,8 @@ def format_check_line(prefix: str, detail: str, status: CheckStatus = CheckStatu
     if status is CheckStatus.FAIL:
         body = f"  {ICON_FAIL} FAIL {prefix} {detail}"
         return _emphasize(body, CheckStatus.FAIL)
+    if status is CheckStatus.SKIP:
+        return f"  {ICON_SKIP} SKIP {prefix} {detail}"
     return f"  {status_marker(CheckStatus.OK)} {prefix} {detail}"
 
 
@@ -114,6 +119,10 @@ def report_ok(prefix: str, detail: str) -> None:
 
 def report_warn(prefix: str, detail: str) -> None:
     report_check(prefix, detail, CheckStatus.WARN)
+
+
+def report_skip(prefix: str, detail: str) -> None:
+    report_check(prefix, detail, CheckStatus.SKIP)
 
 
 def format_summary(name: str, detail: str, status: CheckStatus) -> str:

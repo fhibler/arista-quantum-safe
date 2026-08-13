@@ -7,8 +7,8 @@ This page describes **what certificates must contain** for TLS 1.3 services in t
 | Item | Location | Notes |
 |------|----------|-------|
 | Generation | `lab/gen_pki.py` via `make gen-topo` | CA, RadSec server, per-switch client/eAPI/gNMI certs, syslog collector cert |
-| Output | `lab/.gen/pki/` | Bind-mounted into containers and cEOS `flash:` |
-| Install on cEOS | Containerlab post-boot exec | `copy flash:… certificate:` / `sslkey:` (exec-only — not in startup-config) |
+| Output | `lab/.gen/pki/` | Bind-mounted into containers and EOS `flash:` |
+| Install on EOS | Containerlab post-boot exec | `copy flash:… certificate:` / `sslkey:` (exec-only — not in startup-config) |
 | Lab CA subject | `/CN=quantum-safe-radsec-ca/O=Lab/C=US` | Also written as `radsec-ca.pem` |
 | Validity | 825 days | Lab default in `gen_pki.py` |
 
@@ -179,7 +179,7 @@ MaxProtocol = TLSv1.3
 
 See `docker/radius/openssl-pqc.cnf` and `docker/syslog/openssl-pqc.cnf`.
 
-## Installing certificates on cEOS
+## Installing certificates on EOS
 
 Startup-config references certificate **filenames** in ssl profiles. Files are copied after boot (Containerlab exec), for example:
 
@@ -204,11 +204,11 @@ Expect `State: valid` and the configured certificate name.
 
 | Service | Server cert on | Client cert on | CA trust |
 |---------|----------------|----------------|----------|
-| eAPI | cEOS (`*-eapi.pem`) | Not required (local `admin` auth) | Optional on client |
-| gNMI / RESTCONF | cEOS (`*-gnmi.pem`) | Probe / SDK clients (`*-client.pem`) | `radsec-ca.pem` on switch |
-| RadSec | FreeRADIUS (`server.pem`) | cEOS (`*-client.pem`) | Both sides trust lab CA |
-| Syslog | syslog-ng (`server.pem`) | cEOS (`*-client.pem`) | Both sides trust lab CA |
-| EAP-TLS (802.1X) | FreeRADIUS EAP module | cEOS supplicant (`DOT1X` profile) | `radsec-ca.pem` on supplicant |
+| eAPI | EOS (`*-eapi.pem`) | Not required (local `admin` auth) | Optional on client |
+| gNMI / RESTCONF | EOS (`*-gnmi.pem`) | Probe / SDK clients (`*-client.pem`) | `radsec-ca.pem` on switch |
+| RadSec | FreeRADIUS (`server.pem`) | EOS (`*-client.pem`) | Both sides trust lab CA |
+| Syslog | syslog-ng (`server.pem`) | EOS (`*-client.pem`) | Both sides trust lab CA |
+| EAP-TLS (802.1X) | FreeRADIUS EAP module | EOS supplicant (`DOT1X` profile) | `radsec-ca.pem` on supplicant |
 
 Detailed ssl profiles and service bindings: [Services overview](../services/index.md).
 

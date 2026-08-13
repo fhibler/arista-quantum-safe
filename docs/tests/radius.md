@@ -12,7 +12,7 @@
 | OpenSSL offers `X25519MLKEM768` | `openssl list -tls-groups` |
 | Radius config contract | `check_radius_config()` |
 
-### Each cEOS switch (ceos1-both, ceos2-pqc, ceos3-qkd)
+### Each EOS switch (ceos1-both, ceos2-pqc, ceos3-qkd)
 
 | Check | Method |
 |-------|--------|

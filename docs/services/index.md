@@ -4,7 +4,7 @@ PQC-hybrid configuration for each management-plane and data-plane security servi
 
 Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-topo`.
 
-## Summary (cEOS 4.36.1F)
+## Summary
 
 | Service | Port | ssl profile / KEX | Config PQC? | Live PQC? | Doc |
 |---------|------|-------------------|-------------|-----------|-----|
@@ -29,7 +29,7 @@ Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-
 
 Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X25519MLKEM768` — no classical ECDH fallback. FreeRADIUS uses matching OpenSSL policy (`docker/radius/openssl-pqc.cnf`).
 
-**Exceptions:** The SYSLOG profile and syslog-ng collector allow classical fallback so remote logging works while the EOS syslog TLS client lacks PQC-hybrid support on 4.36.1F. See [Syslog caveats](syslog.md#caveats).
+**Exceptions:** The SYSLOG profile and syslog-ng collector allow classical fallback so remote logging works while the EOS syslog TLS client may lack PQC-hybrid support on the wire. See [Syslog caveats](syslog.md#caveats).
 
 ## Service guides
 

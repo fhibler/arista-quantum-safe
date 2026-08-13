@@ -50,7 +50,7 @@ management api http-commands
 
 ## Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; hybrid group only |
 | Live wire | **PQC-safe** — TLS 1.3 + `X25519MLKEM768` |

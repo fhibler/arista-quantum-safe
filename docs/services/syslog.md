@@ -29,7 +29,7 @@ management security
       trust certificate radsec-ca.pem
 ```
 
-Unlike eAPI/RadSec/gNMI profiles, **SYSLOG allows classical fallback groups** so delivery works while the EOS syslog TLS client lacks PQC-hybrid support on 4.36.1F.
+Unlike eAPI/RadSec/gNMI profiles, **SYSLOG allows classical fallback groups** so delivery works while the EOS syslog TLS client may lack PQC-hybrid support on the wire.
 
 ### Service binding (EOS)
 
@@ -75,16 +75,16 @@ Cleartext UDP/TCP **514 is disabled** — only TLS **6514** listens.
 
 ## Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile lists `X25519MLKEM768` first |
-| Live wire (cEOS → syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
+| Live wire (EOS → syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
 | Collector probe (client → syslog-ng) | **PQC-safe** when using PQC OpenSSL |
 
-!!! warning "Known cEOS 4.36.1F gap — syslog client"
+!!! warning "Known EOS gap — syslog client"
     The EOS syslog TLS **client** does not offer ML-KEM hybrid groups in ClientHello even when the ssl profile advertises them. The collector accepts classical `x25519`, so logs still flow.
 
-    Tightening both sides to PQC-only would **break** remote syslog on 4.36.1F.
+    Tightening both sides to PQC-only would **break** remote syslog on current EOS builds.
 
 ### Connection limit
 
@@ -120,9 +120,9 @@ docker exec arista-quantum-safe-test-runner sh -c \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
-### Wire capture (cEOS → collector)
+### Wire capture (EOS → collector)
 
-cEOS keeps long-lived sessions — bounce logging hosts to force a new handshake:
+EOS keeps long-lived sessions — bounce logging hosts to force a new handshake:
 
 ```bash
 # Terminal A — on Docker host (mgmt bridge)
@@ -149,7 +149,7 @@ docker exec arista-quantum-safe-syslog tshark -r /tmp/syslog-tls.pcap \
   2>/dev/null | head
 ```
 
-On 4.36.1F expect group **29 (`x25519`)**, not **4588 (`X25519MLKEM768`)**.
+Expect group **29 (`x25519`)**, not **4588 (`X25519MLKEM768`)** — see [Syslog tests](../tests/syslog.md#result-summary) for recorded wire KEX.
 
 Automated: `make test-pqc` (delivery + optional wire KEX capture) and `make test-syslog`.
 

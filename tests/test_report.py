@@ -5,6 +5,7 @@ from __future__ import annotations
 from lab.report import (
     ICON_FAIL,
     ICON_OK,
+    ICON_SKIP,
     ICON_WARN,
     BRIGHT_ORANGE,
     BRIGHT_RED,
@@ -28,6 +29,7 @@ def test_status_markers_without_color(monkeypatch) -> None:
     assert status_marker(CheckStatus.OK) == ICON_OK
     assert status_marker(CheckStatus.WARN) == ICON_WARN
     assert status_marker(CheckStatus.FAIL) == ICON_FAIL
+    assert status_marker(CheckStatus.SKIP) == ICON_SKIP
 
 
 def test_status_markers_with_color(monkeypatch) -> None:
@@ -71,6 +73,12 @@ def test_report_check_prints_marker(capsys, monkeypatch) -> None:
     output = capsys.readouterr().out
     assert f"  {ICON_OK} [live]   SSH ok" in output
     assert f"  {ICON_WARN} WARN [live]   classical fallback" in output
+
+
+def test_format_check_line_skip(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    line = format_check_line("[live / test-runner]  ", "eos-sdk-rpc IPv6 skipped", CheckStatus.SKIP)
+    assert line == f"  {ICON_SKIP} SKIP [live / test-runner]   eos-sdk-rpc IPv6 skipped"
 
 
 def test_colors_enabled_respects_no_color(monkeypatch) -> None:

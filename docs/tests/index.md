@@ -1,6 +1,6 @@
 # Test suite overview
 
-Live checks require a **deployed lab** (`make deploy`). Offline unit tests run via `make test` (pytest, no cEOS).
+Live checks require a **deployed lab** (`make deploy`). Offline unit tests run via `make test` (pytest, no deployed lab).
 
 ## `make test-lab`
 
@@ -35,7 +35,8 @@ make test-pqc VERBOSE=1
 | `[live / test-runner]` | Live probe executed from the test-runner container (default `PROBE_CLIENT`) |
 | `[live / radius]` | Live probe executed from the radius container (`PROBE_CLIENT=radius`) |
 | `[live / host]` | Live probe executed on the host (`PROBE_CLIENT=host`) |
-| `WARN` | Known platform gap — check passes with warning (not a failure) |
+| `WARN` | **Not PQC-safe** (often still TLS 1.3 compliant); check passes (not a failure) |
+| `SKIP` | Known platform/config limitation — check not run (not a failure) |
 
 ## Default management addresses
 
@@ -49,6 +50,10 @@ make test-pqc VERBOSE=1
 | test-runner | 172.20.127.54 | 2001:db8:127::54 |
 
 Override subnet with `MGMT_SUBNET=… make test-lab`.
+
+## Recorded test results
+
+Result tables in the detailed test pages reflect live runs against the lab default image **EOS 4.36.1F** (`CEOS_IMAGE=ceos:4.36.1F`; see [Setup](../setup.md)).
 
 ## Detailed test docs
 

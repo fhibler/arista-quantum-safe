@@ -1,8 +1,8 @@
 # Quantum Safe Lab
 
-Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista cEOS: PQC-hybrid management-plane TLS with **no classical fallback** on most services (RadSec, eAPI, gNMI, RESTCONF, SSH), **dynamic MACsec** on an inter-switch link, and supporting services (FreeRADIUS, syslog-ng) built with OpenSSL 3.5.
+Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista EOS: PQC-hybrid management-plane TLS with **no classical fallback** on most services (RadSec, eAPI, gNMI, RESTCONF, SSH), **dynamic MACsec** on an inter-switch link, and supporting services (FreeRADIUS, syslog-ng) built with OpenSSL 3.5.
 
-Three cEOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
+Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
 
 <!-- site-config:begin -->
 **Documentation:** [https://fhibler.github.io/arista-quantum-safe/](https://fhibler.github.io/arista-quantum-safe/) (GitHub Pages)
@@ -25,13 +25,13 @@ Automated checks (`make test-lab`) validate configuration and live handshakes on
 
 | Requirement | Notes |
 |-------------|-------|
-| **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three cEOS nodes |
+| **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three EOS nodes |
 | **Containerlab** 0.78.1+ | Installed on the host or via the repo devcontainer |
 | **cEOS-lab image** | Tagged `ceos:4.36.1F` matching your host architecture — **required before deploy** |
 | **Arista portal token** | **Optional** — only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
 | **Python 3.11+** | For offline tests (`make test`) and lab check scripts |
 
-### cEOS image
+### cEOS-lab image
 
 Obtain cEOS-lab from the [Arista software portal](https://www.arista.com/en/support/software-download) or import a tarball you already have:
 
@@ -66,7 +66,7 @@ make test-lab-runner
 
 Individual test targets: `make test-radius`, `make test-pqc`, `make test-syslog`, `make test-macsec`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make shell-test-runner`.
 
-Offline validation (no cEOS required):
+Offline validation (no deployed lab required):
 
 ```bash
 pip install -r requirements-dev.txt
@@ -77,7 +77,7 @@ make test
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | cEOS switches — MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | EOS switches — MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
 | host1, host2, host3 | Alpine hosts on routed data segments |
 | radius | FreeRADIUS (RadSec + EAP-TLS for 802.1X) |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) |
@@ -97,6 +97,10 @@ You must obtain those separately under your Arista license or support agreement.
 - **cEOS-lab** is available after registration from [arista.com](https://www.arista.com) (software download). If you are a customer, use the website token under **arista.com -> My Profile**.
 - **QuaDRA** must be obtained via your **Arista account team**.
 
+## Author
+
+**Florian Hibler** - florian@arista.com
+
 ## License
 
-See [LICENSE](LICENSE) (lab tooling). cEOS and Arista EOS remain proprietary Arista products.
+See [LICENSE](LICENSE) (lab tooling). Arista EOS remains a proprietary Arista product.

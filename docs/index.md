@@ -1,6 +1,6 @@
 # Quantum Safe Lab
 
-Post-quantum cryptography (PQC) demonstration lab for **Arista cEOS** using Containerlab.
+Post-quantum cryptography (PQC) demonstration lab for **Arista EOS** using Containerlab.
 
 ## What this lab demonstrates
 
@@ -15,7 +15,7 @@ PQC applies to **key establishment only**. Server and client certificates remain
 
 Most TLS ssl profiles list **only** the hybrid group `X25519MLKEM768` — no classical ECDH fallback. Peers (FreeRADIUS, syslog-ng) match that policy where PQC-hybrid is enforced end-to-end.
 
-!!! note "Known cEOS 4.36.1F gaps"
+!!! note "Known EOS gaps"
     **Syslog-over-TLS** and **eos-sdk-rpc** advertise PQC-hybrid in configuration but may negotiate classical key exchange on the wire. See [Services](services/index.md) for per-service caveats.
 
 ## Quick links
@@ -28,7 +28,7 @@ Most TLS ssl profiles list **only** the hybrid group `X25519MLKEM768` — no cla
 
 ## Topology
 
-Three cEOS switches on a management network (`172.20.127.0/24` default) plus FreeRADIUS and syslog-ng collectors. Data-plane hosts attach via routed segments.
+Three EOS switches on a management network (`172.20.127.0/24` default) plus FreeRADIUS and syslog-ng collectors. Data-plane hosts attach via routed segments.
 
 | Node | Mgmt IPv4 (default) | Notes |
 |------|---------------------|-------|

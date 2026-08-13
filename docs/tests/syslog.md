@@ -12,7 +12,7 @@
 | OpenSSL PQC groups | `openssl list -tls-groups` |
 | Health | Wait for container healthcheck **healthy** |
 
-### Each cEOS node (ceos1-both, ceos2-pqc, ceos3-qkd)
+### Each EOS node (ceos1-both, ceos2-pqc, ceos3-qkd)
 
 | Check | Method |
 |-------|--------|
@@ -33,7 +33,21 @@ PQC-hybrid handshake from test client to syslog :6514 (IPv4 + IPv6).
 
 ## Caveat interaction
 
-cEOS **syslog client** may use classical **`x25519`** on the wire (4.36.1F). `make test-syslog` validates **encrypted delivery** and collector PQC — it does **not** fail when the switch client skips PQC. Wire KEX warnings appear in `make test-pqc` when tcpdump capture succeeds.
+EOS **syslog client** may use classical **`x25519`** on the wire — **not PQC-safe**, TLS 1.3 compliant. `make test-syslog` validates **encrypted delivery** and collector PQC — it does **not** fail when the switch client skips PQC. `make test-pqc` reports **WARN** when tcpdump capture confirms classical wire KEX.
+
+## Result summary
+
+Recorded on **EOS 4.36.1F** (3 switches, IPv4 + IPv6):
+
+| Check | Expected | Outcome |
+|-------|----------|---------|
+| No cleartext logging hosts | TLS-only `logging host … 6514` | PASS |
+| SYSLOG ssl profile | `X25519MLKEM768` listed first (+ classical fallback) | PASS |
+| Live message delivery | Needle in collector log over TLS | PASS |
+| Collector PQC probe | `X25519MLKEM768` from test-runner | PASS |
+| EOS to collector wire KEX | Often **`x25519`** (not hybrid) | PASS + **WARN** in `make test-pqc` when captured |
+
+See also [PQC tests — Result summary](pqc.md#result-summary) for the full management-plane matrix.
 
 ## Manual reproduction
 

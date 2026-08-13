@@ -44,13 +44,13 @@ management api netconf
 
 ## Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Hybrid KEX listed and preferred |
 | Live wire | **PQC-safe** — negotiates `mlkem768x25519-sha256` |
 | Certificates | Classical host keys (unchanged by PQC policy) |
 
-No known PQC gap for SSH/NETCONF on 4.36.1F in this lab.
+No known PQC gap for SSH/NETCONF in this lab.
 
 ## Verification
 

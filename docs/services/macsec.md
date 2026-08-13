@@ -94,7 +94,7 @@ Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS p
 
 ## Caveats
 
-| Topic | Status on cEOS 4.36.1F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | EAP-TLS KEX | **PQC-safe** (`X25519MLKEM768` in supplicant detail) |
 | MACsec keys | Derived from EAP — not direct PQC wire protocol on MACsec frames |

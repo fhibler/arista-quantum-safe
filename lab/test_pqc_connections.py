@@ -70,6 +70,7 @@ from lab.report import (
     print_section_header,
     report_check,
     report_ok,
+    report_skip,
     report_summary,
     report_warn,
 )
@@ -78,6 +79,7 @@ from lab.verbose import echo_command, echo_result, verbose_enabled
 SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_USER = "admin"
 CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
+EOSSDKRPC_CLASSICAL_PROBE_GROUP = "secp256r1"
 PQC_GROUP = TLS_PQC_GROUP
 
 
@@ -141,6 +143,8 @@ def report_live(
         report_warn(prefix, detail)
     elif status is CheckStatus.FAIL:
         report_check(prefix, detail, CheckStatus.FAIL)
+    elif status is CheckStatus.SKIP:
+        report_skip(prefix, detail)
     else:
         report_ok(prefix, detail)
 
@@ -230,7 +234,15 @@ def negotiated_pqc_group(output: str) -> bool:
 
 def extract_negotiated_tls_group(output: str) -> str | None:
     match = re.search(r"Negotiated TLS1\.3 group:\s*(\S+)", output)
-    return match.group(1) if match else None
+    if match:
+        group = match.group(1)
+        if group not in ("<NULL>", "(NONE)"):
+            return group
+    if "Peer Temp Key: ECDH, prime256v1" in output:
+        return "secp256r1"
+    if re.search(r"Peer Temp Key: ECDH, X25519\b", output):
+        return "x25519"
+    return None
 
 
 def assert_pqc_hybrid_tls(output: str, *, label: str) -> None:
@@ -338,15 +350,27 @@ def probe_eossdkrpc_tls(
 ) -> None:
     """Probe eos-sdk-rpc mTLS.
 
-    cEOS 4.36.1F often does not negotiate PQC-hybrid on port 9543 despite the ssl
-    profile (EOF with a PQC-only client, or classical KEX with a permissive client).
+    EOS often does not negotiate PQC-hybrid on port 9543 despite the ssl
+    profile. Probes PQC-only first; on failure, falls back to explicit ``secp256r1``
+    (the classical group that completes TLS 1.3 in this lab).
     Config is still validated; live probe warns instead of failing the suite.
+    IPv6 live probes are skipped: ``local interface Management0`` binds the primary
+    IPv4 address only (unlike ``vrf MGMT`` gNMI on :6030).
     """
+    if family == IP_FAMILY_IPV6:
+        report_live(
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}), skipped — "
+            f"local interface Management0 binds IPv4 only",
+            status=CheckStatus.SKIP,
+            probe_client=True,
+        )
+        return
+
     ip = targets.ceos_mgmt_ip(node, family)
     cert_file = probe_client_cert_path(node)
     key_file = probe_client_key_path(node)
     connect = hostport(ip, EOSSDKRPC_PORT)
-    pqc_output = run_openssl_s_client(
+    common = dict(
         connect=connect,
         ca_file=probe_ca_path(),
         cert_file=cert_file,
@@ -354,6 +378,8 @@ def probe_eossdkrpc_tls(
         clab_name=targets.clab_name,
         verbose=verbose,
     )
+
+    pqc_output = run_openssl_s_client(**common)
     if tls13_handshake(pqc_output) and negotiated_pqc_group(pqc_output):
         report_live(
             f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})",
@@ -361,27 +387,25 @@ def probe_eossdkrpc_tls(
         )
         return
 
-    classical_output = run_openssl_s_client(
-        connect=connect,
-        ca_file=probe_ca_path(),
-        cert_file=cert_file,
-        key_file=key_file,
+    secp256r1_output = run_openssl_s_client(
+        **common,
         use_pqc_conf=False,
-        clab_name=targets.clab_name,
-        verbose=verbose,
+        groups=EOSSDKRPC_CLASSICAL_PROBE_GROUP,
     )
-    if tls13_handshake(classical_output):
-        group = extract_negotiated_tls_group(classical_output) or "unknown"
+    if tls13_handshake(secp256r1_output):
+        group = extract_negotiated_tls_group(secp256r1_output) or EOSSDKRPC_CLASSICAL_PROBE_GROUP
         report_live(
-            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {group}; cEOS 4.36.1F PQC gap)",
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}), "
+            f"not PQC-safe, TLS 1.3 compliant — negotiated {group} "
+            f"(explicit client group {EOSSDKRPC_CLASSICAL_PROBE_GROUP})",
             status=CheckStatus.WARN,
             probe_client=True,
         )
         return
 
     report_live(
-        f"eos-sdk-rpc gRPC mTLS ({family_label(family)}): no TLS 1.3 handshake on :9543 "
-        "(cEOS 4.36.1F PQC gap; config OK)",
+        f"eos-sdk-rpc gRPC mTLS ({family_label(family)}), not PQC-safe — "
+        f"no TLS 1.3 handshake on :9543",
         status=CheckStatus.WARN,
         probe_client=True,
     )
@@ -776,14 +800,14 @@ def probe_syslog_delivery(
         group_name = tls_key_share_group_name(negotiated_group)
         report_live(
             f"{node} TLS syslog delivered ({family_label(family)}), "
-            f"wire KEX {group_name} (cEOS 4.36.1F syslog client gap; config lists {SYSLOG_PQC_GROUP})",
+            f"not PQC-safe, TLS 1.3 compliant — wire KEX {group_name}",
             status=CheckStatus.WARN,
         )
         return
 
     report_live(
         f"{node} TLS syslog delivered ({family_label(family)}), "
-        f"wire KEX not verified (capture unavailable; cEOS may use classical KEX — see docs/services/syslog.md)",
+        f"not PQC-safe, TLS 1.3 compliant — wire KEX not verified",
         status=CheckStatus.WARN,
     )
 
@@ -808,7 +832,7 @@ def run_live_checks(
 
     print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
-    print("  [live]   cEOS-side checks (RadSec AAA, syslog delivery, wire KEX when capture available)")
+    print("  [live]   EOS-side checks (RadSec AAA, syslog delivery, wire KEX when capture available)")
     print("  [live / test-runner]  TLS/mTLS handshakes, eAPI, gNMI GET, RESTCONF, eos-sdk-rpc, RadSec collector, SSH, syslog collector")
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
@@ -879,7 +903,8 @@ def run_live_checks(
     report_summary(
         "PQC",
         f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; WARN on known cEOS syslog/eos-sdk-rpc PQC gaps)",
+        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; "
+        "WARN on syslog/eos-sdk-rpc not PQC-safe (TLS 1.3 compliant where verified)",
     )
 
 

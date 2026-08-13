@@ -2,7 +2,7 @@
 
 This page explains **terminology**, **algorithms used in the lab**, and **why several Docker images are built from source** against OpenSSL 3.5+.
 
-PQC in Arista EOS 4.35+ (this lab pins **cEOS 4.36.1F**) applies primarily to **key establishment** — how two peers agree on session keys. **Certificates and signatures** in this lab remain **classical** (RSA/ECDSA). Record-layer **AEAD ciphers** (for example `TLS_AES_256_GCM_SHA384`) are unchanged; security against harvest-now-decrypt-later attacks comes from **PQC-hybrid key exchange**, not from renaming those ciphers.
+PQC in Arista EOS 4.35+ applies primarily to **key establishment** — how two peers agree on session keys. **Certificates and signatures** in this lab remain **classical** (RSA/ECDSA). Record-layer **AEAD ciphers** (for example `TLS_AES_256_GCM_SHA384`) are unchanged; security against harvest-now-decrypt-later attacks comes from **PQC-hybrid key exchange**, not from renaming those ciphers.
 
 ## Terminology
 
@@ -10,7 +10,7 @@ PQC in Arista EOS 4.35+ (this lab pins **cEOS 4.36.1F**) applies primarily to **
 |------|---------|---------------------|
 | **Non-PQC (classical)** | Key exchange uses pre-quantum algorithms only | TLS groups `x25519`, `secp256r1`; SSH KEX without ML-KEM |
 | **PQC-safe (live)** | A completed handshake negotiates a **hybrid** post-quantum key-establishment algorithm on the wire | TLS 1.3 group `X25519MLKEM768`; SSH `mlkem768x25519-sha256` |
-| **Configurable for PQC** | EOS config or ssl profile **lists** a hybrid group, but the live client/server may still negotiate classical KEX | Syslog-over-TLS on cEOS 4.36.1F (see [Syslog service](services/syslog.md)) |
+| **Configurable for PQC** | EOS config or ssl profile **lists** a hybrid group, but the live client/server may still negotiate classical KEX | Syslog-over-TLS on EOS (see [Syslog service](services/syslog.md)) |
 | **Pure PQC** | Key exchange uses **only** a post-quantum algorithm, with **no** paired classical component | Standalone `MLKEM768` in OpenSSL group lists |
 
 ### Non-PQC vs PQC-safe
@@ -35,7 +35,7 @@ PQC in Arista EOS 4.35+ (this lab pins **cEOS 4.36.1F**) applies primarily to **
     However:
 
     - **IETF TLS interoperability** for production networks today centers on **hybrid** code points (draft/RFC track groups such as `X25519MLKEM768`), not pure-PQC-only TLS handshakes between heterogeneous vendors.
-    - **Arista EOS 4.36.1F ssl profiles** expose **hybrid** key-establishment tokens (for example `key-establishment-group X25519MLKEM768`), not standalone pure-PQC-only profiles.
+    - **Arista EOS ssl profiles** expose **hybrid** key-establishment tokens (for example `key-establishment-group X25519MLKEM768`), not standalone pure-PQC-only profiles.
     - **Pure-PQC-only** policy (hybrid groups disabled, classical fallback removed, only standalone ML-KEM offered) is **not ratified as a universal wire standard** and is **not** what this lab configures or tests.
 
     The lab intentionally uses **PQC-hybrid-only** (or hybrid-preferred) policy as the practical quantum-safe migration step.
@@ -47,10 +47,10 @@ PQC in Arista EOS 4.35+ (this lab pins **cEOS 4.36.1F**) applies primarily to **
 | Group | Type | Used by lab policy? | Notes |
 |-------|------|---------------------|-------|
 | **`X25519MLKEM768`** | Hybrid (X25519 + ML-KEM-768) | **Yes** — primary | EOS ssl profiles `EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`; strict peers (FreeRADIUS) |
-| `ecdh_x25519` / `x25519` | Classical | Fallback only where explicitly allowed | SYSLOG profile and syslog-ng collector; cEOS syslog **client** often negotiates this on 4.36.1F |
+| `ecdh_x25519` / `x25519` | Classical | Fallback only where explicitly allowed | SYSLOG profile and syslog-ng collector; EOS syslog **client** often negotiates this on the wire |
 | `secp256r1`, `secp384r1`, … | Classical | Not in strict profiles | Appear in permissive probes / legacy clients |
 | **`MLKEM768`** | Pure PQC | **No** on EOS | May appear in `openssl list -tls-groups` inside lab containers; not configured on switches |
-| `SecP256r1MLKEM768` | Hybrid | **No** in this lab | OpenSSL 3.5 may list; EOS 4.36.1F templates use `X25519MLKEM768` |
+| `SecP256r1MLKEM768` | Hybrid | **No** in this lab | OpenSSL 3.5 may list; lab templates use `X25519MLKEM768` |
 
 IANA/OpenSSL code point for the hybrid group used in tests: **4588 (0x11ec)** for `X25519MLKEM768`.
 
@@ -58,7 +58,7 @@ IANA/OpenSSL code point for the hybrid group used in tests: **4588 (0x11ec)** fo
 
 | KEX algorithm | Type | Lab policy |
 |---------------|------|------------|
-| **`mlkem768x25519-sha256`** | Hybrid | **Yes** — `management ssh` on all cEOS nodes |
+| **`mlkem768x25519-sha256`** | Hybrid | **Yes** — `management ssh` on all EOS nodes |
 | Classical SSH KEX (`curve25519-sha256`, …) | Non-PQC | Disabled for management SSH in lab templates |
 
 NETCONF inherits SSH KEX from `management ssh`.
@@ -95,13 +95,13 @@ These are **not** “PQC ciphers” in the sense of ML-KEM — they are standard
 | Strict ssl profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) | **`X25519MLKEM768` only** — no classical ECDH fallback |
 | FreeRADIUS RadSec | **`Groups = X25519MLKEM768`** via OpenSSL config |
 | SSH management | **`mlkem768x25519-sha256`** preferred |
-| SYSLOG profile | Hybrid listed **with classical fallback** (operational compromise on 4.36.1F) |
+| SYSLOG profile | Hybrid listed **with classical fallback** (operational compromise for syslog client support) |
 
 See [Services overview](services/index.md) for per-interface live PQC status.
 
 ## OpenSSL build requirement (lab containers)
 
-cEOS ships its own EOS stack for switch-side TLS and SSH. **Peer containers in this lab cannot rely on stock Alpine or Docker Hub images** for PQC-hybrid RadSec or syslog-over-TLS — those images typically link against **OpenSSL 3.3.x or older**, which does **not** negotiate `X25519MLKEM768`.
+EOS implements switch-side TLS and SSH natively. **Peer containers in this lab cannot rely on stock Alpine or Docker Hub images** for PQC-hybrid RadSec or syslog-over-TLS — those images typically link against **OpenSSL 3.3.x or older**, which does **not** negotiate `X25519MLKEM768`.
 
 The lab therefore **self-compiles** service containers against **OpenSSL 3.5.7** from source:
 

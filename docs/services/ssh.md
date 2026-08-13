@@ -2,9 +2,19 @@
 
 SSH on **VRF MGMT** uses OpenSSH-style **PQC-hybrid key exchange**, not TLS ssl profiles. NETCONF inherits the same SSH stack.
 
+| Item | Value |
+|------|-------|
+| Port | **22** (SSH) |
+| KEX | `mlkem768x25519-sha256` (not an ssl profile) |
+| VRF | MGMT |
+| Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
+| Certificates | Classical SSH host keys (unchanged by PQC policy) |
+
 ## Configuration
 
-Templates: `configs/ceos/ceos*.cfg.in` -> `management ssh`
+### SSH security policy
+
+Templates: `configs/ceos/ceos*.cfg.in` → `management ssh`
 
 ```text
 management ssh
@@ -24,7 +34,7 @@ management ssh
 | Default VRF | `shutdown` | SSH disabled outside MGMT |
 | VRF MGMT | `no shutdown` | SSH listens on Management0 |
 
-NETCONF binding:
+### NETCONF service binding
 
 ```text
 management api netconf
@@ -72,7 +82,7 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 Expected: `kex: algorithm: mlkem768x25519-sha256`
 
-Automated: `make test-pqc` -> `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
+Automated: `make test-pqc` → `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
 
 See [PQC tests](../tests/pqc.md#ssh).
 

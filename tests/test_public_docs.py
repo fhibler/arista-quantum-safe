@@ -32,6 +32,11 @@ PUBLIC_REFERENCE_DOCS = (
     "pqc-overview.md",
 )
 
+PUBLIC_MISC_DOCS = (
+    "misc/index.md",
+    "misc/certificates-and-tls13.md",
+)
+
 PUBLIC_TEST_DOCS = (
     "tests/index.md",
     "tests/pqc.md",
@@ -65,6 +70,11 @@ def test_public_reference_doc_exists(rel_path: str) -> None:
     assert (PUBLIC_DOCS / rel_path).is_file()
 
 
+@pytest.mark.parametrize("rel_path", PUBLIC_MISC_DOCS)
+def test_public_misc_doc_exists(rel_path: str) -> None:
+    assert (PUBLIC_DOCS / rel_path).is_file()
+
+
 @pytest.mark.parametrize("rel_path", PUBLIC_SERVICE_DOCS)
 def test_public_service_doc_exists(rel_path: str) -> None:
     assert (PUBLIC_DOCS / rel_path).is_file()
@@ -77,7 +87,14 @@ def test_public_test_doc_exists(rel_path: str) -> None:
 
 def test_mkdocs_nav_matches_public_docs() -> None:
     text = MKDOCS.read_text(encoding="utf-8")
-    for rel_path in (*PUBLIC_SERVICE_DOCS, *PUBLIC_TEST_DOCS, *PUBLIC_REFERENCE_DOCS, "index.md", "setup.md"):
+    for rel_path in (
+        *PUBLIC_SERVICE_DOCS,
+        *PUBLIC_TEST_DOCS,
+        *PUBLIC_REFERENCE_DOCS,
+        *PUBLIC_MISC_DOCS,
+        "index.md",
+        "setup.md",
+    ):
         assert rel_path in text, f"mkdocs.yml nav missing {rel_path}"
 
 

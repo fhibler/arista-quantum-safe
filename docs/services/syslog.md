@@ -2,49 +2,93 @@
 
 Remote syslog uses **TLS 1.3** on port **6514** in VRF MGMT with ssl profile **`SYSLOG`**. The collector runs **syslog-ng** with OpenSSL 3.5.
 
+| Item | Value |
+|------|-------|
+| Port | **6514** (TLS) |
+| Profile | `SYSLOG` |
+| KEX group | `X25519MLKEM768:ecdh_x25519:secp256r1` (hybrid + classical fallback) |
+| Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
+| Peer config | `configs/syslog/syslog-ng.conf`, `docker/syslog/openssl-pqc.cnf` |
+| Collector | syslog-ng on `172.20.127.53` / `2001:db8:127::53` |
+
+See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
+
 ## Configuration
 
-### EOS (switch)
+### SSL profile `SYSLOG` (EOS switch)
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in`:
 
 ```text
 management security
    ssl profile SYSLOG
       tls versions 1.3
       key-establishment-group X25519MLKEM768:ecdh_x25519:secp256r1
-      ...
-!
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-client.pem key ceos1-both-client.key
+      trust certificate radsec-ca.pem
+```
+
+Unlike eAPI/RadSec/gNMI profiles, **SYSLOG allows classical fallback groups** so delivery works while the EOS syslog TLS client lacks PQC-hybrid support on 4.36.1F.
+
+### Service binding (EOS)
+
+```text
 logging vrf MGMT host 172.20.127.53 6514 protocol tls ssl-profile SYSLOG
 logging vrf MGMT host 2001:db8:127::53 6514 protocol tls ssl-profile SYSLOG
 ```
 
-Unlike eAPI/RadSec/gNMI profiles, **SYSLOG allows classical fallback groups** in the template so delivery works while the EOS syslog TLS client lacks PQC-hybrid support.
+Rendered templates use `${SYSLOG_SERVER_IPV4}` and `${SYSLOG_SERVER_IPV6}` placeholders.
 
 ### Collector (syslog-ng)
 
-Built from `docker/syslog/Dockerfile` with `docker/syslog/openssl-pqc.cnf`:
+Built from `docker/syslog/Dockerfile`. TLS listener in `configs/syslog/syslog-ng.conf`:
 
 ```text
+source s_tls {
+    network(
+        ip("::")
+        ip-protocol(6)
+        port(6514)
+        max-connections(32)
+        transport("tls")
+        tls(
+            key-file("/etc/syslog-ng/certs/server.key")
+            cert-file("/etc/syslog-ng/certs/server.pem")
+            ca-file("/etc/syslog-ng/certs/ca.pem")
+            peer-verify(optional-untrusted)
+        )
+    );
+};
+```
+
+OpenSSL policy via `OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf` (`docker/syslog/openssl-pqc.cnf`):
+
+```ini
 Groups = X25519MLKEM768:secp256r1:X25519:ffdhe2048
+CipherString = TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+MinProtocol = TLSv1.3
+MaxProtocol = TLSv1.3
 ```
 
 Cleartext UDP/TCP **514 is disabled** — only TLS **6514** listens.
 
 ## Caveats
 
-!!! warning "Known cEOS 4.36.1F gap — syslog client"
-    | Topic | Status |
-    |-------|--------|
-    | Config | Profile lists `X25519MLKEM768` first |
-    | Live wire (cEOS -> syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
-    | Collector probe (client -> syslog-ng) | **PQC-safe** when using PQC OpenSSL |
+| Topic | Status on cEOS 4.36.1F |
+|-------|------------------------|
+| Config | Profile lists `X25519MLKEM768` first |
+| Live wire (cEOS → syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
+| Collector probe (client → syslog-ng) | **PQC-safe** when using PQC OpenSSL |
 
+!!! warning "Known cEOS 4.36.1F gap — syslog client"
     The EOS syslog TLS **client** does not offer ML-KEM hybrid groups in ClientHello even when the ssl profile advertises them. The collector accepts classical `x25519`, so logs still flow.
 
     Tightening both sides to PQC-only would **break** remote syslog on 4.36.1F.
 
 ### Connection limit
 
-syslog-ng defaults to **`max-connections(10)`**. Each switch opens **persistent TLS sessions** to IPv4 and IPv6 collectors (two sessions per switch × three switches ≈ 10 slots). Leave headroom for probes and health checks.
+syslog-ng defaults to **`max-connections(10)`** in some builds; the lab template sets **32**. Each switch opens **persistent TLS sessions** to IPv4 and IPv6 collectors (two sessions per switch × three switches ≈ 6 slots). Leave headroom for probes and health checks.
 
 ## Verification
 
@@ -63,7 +107,7 @@ docker exec arista-quantum-safe-syslog netstat -ltn | grep 6514
 docker exec arista-quantum-safe-syslog openssl list -tls-groups | grep X25519MLKEM768
 ```
 
-### Collector-side PQC handshake
+### Live PQC handshake (collector-side)
 
 From the **test-runner** probe client (matches `make test-pqc` / `make test-syslog`):
 
@@ -76,7 +120,7 @@ docker exec arista-quantum-safe-test-runner sh -c \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
-### Wire capture (cEOS -> collector)
+### Wire capture (cEOS → collector)
 
 cEOS keeps long-lived sessions — bounce logging hosts to force a new handshake:
 

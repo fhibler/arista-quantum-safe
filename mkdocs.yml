@@ -65,6 +65,9 @@ nav:
       - RADIUS: tests/radius.md
       - Syslog: tests/syslog.md
       - MACsec: tests/macsec.md
+  - Miscellaneous:
+      - Overview: misc/index.md
+      - Certificates and TLS 1.3: misc/certificates-and-tls13.md
 
 plugins:
   - search

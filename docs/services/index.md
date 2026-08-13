@@ -46,5 +46,6 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 ## Related
 
 - [Setup](../setup.md) — deploy prerequisites and Makefile targets
+- [Certificates and TLS 1.3](../misc/certificates-and-tls13.md) — PKI requirements and OpenSSL examples
 - [PQC connectivity tests](../tests/pqc.md) — `make test-pqc` with OpenSSL reproduction commands
 - [Test suite overview](../tests/index.md) — full `make test-lab` sequence

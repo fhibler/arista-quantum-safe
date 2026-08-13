@@ -156,5 +156,6 @@ make test-pqc VERBOSE=1
 ## Related
 
 - [Services overview](services/index.md) — per-service configuration and caveats
+- [Certificates and TLS 1.3](misc/certificates-and-tls13.md) — PKI requirements and OpenSSL command examples
 - [PQC connectivity tests](tests/pqc.md) — handshake verification commands
 - [Setup](setup.md) — build and deploy workflow

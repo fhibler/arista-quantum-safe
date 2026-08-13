@@ -1,16 +1,16 @@
 # OpenConfig & gRPC
 
-This page covers **gNMI**, **gNOI** (same gRPC transport), **RESTCONF**, **eos-sdk-rpc**, and related TLS configuration on cEOS 4.36.1F.
+This page covers **gNMI**, **gNOI** (same gRPC transport), **RESTCONF**, and **eos-sdk-rpc** TLS configuration on cEOS 4.36.1F.
 
-## Shared TLS model
+| Item | Value |
+|------|-------|
+| Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
+| Shared policy | TLS **1.3 only**, PQC-hybrid group **`X25519MLKEM768`**, AEAD ciphers |
+| Certificates | Classical RSA with SANs for each switch MGMT address (`make gen-topo`) |
 
-EOS management APIs use named **ssl profiles** under `management security`:
+See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 
-- TLS **1.3 only**
-- Single PQC-hybrid group: **`X25519MLKEM768`**
-- AEAD ciphers: `TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256`, `TLS_AES_128_GCM_SHA256`
-
-Certificates are classical RSA with SANs for each switch MGMT address (`make gen-topo`).
+All services below use **VRF MGMT** unless noted.
 
 ---
 
@@ -20,8 +20,25 @@ Certificates are classical RSA with SANs for each switch MGMT address (`make gen
 |------|-------|
 | Port | **6030** |
 | Profile | `GNMI` |
-| VRF | MGMT |
-| mTLS | Client cert signed by lab CA (`radsec-ca.pem` trust on switch for gNMI clients) |
+| mTLS | Client cert signed by lab CA (`radsec-ca.pem` trust on switch) |
+
+### Configuration
+
+#### SSL profile `GNMI`
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in`:
+
+```text
+management security
+   ssl profile GNMI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
+      trust certificate radsec-ca.pem
+```
+
+#### Service binding
 
 ```text
 management api gnmi
@@ -30,7 +47,9 @@ management api gnmi
       ssl profile GNMI
 ```
 
-### Caveats (gNMI)
+gNOI uses the same gRPC endpoint and ssl profile as gNMI.
+
+### Caveats
 
 | Topic | Status on cEOS 4.36.1F |
 |-------|------------------------|
@@ -38,7 +57,19 @@ management api gnmi
 | Live TLS | **PQC-safe** |
 | Live mTLS | **PQC-safe** with lab client cert |
 
-### Verification (gNMI)
+### Verification
+
+#### Configuration
+
+```bash
+docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
+enable
+show management security ssl profile GNMI detail
+show management api gnmi
+EOF
+```
+
+#### Live PQC handshake
 
 TLS (server auth only):
 
@@ -63,8 +94,6 @@ docker exec arista-quantum-safe-test-runner sh -c \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
-gNOI uses the same gRPC endpoint and ssl profile as gNMI.
-
 ---
 
 ## RESTCONF (HTTPS)
@@ -73,7 +102,24 @@ gNOI uses the same gRPC endpoint and ssl profile as gNMI.
 |------|-------|
 | Port | **6020** |
 | Profile | `RESTCONF` |
-| VRF | MGMT |
+
+### Configuration
+
+#### SSL profile `RESTCONF`
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in` (reuses gNMI server cert on each switch):
+
+```text
+management security
+   ssl profile RESTCONF
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
+      trust certificate radsec-ca.pem
+```
+
+#### Service binding
 
 ```text
 management api restconf
@@ -82,14 +128,26 @@ management api restconf
    vrf MGMT
 ```
 
-### Caveats (RESTCONF)
+### Caveats
 
 | Topic | Status on cEOS 4.36.1F |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only |
 | Live wire | **PQC-safe** |
 
-### Verification (RESTCONF)
+### Verification
+
+#### Configuration
+
+```bash
+docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
+enable
+show management security ssl profile RESTCONF detail
+show management api restconf
+EOF
+```
+
+#### Live PQC handshake
 
 ```bash
 docker exec arista-quantum-safe-test-runner sh -c \
@@ -109,23 +167,53 @@ docker exec arista-quantum-safe-test-runner sh -c \
 | Profile | `GNMI` (reused) |
 | Auth | mTLS |
 
+### Configuration
+
+#### SSL profile
+
+Reuses the complete **`GNMI`** ssl profile (see [gNMI](#gnmi-gnoi-grpc)).
+
+#### Service binding
+
+Complete stanza from `configs/ceos/ceos1-both.cfg.in`:
+
 ```text
 management api eos-sdk-rpc
    transport grpc default
+      local interface Management0
+      service all
+      no disabled
       ssl profile GNMI
 ```
 
-### Caveats (eos-sdk-rpc)
+### Caveats
+
+| Topic | Status on cEOS 4.36.1F |
+|-------|------------------------|
+| Config | Profile lists `X25519MLKEM768` |
+| Live wire | **Not PQC-safe** — often negotiates classical group or fails PQC-only probe |
 
 !!! warning "Known cEOS 4.36.1F gap"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation**:
 
-    - PQC-only OpenSSL client -> EOF / no handshake
-    - Permissive client -> TLS 1.3 with classical group (e.g. `secp256r1`)
+    - PQC-only OpenSSL client → EOF / no handshake
+    - Permissive client → TLS 1.3 with classical group (e.g. `secp256r1`)
 
     `make test-pqc` validates `[config]` and reports **`WARN`** on the live probe instead of failing the suite.
 
-### Verification (eos-sdk-rpc)
+### Verification
+
+#### Configuration
+
+```bash
+docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
+enable
+show management security ssl profile GNMI detail
+show management api eos-sdk-rpc
+EOF
+```
+
+#### Live PQC handshake
 
 PQC-only probe (may fail on 4.36.1F):
 

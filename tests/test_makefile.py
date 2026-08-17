@@ -189,7 +189,10 @@ def test_download_ceos_loads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     had_dotenv = dotenv.exists()
     prior = dotenv.read_text(encoding="utf-8") if had_dotenv else None
     dotenv.write_text("ARISTA_TOKEN=fake-token-from-dotenv\n", encoding="utf-8")
+    empty_download = tmp_path / "empty-download"
+    empty_download.mkdir()
     env = {k: v for k, v in os.environ.items() if k != "ARISTA_TOKEN"}
+    env["CEOS_DOWNLOAD_DIR"] = str(empty_download)
     try:
         result = _run_make("download-ceos", env=env, check=False)
         combined = result.stdout + result.stderr
@@ -395,6 +398,18 @@ def test_internal_export_mk_defines_export_targets() -> None:
     assert "docs-build:" in content
     assert "check_public_export.py" in content
     assert "export_public.py" in content
+
+
+def test_internal_export_mk_resolves_git_branch() -> None:
+    export_mk = REPO_ROOT / "internal" / "export.mk"
+    content = export_mk.read_text(encoding="utf-8")
+    assert "GIT_BRANCH ?=" in content
+    assert "$(shell git branch --show-current)" in content
+    assert "--branch '$(GIT_BRANCH)'" in content
+    assert "'$$(git branch --show-current)'" not in content
+    result = _run_make("-n", "export-public")
+    assert "--branch '$(git branch --show-current)'" not in result.stdout
+    assert "--branch '" in result.stdout
 
 
 def test_make_help_lists_export_targets_from_internal_include() -> None:

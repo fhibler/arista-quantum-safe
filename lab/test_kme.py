@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 
 from lab.kme_http import (
@@ -48,6 +49,11 @@ class KmeTargets:
 
 class KmeCheckError(RuntimeError):
     """Raised when a live KME check fails."""
+
+
+# KEY_GEN_SEC_TO_GEN=30 in topology; QuaDRA may drain the pool between deploy and test-kme.
+ENC_KEYS_POOL_TIMEOUT_SEC = 35
+ENC_KEYS_POOL_POLL_SEC = 5
 
 
 def report_kme(detail: str) -> None:
@@ -100,7 +106,11 @@ def run_kme_curl(
     if show:
         echo_result(result, format_json=True)
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        detail = result.stderr.strip() or result.stdout.strip()
+        if not detail and result.returncode == 22:
+            detail = "HTTP error (empty key pool — try again later)"
+        if not detail:
+            detail = f"exit {result.returncode}"
         raise KmeCheckError(f"{title}: {detail}")
     return result
 
@@ -181,28 +191,43 @@ def check_kme_b_peer_status(targets: KmeTargets, *, verbose: bool | None = None)
     report_kme("peer status OK (kme-b → kme-a)")
 
 
+def _enc_keys_pool_empty(detail: str) -> bool:
+    lowered = detail.lower()
+    return "exit 22" in lowered or "empty key pool" in lowered or "try again later" in lowered
+
+
 def enc_keys_on_kme_a(targets: KmeTargets, *, verbose: bool | None = None) -> tuple[str, str]:
     enc_body = json.dumps({"number": 1, "size": KME_KEY_SIZE * 8})
-    result = run_kme_curl(
-        "kme-a enc_keys (master SAE, AES-256)",
-        targets.kme_container("kme-a"),
-        url=f"https://{targets.kme_a_ip}:8010/api/v1/keys/{KME_B_SAE_ID}/enc_keys",
-        cert="/certs/sae.crt.pem",
-        key="/certs/sae.key.pem",
-        method="POST",
-        body=enc_body,
-        verbose=verbose,
-    )
-    enc_payload = json.loads(result.stdout)
-    keys = enc_payload.get("keys")
-    if not isinstance(keys, list) or not keys:
-        raise KmeCheckError(f"enc_keys missing keys[]: {enc_payload!r}")
-    key_id = keys[0].get("key_ID")
-    key_b64 = keys[0].get("key")
-    if not isinstance(key_id, str) or not isinstance(key_b64, str):
-        raise KmeCheckError(f"enc_keys missing key_ID/key: {enc_payload!r}")
-    report_kme(f"enc_keys OK (key_ID {key_id}, {KME_KEY_SIZE} bytes)")
-    return key_id, key_b64
+    title = "kme-a enc_keys (master SAE, AES-256)"
+    url = f"https://{targets.kme_a_ip}:8010/api/v1/keys/{KME_B_SAE_ID}/enc_keys"
+    deadline = time.monotonic() + ENC_KEYS_POOL_TIMEOUT_SEC
+
+    while True:
+        try:
+            result = run_kme_curl(
+                title,
+                targets.kme_container("kme-a"),
+                url=url,
+                cert="/certs/sae.crt.pem",
+                key="/certs/sae.key.pem",
+                method="POST",
+                body=enc_body,
+                verbose=verbose,
+            )
+            enc_payload = json.loads(result.stdout)
+            keys = enc_payload.get("keys")
+            if not isinstance(keys, list) or not keys:
+                raise KmeCheckError(f"enc_keys missing keys[]: {enc_payload!r}")
+            key_id = keys[0].get("key_ID")
+            key_b64 = keys[0].get("key")
+            if not isinstance(key_id, str) or not isinstance(key_b64, str):
+                raise KmeCheckError(f"enc_keys missing key_ID/key: {enc_payload!r}")
+            report_kme(f"enc_keys OK (key_ID {key_id}, {KME_KEY_SIZE} bytes)")
+            return key_id, key_b64
+        except KmeCheckError as exc:
+            if not _enc_keys_pool_empty(str(exc)) or time.monotonic() >= deadline:
+                raise
+            time.sleep(ENC_KEYS_POOL_POLL_SEC)
 
 
 def dec_keys_on_kme_b(

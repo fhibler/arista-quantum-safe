@@ -57,6 +57,22 @@ def test_enc_keys_on_kme_a_parses_response() -> None:
     assert key_b64 == "c2VjcmV0"
 
 
+def test_enc_keys_on_kme_a_retries_empty_pool() -> None:
+    targets = _kme_targets()
+    calls = {"n": 0}
+
+    def fake_run(argv, **kwargs: object):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return subprocess.CompletedProcess(args=argv, returncode=22, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout=_enc_keys_json(), stderr="")
+
+    with patch("lab.test_kme.subprocess.run", side_effect=fake_run), patch("lab.test_kme.time.sleep"):
+        key_id, key_b64 = enc_keys_on_kme_a(targets)
+    assert calls["n"] == 3
+    assert key_id == "abc-123"
+
+
 def test_dec_keys_on_kme_b_validates_round_trip() -> None:
     targets = _kme_targets()
     with patch(

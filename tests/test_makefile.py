@@ -47,6 +47,7 @@ def test_makefile_exists() -> None:
         "validate-topo",
         "test",
         "check-ceos-image",
+        "check-containerlab",
         "import-ceos",
         "import-ceos-help",
         "download-ceos",
@@ -241,6 +242,47 @@ def test_check_ceos_image_fails_when_missing() -> None:
     combined = result.stdout + result.stderr
     assert "not found" in combined.lower()
     assert "docker import download/cEOS64-lab-" in combined
+
+
+def test_makefile_defines_check_containerlab() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "CLAB_MIN_VERSION ?=" in content
+    assert "check-containerlab:" in content
+    assert "not installed" in content
+    assert "deploy-kme: check-containerlab" in content
+    assert "destroy: check-containerlab" in content
+    assert "inspect: check-containerlab" in content
+    assert "graph: check-containerlab" in content
+
+
+def test_check_containerlab_fails_when_not_installed(tmp_path: Path) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for name in ("make", "bash", "sed", "sort", "head"):
+        src = shutil.which(name)
+        if src:
+            (bindir / name).symlink_to(src)
+    env = {**os.environ, "PATH": str(bindir)}
+    result = _run_make("check-containerlab", check=False, env=env)
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "not installed" in combined.lower()
+
+
+@pytest.mark.skipif(shutil.which("containerlab") is None, reason="containerlab not in PATH")
+def test_check_containerlab_passes_when_version_ok() -> None:
+    result = _run_make("check-containerlab", check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    combined = result.stdout + result.stderr
+    assert "Containerlab" in combined
+    assert "installed" in combined.lower()
+
+
+def test_check_containerlab_fails_when_version_too_old() -> None:
+    result = _run_make("check-containerlab", "CLAB_MIN_VERSION=99.99.0", check=False)
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "too old" in combined.lower() or "need >=" in combined
 
 
 def test_make_test_recipe_runs_pytest() -> None:

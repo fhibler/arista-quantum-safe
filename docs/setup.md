@@ -4,7 +4,7 @@
 
 | Item | Required | Notes |
 |------|----------|-------|
-| Docker + Containerlab 0.78.2 | Yes | `containerlab version` |
+| Docker + Containerlab 0.78.0+ | Yes | `make check-containerlab` (devcontainer pins **0.78.2**) |
 | cEOS-lab `ceos:4.36.2F` | Yes | Match host arch (amd64 / arm64) |
 | ~10 GB RAM | Yes | |
 | Arista portal token | No | For `make download-ceos` only |
@@ -49,8 +49,9 @@ make test-lab          # all live checks
 1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
 2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
 3. `make check-ceos-image` — verify local `ceos:4.36.2F`
-4. Staged KME deploy + key-pool wait
-5. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
+4. `make deploy-kme` — `check-containerlab`, then staged KME deploy
+5. Key-pool wait (`wait-kme-pool`)
+6. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
 
 First EOS boot can take **5–10 minutes** per node on arm64.
 
@@ -62,6 +63,8 @@ First EOS boot can take **5–10 minutes** per node on arm64.
 | `CLAB_PREFIX` | `arista` | Container name prefix |
 | `CLAB_NAME` | `quantum-safe` | Containerlab lab name |
 | `MGMT_SUBNET` | `172.20.127.0/24` | Management network CIDR |
+| `CLAB_VERSION` | `0.78.2` | Containerlab version pinned for devcontainer build |
+| `CLAB_MIN_VERSION` | `0.78.0` | Minimum Containerlab version enforced by `make check-containerlab` |
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
 | `VERBOSE` | (unset) | `VERBOSE=1 make test-pqc` echoes commands |
 
@@ -69,6 +72,8 @@ First EOS boot can take **5–10 minutes** per node on arm64.
 
 | Target | Description |
 |--------|-------------|
+| `make check-containerlab` | Verify Containerlab is installed and >= `CLAB_MIN_VERSION` |
+| `make check-ceos-image` | Verify cEOS-lab image exists and matches host arch |
 | `make destroy` | Tear down Containerlab lab |
 | `make redeploy` | `destroy` then `deploy` |
 | `make clean` | Full reset (lab, images, build cache, `.gen/`, downloads) |
@@ -89,6 +94,8 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 |---------|--------|
 | `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
 | `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.2F` |
+| `check-containerlab` fails (not installed) | Install Containerlab 0.78.0+ or rebuild the devcontainer (`make sync-devcontainer` then rebuild) |
+| `check-containerlab` fails (too old) | Upgrade to >= 0.78.0 (devcontainer pins 0.78.2) |
 | Deploy stuck at EOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |
 | RadSec / PQC test failures | Confirm radius container healthy; run `make test-pqc VERBOSE=1`; on hosts without PQC curl use `make test-lab-runner` |
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |

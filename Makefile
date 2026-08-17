@@ -4,6 +4,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 CLAB_VERSION  ?= 0.78.2
+CLAB_MIN_VERSION ?= 0.78.0
 CEOS_IMAGE ?= ceos:4.36.2F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
@@ -37,7 +38,7 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
-.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config docs-build export-public publish-public test check-ceos-image import-ceos import-ceos-help \
+.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config docs-build export-public publish-public test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
         clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
 
@@ -108,6 +109,36 @@ check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
 		exit 1; \
 	fi; \
 	echo "cEOS image '$(CEOS_IMAGE)' present ($$img_arch)"
+
+check-containerlab: ## Fail if containerlab is not installed or older than CLAB_MIN_VERSION
+	@set -euo pipefail; \
+	clab=$$(command -v containerlab 2>/dev/null || true); \
+	if [ -z "$$clab" ]; then \
+		echo "Containerlab is not installed (containerlab not found in PATH)."; \
+		echo "Install Containerlab $(CLAB_MIN_VERSION)+ (see docs/setup.md or make sync-devcontainer)."; \
+		exit 1; \
+	fi; \
+	if [ ! -x "$$clab" ]; then \
+		echo "Containerlab is not installed correctly ($$clab is not executable)."; \
+		exit 1; \
+	fi; \
+	if ! version_out=$$(containerlab version 2>&1); then \
+		echo "Containerlab is installed but 'containerlab version' failed ($$clab)."; \
+		printf '%s\n' "$$version_out"; \
+		exit 1; \
+	fi; \
+	installed=$$(printf '%s\n' "$$version_out" | sed -n 's/^[[:space:]]*version:[[:space:]]*//p' | head -1); \
+	if [ -z "$$installed" ]; then \
+		echo "Containerlab is installed but version could not be parsed ($$clab)."; \
+		printf '%s\n' "$$version_out"; \
+		exit 1; \
+	fi; \
+	if [ "$$(printf '%s\n' "$(CLAB_MIN_VERSION)" "$$installed" | sort -V | head -1)" != "$(CLAB_MIN_VERSION)" ]; then \
+		echo "Containerlab $$installed is too old (need >= $(CLAB_MIN_VERSION))."; \
+		echo "Pinned devcontainer version: $(CLAB_VERSION) — run make sync-devcontainer and rebuild, or upgrade manually."; \
+		exit 1; \
+	fi; \
+	echo "Containerlab $$installed installed ($$clab, >= $(CLAB_MIN_VERSION))"
 
 import-ceos: ## Import cEOS tarball from download/ (no API token)
 	@set -euo pipefail; \
@@ -284,7 +315,7 @@ test-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 P
 
 DEPLOY_KME_NODES := kme-a,kme-b
 
-deploy-kme: $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
+deploy-kme: check-containerlab $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
 	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES)
 
 wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
@@ -296,7 +327,7 @@ deploy: gen-topo build-radius build-syslog build-kme build-test-runner check-ceo
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
 
-destroy: $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
+destroy: check-containerlab $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
 
 clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, and build cache
@@ -350,10 +381,10 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, a
 
 redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so destroy has a local topology file)
 
-inspect: ## Inspect lab node status
+inspect: check-containerlab ## Inspect lab node status
 	containerlab inspect -t $(CLAB_TOPO_GEN)
 
-graph: ## Render topology graph
+graph: check-containerlab ## Render topology graph
 	containerlab graph -t $(CLAB_TOPO_GEN)
 
 ssh-ceos1-both: ## Open cEOS CLI on ceos1-both

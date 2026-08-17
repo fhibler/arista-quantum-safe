@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pwd
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -523,27 +524,11 @@ def probe_syslog_delivery_no_cleartext(
     cleartext_seen = threading.Event()
 
     def watch_cleartext() -> None:
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                syslog_container,
-                "timeout",
-                "30",
-                "tcpdump",
-                "-i",
-                "eth0",
-                "-n",
-                "-c",
-                "1",
-                "-Z",
-                "root",
-                capture_filter,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        cmd = (
+            f"timeout 30 tcpdump -i eth0 -n -c 1 -Z root "
+            f"{shlex.quote(capture_filter)}"
         )
+        result = docker_exec(syslog_container, cmd, check=False)
         if tcpdump_captured_packet(result.stdout + result.stderr):
             cleartext_seen.set()
 

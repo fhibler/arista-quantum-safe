@@ -174,7 +174,7 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ## Result summary
 
-Expected **live** behavior on **EOS 4.36.1F** (3 switches, IPv4 + IPv6 unless noted):
+Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless noted):
 
 | Service | TLS 1.3 compliant | KEX configured | KEX used (live) | PQC-safe |
 |---------|---------------------|----------------|-----------------|----------|

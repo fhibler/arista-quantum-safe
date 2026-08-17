@@ -26,8 +26,8 @@ Automated checks (`make test-lab`) validate configuration and live handshakes on
 | Requirement | Notes |
 |-------------|-------|
 | **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three EOS nodes |
-| **Containerlab** 0.78.1+ | Installed on the host or via the repo devcontainer |
-| **cEOS-lab image** | Tagged `ceos:4.36.1F` matching your host architecture — **required before deploy** |
+| **Containerlab** 0.78.2+ | Installed on the host or via the repo devcontainer |
+| **cEOS-lab image** | Tagged `ceos:4.36.2F` matching your host architecture — **required before deploy** |
 | **Arista portal token** | **Optional** — only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
 | **Python 3.11+** | For offline tests (`make test`) and lab check scripts |
 
@@ -42,11 +42,11 @@ make download-ceos
 make check-ceos-image
 
 # Or manual import
-docker import download/cEOS64-lab-4.36.1F.tar.xz ceos:4.36.1F
+docker import download/cEOS64-lab-4.36.2F.tar.xz ceos:4.36.2F
 make check-ceos-image
 ```
 
-On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.36.1F-EFT1.tar.xz`) but tag as `ceos:4.36.1F`.
+On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.36.2F-EFT1.tar.xz`) but tag as `ceos:4.36.2F`.
 
 ## Quick start
 

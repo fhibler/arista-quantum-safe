@@ -37,7 +37,7 @@ EOS **syslog client** may use classical **`x25519`** on the wire — **not PQC-s
 
 ## Result summary
 
-Recorded on **EOS 4.36.1F** (3 switches, IPv4 + IPv6):
+Recorded on **EOS 4.36.2F** (3 switches, IPv4 + IPv6):
 
 | Check | Expected | Outcome |
 |-------|----------|---------|

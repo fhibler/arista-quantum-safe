@@ -34,7 +34,7 @@ def test_validate_topo_cli_success() -> None:
 
 
 def test_validate_topo_cli_with_ceos_image_flag() -> None:
-    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--ceos-image", "ceos:4.36.1F")
+    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--ceos-image", "ceos:4.36.2F")
     assert result.returncode == 0, result.stderr
 
 

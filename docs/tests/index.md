@@ -53,7 +53,7 @@ Override subnet with `MGMT_SUBNET=… make test-lab`.
 
 ## Recorded test results
 
-Result tables in the detailed test pages reflect live runs against the lab default image **EOS 4.36.1F** (`CEOS_IMAGE=ceos:4.36.1F`; see [Setup](../setup.md)).
+Result tables in the detailed test pages reflect live runs against the lab default image **EOS 4.36.2F** (`CEOS_IMAGE=ceos:4.36.2F`; see [Setup](../setup.md)).
 
 ## Detailed test docs
 

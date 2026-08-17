@@ -3,8 +3,8 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-CLAB_VERSION  ?= 0.78.1
-CEOS_IMAGE ?= ceos:4.36.1F
+CLAB_VERSION  ?= 0.78.2
+CEOS_IMAGE ?= ceos:4.36.2F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download

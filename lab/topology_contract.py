@@ -308,7 +308,7 @@ QUADRA_KME_BUNDLE = {
     "ceos3-qkd": "kme-sae-b-bundle.pem",
 }
 
-DEFAULT_CEOS_IMAGE = "ceos:4.36.1F"
+DEFAULT_CEOS_IMAGE = "ceos:4.36.2F"
 CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
 MGMT_SUBNET_PLACEHOLDER = "${MGMT_SUBNET}"
 MGMT_IPV6_SUBNET_PLACEHOLDER = "${MGMT_IPV6_SUBNET}"
@@ -343,7 +343,7 @@ DOT1X_EAP_IDENTITY = "ceos2-pqc"
 DOT1X_REAUTH_PERIOD_SEC = 60
 TLS_PQC_GROUP = "X25519MLKEM768"
 TLS_PQC_EOS_GROUPS = TLS_PQC_GROUP
-# Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.1F syslog client gap on PQC-only).
+# Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.2F syslog client gap on PQC-only).
 SYSLOG_TLS_PQC_SAFE_EOS_GROUPS = "X25519MLKEM768:ecdh_x25519:secp256r1"
 SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
 # 3 cEOS × dual-stack TLS logging hosts hold long-lived sessions; default max-connections(10) is too low.

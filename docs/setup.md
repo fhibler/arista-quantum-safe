@@ -4,8 +4,8 @@
 
 | Item | Required | Notes |
 |------|----------|-------|
-| Docker + Containerlab 0.78.1 | Yes | `containerlab version` |
-| cEOS-lab `ceos:4.36.1F` | Yes | Match host arch (amd64 / arm64) |
+| Docker + Containerlab 0.78.2 | Yes | `containerlab version` |
+| cEOS-lab `ceos:4.36.2F` | Yes | Match host arch (amd64 / arm64) |
 | ~10 GB RAM | Yes | |
 | Arista portal token | No | For `make download-ceos` only |
 | Mgmt subnet | Default OK | Override with `MGMT_SUBNET=` if `.127.0/24` overlaps your host |
@@ -30,11 +30,11 @@ Downloaded tarballs land in `download/` (gitignored).
 Should you not be able to obtain a portal token, cEOS-lab is freely available after registration on [arista.com](https://www.arista.com). Download the tarball for your architecture from the [Arista software portal](https://www.arista.com/en/support/software-download), then import it locally:
 
 ```bash
-docker import /path/to/cEOS64-lab-4.36.1F.tar.xz ceos:4.36.1F
+docker import /path/to/cEOS64-lab-4.36.2F.tar.xz ceos:4.36.2F
 make check-ceos-image
 ```
 
-Override the expected tag with `CEOS_IMAGE=ceos:4.36.1F make deploy`.
+Override the expected tag with `CEOS_IMAGE=ceos:4.36.2F make deploy`.
 
 ## Deploy workflow
 
@@ -48,7 +48,7 @@ make test-lab          # all live checks
 
 1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
 2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
-3. `make check-ceos-image` — verify local `ceos:4.36.1F`
+3. `make check-ceos-image` — verify local `ceos:4.36.2F`
 4. Staged KME deploy + key-pool wait
 5. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
 
@@ -58,7 +58,7 @@ First EOS boot can take **5–10 minutes** per node on arm64.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CEOS_IMAGE` | `ceos:4.36.1F` | cEOS-lab Docker image tag |
+| `CEOS_IMAGE` | `ceos:4.36.2F` | cEOS-lab Docker image tag |
 | `CLAB_PREFIX` | `arista` | Container name prefix |
 | `CLAB_NAME` | `quantum-safe` | Containerlab lab name |
 | `MGMT_SUBNET` | `172.20.127.0/24` | Management network CIDR |
@@ -88,7 +88,7 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 | Symptom | Action |
 |---------|--------|
 | `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
-| `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.1F` |
+| `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.2F` |
 | Deploy stuck at EOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |
 | RadSec / PQC test failures | Confirm radius container healthy; run `make test-pqc VERBOSE=1`; on hosts without PQC curl use `make test-lab-runner` |
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |

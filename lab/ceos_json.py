@@ -133,13 +133,22 @@ def extract_ckn_from_json(obj: Any) -> str:
     raise CeosJsonError("expected CKN in mac security participants detail")
 
 
+def _live_peer_lists(obj: Any) -> Iterator[list[Any]]:
+    """Yield every ``livePeerList`` / ``livePeers`` list in the JSON tree."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key.lower() in {"livepeerlist", "livepeers"} and isinstance(value, list):
+                yield value
+            yield from _live_peer_lists(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _live_peer_lists(item)
+
+
 def mka_has_live_peers(obj: Any) -> bool:
-    """Return True when MKA participant JSON lists at least one live peer."""
-    peers = json_find_value(obj, "livePeerList")
-    if peers is None:
-        peers = json_find_value(obj, "livePeers")
-    if isinstance(peers, list):
-        return len(peers) > 0
+    """Return True when any MKA participant JSON lists at least one live peer."""
+    if any(len(peers) > 0 for peers in _live_peer_lists(obj)):
+        return True
     return json_tree_contains(obj, "Live peer list:") and not json_tree_contains(obj, "Live peer list: []")
 
 

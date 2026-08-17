@@ -81,6 +81,9 @@ SSH_PQC_USER = "admin"
 CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
 EOSSDKRPC_CLASSICAL_PROBE_GROUP = "secp256r1"
 PQC_GROUP = TLS_PQC_GROUP
+RADSEC_AAA_SUCCESS_MARKER = "successfully authenticated"
+RADSEC_AAA_POLL_INTERVAL_SEC = 2
+RADSEC_AAA_POLL_ATTEMPTS = 15
 
 
 @dataclass(frozen=True)
@@ -621,6 +624,17 @@ def probe_ssh_pqc(
     )
 
 
+def radsec_aaa_test_commands(radius_addr: str) -> str:
+    return (
+        "enable\n"
+        f"test aaa group RADIUS server {radius_addr} tls port {RADSEC_PORT} vrf MGMT\n"
+    )
+
+
+def radsec_aaa_test_succeeded(output: str) -> bool:
+    return RADSEC_AAA_SUCCESS_MARKER in output
+
+
 def probe_radsec_from_switch(
     targets: LabTargets,
     node: str,
@@ -628,20 +642,20 @@ def probe_radsec_from_switch(
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
 ) -> None:
+    """Run ``test aaa`` from a switch, retrying transient RadSec/TLS failures."""
     container = targets.ceos_container(node)
     radius_addr = targets.service_ip("radius", family)
-    output = ceos_cli(
-        container,
-        "enable\n"
-        f"test aaa group RADIUS server {radius_addr} tls port {RADSEC_PORT} vrf MGMT\n",
-        verbose=verbose,
-    )
-    assert_contains(
-        output,
-        "successfully authenticated",
-        label=f"{node} RadSec AAA test ({family_label(family)})",
-    )
-    report_live(f"RadSec AAA via test aaa ({family_label(family)}) → radius:{RADSEC_PORT}")
+    commands = radsec_aaa_test_commands(radius_addr)
+    label = f"{node} RadSec AAA test ({family_label(family)})"
+    last_output = ""
+    for attempt in range(RADSEC_AAA_POLL_ATTEMPTS):
+        if attempt:
+            time.sleep(RADSEC_AAA_POLL_INTERVAL_SEC)
+        last_output = ceos_cli(container, commands, verbose=verbose)
+        if radsec_aaa_test_succeeded(last_output):
+            report_live(f"RadSec AAA via test aaa ({family_label(family)}) → radius:{RADSEC_PORT}")
+            return
+    assert_contains(last_output, RADSEC_AAA_SUCCESS_MARKER, label=label)
 
 
 def check_syslog_collector_config(targets: LabTargets, *, verbose: bool | None = None) -> None:

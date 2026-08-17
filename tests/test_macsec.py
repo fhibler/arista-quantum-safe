@@ -13,6 +13,7 @@ from lab.test_macsec import (
     DOT1X_EAP_IDENTITY,
     MacsecCheckError,
     check_dot1x_reauth_cycle,
+    check_mka_participants,
     extract_ckn,
     run_macsec_checks,
 )
@@ -173,6 +174,24 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
     ):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
             run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24", skip_config=True)
+
+
+def test_check_mka_participants_retries_until_peers_appear() -> None:
+    call_count = {"n": 0}
+    ckn = "abcdef0123456789"
+
+    def fake_ceos_show_json(_container: str, command: str, **kwargs: object):
+        assert "show mac security participants" in command
+        call_count["n"] += 1
+        peers = [] if call_count["n"] < 3 else ["peer1"]
+        return {"participants": [{"ckn": ckn, "success": True, "livePeerList": peers}]}
+
+    with patch("lab.test_macsec.ceos_show_json", side_effect=fake_ceos_show_json):
+        with patch("lab.test_macsec.time.sleep") as sleep:
+            result = check_mka_participants("clab-test-ceos1-both", AUTHENTICATOR)
+    assert result == ckn
+    assert call_count["n"] == 3
+    assert sleep.call_count == 2
 
 
 def test_check_dot1x_reauth_cycle_happy_path() -> None:

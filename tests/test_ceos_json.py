@@ -80,6 +80,21 @@ def test_mka_has_live_peers() -> None:
     assert not mka_has_live_peers({"livePeerList": []})
 
 
+def test_mka_has_live_peers_any_non_empty_list() -> None:
+    """During reauth EOS may list a stale participant with empty peers before the live one."""
+    payload = {
+        "interfaces": {
+            "Ethernet1": {
+                "participants": {
+                    "stale": {"success": False, "livePeerList": []},
+                    "current": {"success": True, "livePeerList": ["peer1"]},
+                }
+            }
+        }
+    }
+    assert mka_has_live_peers(payload)
+
+
 def test_macsec_traffic_protected() -> None:
     assert macsec_traffic_protected({"details": {"traffic": "Protected"}})
     assert macsec_traffic_protected({"traffic": "encrypted"})

@@ -51,6 +51,8 @@ QUADRA_INTER_SWITCH_PEER = QUADRA_PEER_IP
 REAUTH_WAIT_BUFFER_SEC = 15
 STATIC_MACSEC_POLL_INTERVAL_SEC = 2
 STATIC_MACSEC_POLL_ATTEMPTS = 15
+MKA_POLL_INTERVAL_SEC = 2
+MKA_POLL_ATTEMPTS = 15
 
 
 class MacsecCheckError(RuntimeError):
@@ -186,17 +188,28 @@ def check_macsec_interface(container: str, node: str, *, verbose: bool | None = 
 
 
 def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
-    output = ceos_show_json(container, "show mac security participants detail", verbose=verbose)
-    if not json_truthy(output, "success") and not json_tree_contains(output, "Success", case_sensitive=False):
-        raise MacsecCheckError(f"{node}: expected successful MKA participant")
-    if not mka_has_live_peers(output):
-        raise MacsecCheckError(f"{node}: MKA live peer list is empty")
-    try:
-        ckn = extract_ckn_from_json(output)
-    except CeosJsonError as exc:
-        raise MacsecCheckError(str(exc)) from exc
-    report_live(f"MKA participant CKN {ckn}, Success: True")
-    return ckn
+    """Poll MKA participants until live peers appear (802.1X reauth can briefly clear them)."""
+    last_error: str | None = None
+    for attempt in range(MKA_POLL_ATTEMPTS):
+        if attempt:
+            time.sleep(MKA_POLL_INTERVAL_SEC)
+        output = ceos_show_json(container, "show mac security participants detail", verbose=verbose)
+        if not json_truthy(output, "success") and not json_tree_contains(
+            output, "Success", case_sensitive=False
+        ):
+            last_error = f"{node}: expected successful MKA participant"
+            continue
+        if not mka_has_live_peers(output):
+            last_error = f"{node}: MKA live peer list is empty"
+            continue
+        try:
+            ckn = extract_ckn_from_json(output)
+        except CeosJsonError as exc:
+            last_error = str(exc)
+            continue
+        report_live(f"MKA participant CKN {ckn}, Success: True")
+        return ckn
+    raise MacsecCheckError(last_error or f"{node}: MKA participants check failed")
 
 
 def count_radius_login_ok(radius_container: str, *, verbose: bool | None = None) -> int:

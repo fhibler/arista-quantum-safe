@@ -13,9 +13,9 @@ from typing import Sequence
 from lab.test_pqc_connections import (
     PqcConnectionError,
     LabTargets,
-    RADSEC_PORT,
     check_radsec_config,
     check_radius_config,
+    probe_radsec_from_switch,
 )
 from lab.report import (
     CheckStatus,
@@ -164,24 +164,10 @@ def run_radius_checks(
         except PqcConnectionError as exc:
             raise LabTestError(str(exc)) from exc
         for family in IP_FAMILIES:
-            addr = radius_ip if family == IP_FAMILY_IPV4 else radius_ipv6
-            result = run_step(
-                f"{node} RadSec AAA test ({family})",
-                ["docker", "exec", "-i", container, "Cli"],
-                input_text=(
-                    "enable\n"
-                    f"test aaa group RADIUS server {addr} tls port {RADSEC_PORT} vrf MGMT\n"
-                ),
-                verbose=verbose,
-            )
-            if "successfully authenticated" not in result.stdout:
-                raise LabTestError(
-                    f"{node} RadSec AAA test ({family}): expected authentication success"
-                )
-            report_ok(
-                "[live]",
-                f"{node} RadSec AAA via test aaa ({family}) → radius:{RADSEC_PORT}",
-            )
+            try:
+                probe_radsec_from_switch(targets, node, family=family, verbose=verbose)
+            except PqcConnectionError as exc:
+                raise LabTestError(str(exc)) from exc
 
     if not verbose:
         report_summary("RADIUS", "all checks passed")

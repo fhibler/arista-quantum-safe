@@ -333,12 +333,34 @@ def test_probe_ssh_pqc_requires_pqc_kex(ip_family: str) -> None:
 
 def test_probe_radsec_from_switch_requires_auth_success(ip_family: str) -> None:
     targets = _lab_targets()
-    with patch(
-        "lab.test_pqc_connections.ceos_cli",
-        return_value="authentication failed",
+    with (
+        patch(
+            "lab.test_pqc_connections.ceos_cli",
+            return_value="authentication failed",
+        ),
+        patch("lab.test_pqc_connections.time.sleep"),
     ):
         with pytest.raises(Exception, match="RadSec AAA test"):
             probe_radsec_from_switch(targets, "ceos1-both", family=ip_family)
+
+
+def test_probe_radsec_from_switch_retries_until_auth_success(ip_family: str) -> None:
+    targets = _lab_targets()
+    call_count = {"n": 0}
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        assert "test aaa group RADIUS" in commands
+        call_count["n"] += 1
+        if call_count["n"] < 3:
+            return "authentication failed"
+        return "successfully authenticated"
+
+    with patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli):
+        with patch("lab.test_pqc_connections.time.sleep") as sleep:
+            probe_radsec_from_switch(targets, "ceos1-both", family=ip_family)
+
+    assert call_count["n"] == 3
+    assert sleep.call_count == 2
 
 
 def test_probe_eossdkrpc_tls_skips_ipv6(capsys) -> None:

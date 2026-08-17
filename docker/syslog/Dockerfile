@@ -21,10 +21,10 @@ RUN ARCH="${TARGETARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}" \
       arm64)  OPENSSL_TARGET=linux-aarch64 ;; \
       *) echo "unsupported architecture: ${ARCH}" >&2; exit 1 ;; \
     esac \
- && wget -q "https://github.com/openssl/openssl/archive/refs/tags/${OPENSSL_VERSION}.tar.gz" \
+ && wget -q "https://www.openssl.org/source/${OPENSSL_VERSION}.tar.gz" \
       -O /tmp/openssl.tar.gz \
  && tar -xzf /tmp/openssl.tar.gz -C /tmp \
- && cd "/tmp/openssl-openssl-${OPENSSL_VERSION#openssl-}" \
+ && cd "/tmp/${OPENSSL_VERSION}" \
  && ./Configure "${OPENSSL_TARGET}" no-shared --prefix=/opt/openssl --openssldir=/opt/openssl \
  && make -j"$(nproc)" \
  && make install_sw \

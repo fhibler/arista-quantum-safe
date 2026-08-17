@@ -115,6 +115,22 @@ def test_devcontainer_dockerfile_installs_gnmic() -> None:
     assert "install -m 755 /tmp/gnmic /usr/local/bin/gnmic" in dockerfile
 
 
+def test_test_runner_harness_uses_container_python() -> None:
+    harness = (REPO_ROOT / "docker" / "test-runner" / "harness-entrypoint.sh").read_text(
+        encoding="utf-8"
+    )
+    requirements_lab = (REPO_ROOT / "requirements-lab.txt").read_text(encoding="utf-8")
+    test_runner = (REPO_ROOT / "docker" / "test-runner" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert 'PYTHON=python3' in harness
+    assert "scripts/check_lab_imports.py --check-imports" in harness
+    assert "requirements-lab.txt" in harness
+    assert 'make PYTHON="$PYTHON"' in harness
+    assert "requirements-dev.txt" not in harness
+    assert "PyYAML>=" in requirements_lab
+    assert "py3-yaml" in test_runner
+
+
 def test_devcontainer_lock_has_dind_not_dood() -> None:
     lock = json.loads(DEVCONTAINER_LOCK.read_text(encoding="utf-8"))
     features = lock.get("features", {})

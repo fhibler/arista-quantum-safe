@@ -142,6 +142,7 @@ RUN apk add --no-cache \
     tshark \
     python3 \
     py3-pip \
+    py3-yaml \
     make \
     bash
 

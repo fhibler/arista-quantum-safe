@@ -4,9 +4,14 @@ set -eu
 
 cd /workspace
 
-if ! python3 -c "import pytest" 2>/dev/null; then
-	echo "Installing Python test dependencies..."
-	pip3 install --break-system-packages -q -r requirements-dev.txt
+# Always use the container Python. A host-mounted .venv may point at a different
+# interpreter/version and lack lab modules even after pip installs into python3.
+PYTHON=python3
+
+if ! "$PYTHON" scripts/check_lab_imports.py --check-imports 2>/dev/null; then
+	echo "Installing Python lab dependencies..."
+	"$PYTHON" -m pip install --break-system-packages -q -r requirements-lab.txt
+	"$PYTHON" scripts/check_lab_imports.py --check-imports
 fi
 
-exec make "$@"
+exec make PYTHON="$PYTHON" "$@"

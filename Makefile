@@ -281,9 +281,9 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 
 build-test-runner: ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
-	@$(MAKE) --no-print-directory test-test-runner-image
+	@$(MAKE) --no-print-directory verify-test-runner-image
 
-test-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
+verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
 	@set -euo pipefail; \
 	echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
 	groups=$$(docker run --rm $(TEST_RUNNER_IMAGE) openssl list -tls-groups); \

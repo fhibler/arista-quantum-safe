@@ -71,7 +71,7 @@ First EOS boot can take **5–10 minutes** per node on arm64.
 |--------|-------------|
 | `make destroy` | Tear down Containerlab lab |
 | `make redeploy` | `destroy` then `deploy` |
-| `make clean` | Full reset (lab, images, `.gen/`, downloads) |
+| `make clean` | Full reset (lab, images, build cache, `.gen/`, downloads) |
 | `make inspect` | Node status |
 | `make test` | Offline pytest (no deployed lab) |
 | `make test-pqc` | PQC management-plane checks only |

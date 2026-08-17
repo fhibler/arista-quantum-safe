@@ -299,7 +299,7 @@ deploy: gen-topo build-radius build-syslog build-kme build-test-runner check-ceo
 destroy: $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
 
-clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker images
+clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, and build cache
 	@set -uo pipefail; \
 	echo "=== Destroying lab (if deployed) ==="; \
 	if [ -f "$(CLAB_TOPO_GEN)" ]; then \
@@ -343,6 +343,8 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, and Docker image
 			echo "  rmi $(CEOS_IMAGE)"; \
 			docker rmi "$(CEOS_IMAGE)" 2>/dev/null || true; \
 		fi; \
+		echo "=== Pruning Docker build cache ==="; \
+		docker buildx prune -af 2>/dev/null || true; \
 	fi; \
 	echo "=== Clean complete ==="
 

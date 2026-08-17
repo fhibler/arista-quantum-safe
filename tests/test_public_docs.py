@@ -52,6 +52,33 @@ def test_public_readme_has_no_todo_placeholders() -> None:
     assert "TODO —" not in content
 
 
+INTERNAL_ONLY_MAKE_TARGETS = (
+    "docs-build",
+    "export-public",
+    "publish-public",
+    "make graph",
+)
+
+
+def test_public_docs_exclude_internal_make_targets() -> None:
+    for path in sorted(PUBLIC_DOCS.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for target in INTERNAL_ONLY_MAKE_TARGETS:
+            assert target not in text, (
+                f"{path.relative_to(REPO_ROOT)} must not reference removed/internal target {target!r}"
+            )
+    readme = README.read_text(encoding="utf-8")
+    for target in INTERNAL_ONLY_MAKE_TARGETS:
+        assert target not in readme, f"README must not reference {target!r}"
+
+
+def test_public_setup_doc_has_makefile_reference() -> None:
+    content = (PUBLIC_DOCS / "setup.md").read_text(encoding="utf-8")
+    assert "make help" in content
+    assert "## Makefile reference" in content
+    assert "mkdocs build --strict" in content
+
+
 def test_public_readme_covers_required_sections() -> None:
     content = README.read_text(encoding="utf-8").lower()
     for fragment in (

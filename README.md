@@ -11,7 +11,7 @@ Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed 
 
 | Topic | Location |
 |-------|----------|
-| Setup, Makefile variables, troubleshooting | [Setup guide](https://fhibler.github.io/arista-quantum-safe/setup/) |
+| Setup, Makefile reference, troubleshooting | [Setup guide](https://fhibler.github.io/arista-quantum-safe/setup/) |
 | Per-service PQC configuration | [Services](https://fhibler.github.io/arista-quantum-safe/services/) |
 | Live test suite (`make test-lab`) | [Tests](https://fhibler.github.io/arista-quantum-safe/tests/) |
 <!-- site-config:end -->

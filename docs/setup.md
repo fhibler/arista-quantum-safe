@@ -55,6 +55,69 @@ make test-lab          # all live checks
 
 First EOS boot can take **5–10 minutes** per node on arm64.
 
+!!! note "Staged deploy"
+    `deploy-kme` and `wait-kme-pool` are for manual debugging only. Do **not** run `make deploy-kme` and then `make deploy` back-to-back — `deploy` already calls `deploy-kme` internally, and Containerlab rejects a second `--node-filter` deploy while KME nodes are already running. Use `make deploy` or `make redeploy` for a full bring-up.
+
+## Makefile reference
+
+Run `make help` for the authoritative target list in your clone.
+
+### Topology and offline validation
+
+| Target | Description |
+|--------|-------------|
+| `make help` | List available targets |
+| `make gen-topo` | Render `lab/.gen/`, PKI, and topology YAML; validate contract |
+| `make validate-topo` | Contract-check generated topology |
+| `make sync-devcontainer` | Sync `CLAB_VERSION` into `.devcontainer/devcontainer.json` |
+| `make test` | Offline pytest (no deployed lab) |
+
+### cEOS-lab and preflight
+
+| Target | Description |
+|--------|-------------|
+| `make check-containerlab` | Verify Containerlab is installed and >= `CLAB_MIN_VERSION` |
+| `make check-ceos-image` | Verify cEOS-lab image exists and matches host arch |
+| `make import-ceos-help` / `make download-ceos-help` | Print import or download instructions |
+| `make import-ceos` / `make download-ceos` | Import tarball from `download/` or download via Arista API |
+
+### Images and deploy
+
+| Target | Description |
+|--------|-------------|
+| `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build lab Docker images (includes image smoke tests) |
+| `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
+| `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
+| `make destroy` | Tear down Containerlab lab |
+| `make redeploy` | `gen-topo`, then `destroy`, then `deploy` |
+| `make clean` | Full reset (lab, images, build cache, `.gen/`, downloads) |
+| `make inspect` | Node status |
+
+### Live tests and shells
+
+| Target | Description |
+|--------|-------------|
+| `make test-lab` | All live lab checks |
+| `make test-lab-runner` | Same checks from mgmt-network harness (Docker only) |
+| `make test-radius` / `test-kme` / `test-pqc` / `test-syslog` / `test-macsec` / `test-qkd` / `test-hosts` | Individual live check sections |
+| `make test-macsec-reauth` | MACsec plus ~75 s 802.1X reauth wait |
+| `make install-quadra` | Install QuaDRA swix on ceos1-both and ceos3-qkd (when present) |
+| `make ssh-ceos1-both` / `ssh-ceos2-pqc` / `ssh-ceos3-qkd` | EOS CLI shells |
+| `make shell-test-runner` | Interactive PQC probe shell on `test-runner` |
+
+Add `VERBOSE=1` to any live test target to echo commands and full output.
+
+### Building this documentation site
+
+Build locally with MkDocs:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs build --strict
+```
+
+GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhibler/arista-quantum-safe/blob/main/.github/workflows/pages.yml) on each push to `main`.
+
 ## Makefile variables
 
 | Variable | Default | Purpose |
@@ -68,22 +131,6 @@ First EOS boot can take **5–10 minutes** per node on arm64.
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
 | `VERBOSE` | (unset) | `VERBOSE=1 make test-pqc` echoes commands |
 
-## Useful targets
-
-| Target | Description |
-|--------|-------------|
-| `make check-containerlab` | Verify Containerlab is installed and >= `CLAB_MIN_VERSION` |
-| `make check-ceos-image` | Verify cEOS-lab image exists and matches host arch |
-| `make destroy` | Tear down Containerlab lab |
-| `make redeploy` | `destroy` then `deploy` |
-| `make clean` | Full reset (lab, images, build cache, `.gen/`, downloads) |
-| `make inspect` | Node status |
-| `make test` | Offline pytest (no deployed lab) |
-| `make test-pqc` | PQC management-plane checks only |
-| `make test-lab-runner` | All live checks from mgmt-network harness (Docker only; no host Python/curl) |
-| `make shell-test-runner` | Interactive PQC probe shell on `test-runner` node |
-| `make ssh-ceos1-both` | Open EOS CLI on a switch |
-
 ## Devcontainer
 
 A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reproducible Containerlab environment. Rebuild after pulling changes.
@@ -92,6 +139,7 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 
 | Symptom | Action |
 |---------|--------|
+| Deploy fails after manual `deploy-kme` | Run `make deploy` or `make redeploy` instead of `deploy-kme` followed by `deploy` |
 | `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
 | `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.2F` |
 | `check-containerlab` fails (not installed) | Install Containerlab 0.78.0+ or rebuild the devcontainer (`make sync-devcontainer` then rebuild) |

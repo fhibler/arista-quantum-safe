@@ -21,7 +21,7 @@ Most TLS ssl profiles list **only** the hybrid group `X25519MLKEM768` — no cla
 ## Quick links
 
 - [PQC overview](pqc-overview.md) — algorithms, hybrid vs pure PQC, OpenSSL container builds
-- [Setup](setup.md) — prerequisites, deploy, Makefile variables
+- [Setup](setup.md) — prerequisites, deploy, Makefile reference
 - [Services](services/index.md) — per-interface configuration and caveats
 - [Certificates and TLS 1.3](misc/certificates-and-tls13.md) — PKI requirements and OpenSSL command examples
 - [Tests](tests/index.md) — what `make test-lab` validates and how to reproduce checks manually

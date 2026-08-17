@@ -73,9 +73,13 @@ make test
 
 Validates topology contract, template rendering, helper parsers, and Docker image smoke tests without Containerlab deploy.
 
-Docs site (MkDocs strict):
+## Documentation site (local build)
+
+Build this site locally with:
 
 ```bash
 pip install -r docs/requirements.txt
 mkdocs build --strict
 ```
+
+Published docs are deployed automatically via GitHub Actions on push to `main`.

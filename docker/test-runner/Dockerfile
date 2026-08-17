@@ -134,6 +134,7 @@ FROM alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache \
     ca-certificates \
+    docker-cli \
     iputils \
     iproute2 \
     bind-tools \

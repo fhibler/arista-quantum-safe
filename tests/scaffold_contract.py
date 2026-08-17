@@ -48,6 +48,7 @@ REQUIRED_PATHS = [
     "internal/docs/syslog.md",
     "internal/docs/quadra.md",
     "internal/docs/verification.md",
+    "internal/export.mk",
     "scripts/check_public_export.py",
     "scripts/export_public.py",
     "scripts/site_config.py",

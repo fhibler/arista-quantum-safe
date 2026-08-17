@@ -63,7 +63,6 @@ def test_makefile_exists() -> None:
         "clean",
         "redeploy",
         "inspect",
-        "graph",
         "ssh-ceos1-both",
         "ssh-ceos2-pqc",
         "ssh-ceos3-qkd",
@@ -252,7 +251,6 @@ def test_makefile_defines_check_containerlab() -> None:
     assert "deploy-kme: check-containerlab" in content
     assert "destroy: check-containerlab" in content
     assert "inspect: check-containerlab" in content
-    assert "graph: check-containerlab" in content
 
 
 def test_check_containerlab_fails_when_not_installed(tmp_path: Path) -> None:
@@ -278,8 +276,26 @@ def test_check_containerlab_passes_when_version_ok() -> None:
     assert "installed" in combined.lower()
 
 
-def test_check_containerlab_fails_when_version_too_old() -> None:
-    result = _run_make("check-containerlab", "CLAB_MIN_VERSION=99.99.0", check=False)
+def test_check_containerlab_fails_when_version_too_old(tmp_path: Path) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake_clab = bindir / "containerlab"
+    fake_clab.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = version ]; then\n'
+        '  printf "%s\\n" "    version: 0.78.2"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    fake_clab.chmod(0o755)
+    for name in ("make", "bash", "sed", "sort", "head"):
+        src = shutil.which(name)
+        if src:
+            (bindir / name).symlink_to(src)
+    env = {**os.environ, "PATH": str(bindir)}
+    result = _run_make("check-containerlab", "CLAB_MIN_VERSION=99.99.0", check=False, env=env)
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "too old" in combined.lower() or "need >=" in combined
@@ -359,3 +375,32 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert "rm -f .env" in clean
     assert "CLAB_MGMT_NETWORK" in clean
     assert "docker network rm" in clean
+
+
+def test_root_makefile_has_no_export_targets() -> None:
+    """Export/publish targets must not be defined in the public Makefile."""
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "export-public:" not in content
+    assert "publish-public:" not in content
+    assert "docs-build:" not in content
+    assert "include internal/export.mk" in content
+
+
+def test_internal_export_mk_defines_export_targets() -> None:
+    export_mk = REPO_ROOT / "internal" / "export.mk"
+    assert export_mk.is_file()
+    content = export_mk.read_text(encoding="utf-8")
+    assert "export-public:" in content
+    assert "publish-public:" in content
+    assert "docs-build:" in content
+    assert "check_public_export.py" in content
+    assert "export_public.py" in content
+
+
+def test_make_help_lists_export_targets_from_internal_include() -> None:
+    export_mk = REPO_ROOT / "internal" / "export.mk"
+    if not export_mk.is_file():
+        pytest.skip("internal/export.mk not present")
+    result = _run_make("help")
+    for target in ("export-public", "publish-public", "docs-build"):
+        assert target in result.stdout

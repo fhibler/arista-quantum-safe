@@ -38,12 +38,12 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
-.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config docs-build export-public publish-public test check-ceos-image check-containerlab import-ceos import-ceos-help \
+.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect graph ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
+        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/ceos/quadra-daemon-master.cfg.in configs/ceos/quadra-daemon-slave.cfg.in configs/ceos/quadra-macsec-master.cfg.in configs/ceos/quadra-macsec-slave.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
@@ -61,20 +61,6 @@ sync-devcontainer: ## Sync CLAB_VERSION from Makefile into .devcontainer/devcont
 sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
 	@$(PYTHON) scripts/site_config.py --sync-readme
 	@$(PYTHON) scripts/site_config.py --sync-mkdocs
-
-docs-build: ## Build public docs site (MkDocs strict + export boundary check)
-	@$(PYTHON) scripts/site_config.py --check
-	mkdocs build --strict
-	@$(PYTHON) scripts/check_public_export.py
-
-export-public: ## Filter history and verify public mirror locally (Option B dry-run; internal only)
-	@test -f scripts/export_public.py || (echo 'export-public is internal-only (scripts/export_public.py not present)'; exit 1)
-	@$(PYTHON) scripts/export_public.py --source-dir '$(CURDIR)' --branch '$$(git branch --show-current)' --dry-run --keep-work-dir
-
-publish-public: ## Filter history and force-push to PUBLIC_GITHUB_URL (Option B; internal only)
-	@test -f scripts/export_public.py || (echo 'publish-public is internal-only (scripts/export_public.py not present)'; exit 1)
-	@test -n '$(PUBLIC_GITHUB_URL)' || (echo 'Set PUBLIC_GITHUB_URL to the public GitHub remote URL'; exit 1)
-	@$(PYTHON) scripts/export_public.py --source-dir '$(CURDIR)' --branch '$$(git branch --show-current)' --push --remote-url '$(PUBLIC_GITHUB_URL)'
 
 validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
 	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
@@ -311,7 +297,8 @@ test-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 P
 	echo "OpenSSH:    $$(docker run --rm $(TEST_RUNNER_IMAGE) ssh -V 2>&1 | sed -n '1p')"; \
 	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'ssh -Q kex | grep -q mlkem768x25519-sha256'; \
 	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
-	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"
+	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
+	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"
 
 DEPLOY_KME_NODES := kme-a,kme-b
 
@@ -383,9 +370,6 @@ redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so dest
 
 inspect: check-containerlab ## Inspect lab node status
 	containerlab inspect -t $(CLAB_TOPO_GEN)
-
-graph: check-containerlab ## Render topology graph
-	containerlab graph -t $(CLAB_TOPO_GEN)
 
 ssh-ceos1-both: ## Open cEOS CLI on ceos1-both
 	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos1-both Cli
@@ -468,3 +452,8 @@ test-qkd: ## QuaDRA daemon + QKD rotation checks (requires deployed lab; skips w
 
 test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section hosts
+
+# Export/publish targets live in internal/export.mk (not present in the public mirror).
+ifneq ($(wildcard internal/export.mk),)
+include internal/export.mk
+endif

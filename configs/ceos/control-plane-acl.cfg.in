@@ -4,6 +4,7 @@ ip access-list quantum-safe-cp
    counters per-entry
    5 permit tcp any any eq 6020
    6 permit tcp any any eq 9543
+   7 permit tcp any any eq 6031
    10 permit icmp any any
    20 permit ip any any tracked
    30 permit udp any any eq bfd ttl eq 255
@@ -40,6 +41,7 @@ ipv6 access-list quantum-safe-cp-v6
    counters per-entry
    5 permit tcp any any eq 6020
    6 permit tcp any any eq 9543
+   7 permit tcp any any eq 6031
    10 permit icmp any any
    20 permit ipv6 any any tracked
    30 permit udp any any eq bfd

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from lab.grpc_probe import gnsic_certz_get_profile_list_command
 from lab.probe_client import (
     DEFAULT_PROBE_NODE,
     PROBE_HOST_MODE,
@@ -18,6 +19,8 @@ from lab.probe_client import (
     openssl_s_client_command,
     live_check_prefix,
     probe_ca_path,
+    probe_client_cert_path,
+    probe_client_key_path,
     probe_client_mode,
     probe_container,
     probe_gnmi_cert_path,
@@ -171,3 +174,11 @@ def test_gnmi_get_command_tls13_only() -> None:
     assert "gnmic -a '172.20.127.11:6030'" in command
     assert "--tls-min-version 1.3 --tls-max-version 1.3" in command
     assert "/system/config/hostname" in command
+
+
+def test_gnsic_certz_get_profile_list_command() -> None:
+    command = gnsic_certz_get_profile_list_command("172.20.127.11:6030", node="ceos1-both")
+    assert "gnsic -u 'admin' -a '172.20.127.11:6030'" in command
+    assert probe_client_cert_path("ceos1-both", DEFAULT_PROBE_NODE) in command
+    assert probe_client_key_path("ceos1-both", DEFAULT_PROBE_NODE) in command
+    assert "certz get-profile-list" in command

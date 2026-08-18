@@ -40,7 +40,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-macsec test-macsec-reauth test-qkd test-hosts
+        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-openconfig test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -298,6 +298,10 @@ verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5
 	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'ssh -Q kex | grep -q mlkem768x25519-sha256'; \
 	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
 	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
+	echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
+	echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
+	echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
+	echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
 	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"
 
 DEPLOY_KME_NODES := kme-a,kme-b
@@ -413,6 +417,8 @@ test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command e
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-pqc
 	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-openconfig
+	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec
@@ -432,6 +438,10 @@ test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full outp
 
 test-pqc: ## TLS 1.3 + PQC checks incl. syslog-over-TLS (requires deployed lab; VERBOSE=1 for full output)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-openconfig: ## OpenConfig gRPC + RESTCONF PQC checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_openconfig --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)

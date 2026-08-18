@@ -90,13 +90,57 @@ def json_truthy(obj: Any, key: str) -> bool:
 def json_transport_ssl_profile(obj: Any, transport: str = "default") -> str | None:
     """Return ``sslProfile`` for a named transport under ``show management api … | json``."""
     transports = json_find_value(obj, "transports")
-    if not isinstance(transports, dict):
-        return None
-    entry = transports.get(transport)
-    if not isinstance(entry, dict):
-        return None
-    profile = entry.get("sslProfile")
-    return profile if isinstance(profile, str) and profile else None
+    if isinstance(transports, dict):
+        entry = transports.get(transport)
+        if isinstance(entry, dict):
+            profile = entry.get("sslProfile")
+            if isinstance(profile, str) and profile:
+                return profile
+    # gRIBI exposes sslProfile at the top level (no transports.default).
+    if isinstance(obj, dict):
+        profile = obj.get("sslProfile")
+        if isinstance(profile, str) and profile:
+            return profile
+    return None
+
+
+def json_transport_port(obj: Any, transport: str = "default") -> int | None:
+    """Return the listening port for a named transport, if present in EOS JSON."""
+    transports = json_find_value(obj, "transports")
+    if isinstance(transports, dict):
+        entry = transports.get(transport)
+        if isinstance(entry, dict):
+            port = entry.get("port")
+            if isinstance(port, int):
+                return port
+            if isinstance(port, str) and port.isdigit():
+                return int(port)
+    if isinstance(obj, dict):
+        port = obj.get("port")
+        if isinstance(port, int):
+            return port
+        if isinstance(port, str) and port.isdigit():
+            return int(port)
+    return None
+
+
+def json_server_addresses(obj: Any) -> list[str]:
+    """Return server listen addresses from ``show management api … | json``."""
+    addresses: list[str] = []
+    for key in ("serverAddresses", "addresses", "listenAddresses"):
+        value = json_find_value(obj, key)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    addresses.append(item)
+                elif isinstance(item, dict):
+                    addr = item.get("address") or item.get("ip")
+                    if isinstance(addr, str):
+                        addresses.append(addr)
+    server = json_find_value(obj, "server")
+    if isinstance(server, str):
+        addresses.append(server)
+    return addresses
 
 
 def extract_ckn_from_json(obj: Any) -> str:

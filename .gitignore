@@ -1,4 +1,5 @@
 tmp/**
+internal/plan/
 
 # Containerlab runtime
 clab-*/

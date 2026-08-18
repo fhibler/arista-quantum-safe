@@ -322,10 +322,16 @@ SYSLOG_PORT = 6514
 EAPI_SSL_PROFILE = "EAPI"
 GNMI_SSL_PROFILE = "GNMI"
 GNMI_PORT = 6030
+EOS_ADMIN_USERNAME = "admin"
 RESTCONF_SSL_PROFILE = "RESTCONF"
 RESTCONF_PORT = 6020
 EOSSDKRPC_SSL_PROFILE = GNMI_SSL_PROFILE
 EOSSDKRPC_PORT = 9543
+GRIBI_SSL_PROFILE = "GRIBI"
+GRIBI_PORT = 9340
+GNSI_SSL_PROFILE = "GNSI"
+GNPSI_SSL_PROFILE = "GNPSI"
+GNPSI_PORT = 6031
 CONTROL_PLANE_ACL = "quantum-safe-cp"
 PROBE_CLIENT_CERT = "/etc/raddb/certs/probe/{node}-client.pem"
 PROBE_CLIENT_KEY = "/etc/raddb/certs/probe/{node}-client.key"
@@ -1003,6 +1009,60 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg eos-sdk-rpc transport must enable service all")
         if "no disabled" not in eossdkrpc:
             errors.append(f"{ceos}.cfg eos-sdk-rpc transport must be enabled (no disabled)")
+        if f"ssl profile {GRIBI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {GRIBI_SSL_PROFILE}")
+        if "management api gribi" not in text:
+            errors.append(f"{ceos}.cfg must enable management api gribi")
+        gribi = text.split("management api gribi", 1)[-1].split("!", 1)[0]
+        if f"ssl profile {GRIBI_SSL_PROFILE}" not in gribi:
+            errors.append(f"{ceos}.cfg gRIBI transport must reference ssl profile {GRIBI_SSL_PROFILE}")
+        if "vrf MGMT" not in gribi:
+            errors.append(f"{ceos}.cfg gRIBI transport must bind vrf MGMT")
+        if f"ssl profile {GNSI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {GNSI_SSL_PROFILE}")
+        if "management api gnsi" not in text:
+            errors.append(f"{ceos}.cfg must enable management api gnsi")
+        gnsi = text.split("management api gnsi", 1)[-1].split("!", 1)[0]
+        if "service authz" not in gnsi:
+            errors.append(f"{ceos}.cfg gNSI must enable service authz")
+        if "service certz" not in gnsi:
+            errors.append(f"{ceos}.cfg gNSI must enable service certz")
+        if "transport grpc" in gnsi:
+            errors.append(
+                f"{ceos}.cfg gNSI must not use transport grpc on EOS 4.36.2F "
+                f"(use transport gnmi default to attach Certz/Authz to gNMI :6030)"
+            )
+        if "transport gnmi default" not in gnsi:
+            errors.append(f"{ceos}.cfg gNSI must attach to gNMI via transport gnmi default")
+        if f"ssl profile {GNPSI_SSL_PROFILE}" not in text:
+            errors.append(f"{ceos}.cfg must define ssl profile {GNPSI_SSL_PROFILE}")
+        if "management api gnpsi" not in text:
+            errors.append(f"{ceos}.cfg must enable management api gnpsi")
+        gnpsi = text.split("management api gnpsi", 1)[-1].split("!", 1)[0]
+        if f"ssl profile {GNPSI_SSL_PROFILE}" not in gnpsi:
+            errors.append(f"{ceos}.cfg gNPSI transport must reference ssl profile {GNPSI_SSL_PROFILE}")
+        if f"port {GNPSI_PORT}" not in gnpsi:
+            errors.append(f"{ceos}.cfg gNPSI transport must listen on port {GNPSI_PORT}")
+        if "source sFlow" not in gnpsi:
+            errors.append(f"{ceos}.cfg gNPSI transport must use source sFlow")
+        if "no disabled" not in gnpsi:
+            errors.append(f"{ceos}.cfg gNPSI transport must be enabled (no disabled)")
+        if "sflow run" not in text:
+            errors.append(f"{ceos}.cfg must enable sFlow for gNPSI")
+        eth8_block = text.split("interface Ethernet8", 1)[-1].split("!", 1)[0]
+        if "sflow enable" not in eth8_block:
+            errors.append(f"{ceos}.cfg Ethernet8 (host link) must enable sFlow ingress (sflow enable)")
+        if "sflow interface egress enable default Ethernet8" not in text:
+            errors.append(f"{ceos}.cfg must enable sFlow egress on host link Ethernet8")
+        gribi_profile = security.split(f"ssl profile {GRIBI_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
+        if "trust certificate radsec-ca.pem" not in gribi_profile:
+            errors.append(f"{ceos}.cfg GRIBI ssl profile must trust radsec-ca.pem for mTLS")
+        gnsi_profile = security.split(f"ssl profile {GNSI_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
+        if "trust certificate radsec-ca.pem" not in gnsi_profile:
+            errors.append(f"{ceos}.cfg GNSI ssl profile must trust radsec-ca.pem for mTLS")
+        gnpsi_profile = security.split(f"ssl profile {GNPSI_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
+        if "trust certificate radsec-ca.pem" not in gnpsi_profile:
+            errors.append(f"{ceos}.cfg GNPSI ssl profile must trust radsec-ca.pem for mTLS")
         syslog_profile = security.split(f"ssl profile {SYSLOG_SSL_PROFILE}", 1)[-1].split("!", 1)[0]
         if f"certificate {ceos}-client.pem key {ceos}-client.key" not in syslog_profile:
             errors.append(f"{ceos}.cfg SYSLOG ssl profile must use per-switch client certificate")
@@ -1023,6 +1083,14 @@ def validate_ceos_configs(
         if f"permit tcp any any eq {EOSSDKRPC_PORT}" not in text:
             errors.append(
                 f"{ceos}.cfg control-plane ACL must permit TCP {EOSSDKRPC_PORT} (eos-sdk-rpc)"
+            )
+        if f"permit tcp any any eq {GNPSI_PORT}" not in text:
+            errors.append(
+                f"{ceos}.cfg control-plane ACL must permit TCP {GNPSI_PORT} (gNPSI)"
+            )
+        if f"permit tcp any any eq {GRIBI_PORT}" not in text:
+            errors.append(
+                f"{ceos}.cfg control-plane ACL must permit TCP {GRIBI_PORT} (gRIBI)"
             )
         if f"ip access-group {CONTROL_PLANE_ACL} vrf MGMT in" not in text:
             errors.append(

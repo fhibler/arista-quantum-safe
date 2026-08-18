@@ -7,6 +7,10 @@ ARG OPENSSL_VERSION=openssl-3.5.7
 ARG CURL_VERSION=8.12.1
 ARG OPENSSH_VERSION=10.0p1
 ARG GNMIC_VERSION=0.47.0
+ARG GRPCURL_VERSION=1.9.3
+ARG GNOIC_VERSION=0.2.1
+ARG GRIBIC_VERSION=0.0.14
+ARG GNSIC_VERSION=0.0.4
 
 FROM alpine:${ALPINE_VERSION} AS openssl-build
 ARG OPENSSL_VERSION
@@ -130,6 +134,70 @@ RUN apk add --no-cache wget tar \
  && install -m 755 /tmp/gnmic /usr/local/bin/gnmic \
  && gnmic version
 
+FROM alpine:${ALPINE_VERSION} AS grpcurl-fetch
+ARG GRPCURL_VERSION
+ARG TARGETARCH
+
+RUN apk add --no-cache wget tar \
+ && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) echo x86_64 ;; \
+      arm64|aarch64) echo arm64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac)" \
+ && wget -q "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${ARCH}.tar.gz" \
+      -O /tmp/grpcurl.tar.gz \
+ && tar -xzf /tmp/grpcurl.tar.gz -C /tmp \
+ && install -m 755 /tmp/grpcurl /usr/local/bin/grpcurl \
+ && grpcurl --version
+
+FROM alpine:${ALPINE_VERSION} AS gnoic-fetch
+ARG GNOIC_VERSION
+ARG TARGETARCH
+
+RUN apk add --no-cache wget tar \
+ && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) echo x86_64 ;; \
+      arm64|aarch64) echo aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac)" \
+ && wget -q "https://github.com/karimra/gnoic/releases/download/v${GNOIC_VERSION}/gnoic_${GNOIC_VERSION}_Linux_${ARCH}.tar.gz" \
+      -O /tmp/gnoic.tar.gz \
+ && tar -xzf /tmp/gnoic.tar.gz -C /tmp \
+ && install -m 755 /tmp/gnoic /usr/local/bin/gnoic \
+ && gnoic version
+
+FROM alpine:${ALPINE_VERSION} AS gribic-fetch
+ARG GRIBIC_VERSION
+ARG TARGETARCH
+
+RUN apk add --no-cache wget tar \
+ && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) echo x86_64 ;; \
+      arm64|aarch64) echo aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac)" \
+ && wget -q "https://github.com/karimra/gribic/releases/download/v${GRIBIC_VERSION}/gribic_${GRIBIC_VERSION}_Linux_${ARCH}.tar.gz" \
+      -O /tmp/gribic.tar.gz \
+ && tar -xzf /tmp/gribic.tar.gz -C /tmp \
+ && install -m 755 /tmp/gribic /usr/local/bin/gribic \
+ && gribic version
+
+FROM alpine:${ALPINE_VERSION} AS gnsic-fetch
+ARG GNSIC_VERSION
+ARG TARGETARCH
+
+RUN apk add --no-cache wget tar \
+ && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) echo x86_64 ;; \
+      arm64|aarch64) echo aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac)" \
+ && wget -q "https://github.com/karimra/gnsic/releases/download/v${GNSIC_VERSION}/gnsic_${GNSIC_VERSION}_Linux_${ARCH}.tar.gz" \
+      -O /tmp/gnsic.tar.gz \
+ && tar -xzf /tmp/gnsic.tar.gz -C /tmp \
+ && install -m 755 /tmp/gnsic /usr/local/bin/gnsic \
+ && gnsic version
+
 FROM alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache \
@@ -150,6 +218,10 @@ COPY --from=openssl-build /opt/openssl /opt/openssl
 COPY --from=curl-build /usr/local/bin/curl /usr/local/bin/curl
 COPY --from=openssh-build /usr/local/bin/ssh /usr/local/bin/ssh
 COPY --from=gnmic-fetch /usr/local/bin/gnmic /usr/local/bin/gnmic
+COPY --from=grpcurl-fetch /usr/local/bin/grpcurl /usr/local/bin/grpcurl
+COPY --from=gnoic-fetch /usr/local/bin/gnoic /usr/local/bin/gnoic
+COPY --from=gribic-fetch /usr/local/bin/gribic /usr/local/bin/gribic
+COPY --from=gnsic-fetch /usr/local/bin/gnsic /usr/local/bin/gnsic
 
 RUN if [ -f /opt/openssl/lib64/libssl.so ]; then ln -sfn lib64 /opt/openssl/lib; fi
 

@@ -11,10 +11,11 @@ Runs all sections in order:
 | 1 | `make test-radius` | `lab.test_lab` — radius section |
 | 2 | `make test-kme` | `lab.test_kme` |
 | 3 | `make test-pqc` | `lab.test_pqc_connections` |
-| 4 | `make test-syslog` | `lab.test_syslog` |
-| 5 | `make test-macsec` | `lab.test_macsec` |
-| 6 | `make test-qkd` | `lab.test_qkd` (skips when QuaDRA extension absent — see [QKD service](../services/qkd-etsi014.md)) |
-| 7 | `make test-hosts` | `lab.test_lab` — host routing matrix |
+| 4 | `make test-openconfig` | `lab.test_openconfig` |
+| 5 | `make test-syslog` | `lab.test_syslog` |
+| 6 | `make test-macsec` | `lab.test_macsec` |
+| 7 | `make test-qkd` | `lab.test_qkd` (skips when QuaDRA extension absent — see [QKD service](../services/qkd-etsi014.md)) |
+| 8 | `make test-hosts` | `lab.test_lab` — host routing matrix |
 
 On a **bare Linux host** without PQC-capable curl/OpenSSL on the host OS, use **`make test-lab-runner`** instead. It runs the same checks from the `test-runner` container on the lab mgmt network (Docker + deployed lab only).
 

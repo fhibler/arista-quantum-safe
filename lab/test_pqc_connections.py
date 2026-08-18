@@ -847,7 +847,7 @@ def run_live_checks(
     print_section_header("PQC verification (TLS 1.3, PQC-hybrid only — no classical fallback)")
     print("  [config] EOS show commands / local listener checks")
     print("  [live]   EOS-side checks (RadSec AAA, syslog delivery, wire KEX when capture available)")
-    print("  [live / test-runner]  TLS/mTLS handshakes, eAPI, gNMI GET, RESTCONF, eos-sdk-rpc, RadSec collector, SSH, syslog collector")
+    print("  [live / test-runner]  TLS/mTLS handshakes, eAPI, RadSec collector, SSH, syslog collector")
     print("  grouped by check type; IPv4 and IPv6 under each\n")
 
     print_device("radius")
@@ -868,9 +868,6 @@ def run_live_checks(
         print_device(node)
         if not skip_config:
             check_eapi_config(targets, node, verbose=verbose)
-            check_gnmi_config(targets, node, verbose=verbose)
-            check_restconf_config(targets, node, verbose=verbose)
-            check_eossdkrpc_config(targets, node, verbose=verbose)
             check_radsec_config(targets, node, verbose=verbose)
             check_ssh_pqc_config(targets, node, verbose=verbose)
             check_syslog_config(targets, node, verbose=verbose)
@@ -885,20 +882,6 @@ def run_live_checks(
                 verbose=verbose,
                 clab_name=targets.clab_name,
             )
-
-        print_check_group("gNMI")
-        for family in IP_FAMILIES:
-            probe_gnmi_tls(targets, node, family=family, verbose=verbose)
-            probe_gnmi_mtls(targets, node, family=family, verbose=verbose)
-            probe_gnmi_get(targets, node, family=family, verbose=verbose)
-
-        print_check_group("RESTCONF")
-        for family in IP_FAMILIES:
-            probe_restconf_tls(targets, node, family=family, verbose=verbose)
-
-        print_check_group("eos-sdk-rpc")
-        for family in IP_FAMILIES:
-            probe_eossdkrpc_tls(targets, node, family=family, verbose=verbose)
 
         print_check_group("SSH")
         for family in IP_FAMILIES:
@@ -917,8 +900,8 @@ def run_live_checks(
     report_summary(
         "PQC",
         f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (eAPI, gNMI/gNOI, RESTCONF, eos-sdk-rpc, RadSec, SSH, Syslog; "
-        "WARN on syslog/eos-sdk-rpc not PQC-safe (TLS 1.3 compliant where verified)",
+        "passed (eAPI, RadSec, SSH, Syslog; "
+        "WARN on syslog not PQC-safe (TLS 1.3 compliant where verified))",
     )
 
 

@@ -2,6 +2,8 @@
 
 `make test-pqc` runs `python -m lab.test_pqc_connections` against all three EOS nodes (**ceos1-both**, **ceos2-pqc**, **ceos3-qkd**) on **IPv4 and IPv6**.
 
+OpenConfig services (gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc) are covered separately by **`make test-openconfig`** (`lab.test_openconfig`).
+
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** — no classical fallback on strict profiles. SSH uses **`mlkem768x25519-sha256`**.
 
 OpenSSL probes run **inside `arista-quantum-safe-test-runner`** (default `PROBE_CLIENT`) with `OPENSSL_CONF=/etc/probe/openssl-pqc.cnf`. Override with `PROBE_CLIENT=radius` or `PROBE_CLIENT=host` when debugging.
@@ -22,12 +24,11 @@ OpenSSL probes run **inside `arista-quantum-safe-test-runner`** (default `PROBE_
 | Service | Config checks | Live checks |
 |---------|---------------|-------------|
 | eAPI | ssl profile EAPI, http-commands binding | HTTPS :443 + command-api `runCmds` |
-| gNMI | ssl profile GNMI, mTLS trust | TLS + mTLS + GET :6030 |
-| RESTCONF | ssl profile RESTCONF | HTTPS :6020 |
-| eos-sdk-rpc | ssl profile GNMI, service enabled | mTLS :9543 IPv4 live; **IPv6 SKIP** |
 | SSH | `management ssh` KEX, VRF MGMT | SSH from **test-runner** probe client |
 | Syslog | logging hosts, SYSLOG profile | Message delivery + optional wire KEX (**WARN**, not PQC-safe) |
 | RadSec | RADSEC profile, radius config | `test aaa … tls port 2083` |
+
+OpenConfig gRPC and RESTCONF checks (gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc) run via **`make test-openconfig`** — see [Services overview](../services/index.md) and [OpenConfig](../services/openconfig.md).
 
 ---
 
@@ -181,6 +182,11 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 | SSH | N/A (SSH, not TLS) | `mlkem768x25519-sha256` | `mlkem768x25519-sha256` | Yes |
 | eAPI | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gNMI / RESTCONF | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gNOI (transport + RPC) | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gRIBI | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
+| gNSI | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
+| gNPSI (TLS) | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
+| gNPSI (subscribe) | SKIP or Yes | — | sFlow-dependent | — |
 | RadSec | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | Syslog (EOS to collector) | Yes | `X25519MLKEM768` (+ classical fallback) | `x25519` | No |
 | eos-sdk-rpc (IPv4) | Yes | `X25519MLKEM768` | `secp256r1` | No |
@@ -201,7 +207,7 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 
 - **Syslog (EOS to collector):** TLS 1.3 delivery succeeds, but the EOS syslog TLS client typically negotiates classical **`x25519`** despite the profile listing hybrid first — not PQC-safe, still TLS 1.3 compliant.
 - **eos-sdk-rpc (IPv4):** Configured for TLS 1.3 + `X25519MLKEM768` (ssl profile **`GNMI`**). PQC-only probe gets **EOF** on port **9543**; fallback **`-groups secp256r1`** completes TLS 1.3 with classical KEX — not PQC-safe, TLS 1.3 compliant.
-- **eos-sdk-rpc (IPv6):** **SKIP** in `make test-pqc`. Binding uses `local interface Management0`, which listens on the interface primary **IPv4** only — not `vrf MGMT` like gNMI (`Listen addresses: ::` on **6030**). Management0 has IPv6 configured; the eos-sdk-rpc transport does not bind it. Control-plane ACL permits TCP 9543 on IPv6; the gap is the service binding model, not the ACL.
+- **eos-sdk-rpc (IPv6):** **SKIP** in `make test-openconfig`. Binding uses `local interface Management0`, which listens on the interface primary **IPv4** only — not `vrf MGMT` like gNMI (`Listen addresses: ::` on **6030**). Management0 has IPv6 configured; the eos-sdk-rpc transport does not bind it. Control-plane ACL permits TCP 9543 on IPv6; the gap is the service binding model, not the ACL.
 - **Syslog collector probe:** `openssl s_client` from **test-runner** to syslog-ng (:6514), once per address family — validates the collector accepts PQC-hybrid; separate from the EOS syslog client path above.
 
 See service pages for configuration context: [Services overview](../services/index.md), [SSH](../services/ssh.md), [eAPI](../services/eapi.md), [OpenConfig](../services/openconfig.md), [Syslog](../services/syslog.md), [RadSec](../services/radius-radsec.md).

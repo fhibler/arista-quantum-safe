@@ -37,6 +37,7 @@ interface Ethernet8
    no switchport
    ip address 10.0.2.254/24
    ipv6 address 2001:db8:2::fe/64
+   sflow enable
 !
 ip routing
 ipv6 unicast-routing
@@ -62,6 +63,24 @@ management api eos-sdk-rpc
       service all
       no disabled
       ssl profile GNMI
+!
+management api gribi
+   transport grpc default
+      vrf MGMT
+      ssl profile GRIBI
+!
+management api gnsi
+   transport gnmi default
+   service authz
+   service certz
+!
+management api gnpsi
+   transport grpc default
+      vrf MGMT
+      port 6031
+      ssl profile GNPSI
+      source sFlow
+      no disabled
 !
 management api netconf
    transport ssh default
@@ -126,6 +145,32 @@ management security
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
       certificate ceos2-pqc-client.pem key ceos2-pqc-client.key
       trust certificate radsec-ca.pem
+   !
+   ssl profile GRIBI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos2-pqc-gnmi.pem key ceos2-pqc-gnmi.key
+      trust certificate radsec-ca.pem
+   !
+   ssl profile GNSI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos2-pqc-gnmi.pem key ceos2-pqc-gnmi.key
+      trust certificate radsec-ca.pem
+   !
+   ssl profile GNPSI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos2-pqc-gnmi.pem key ceos2-pqc-gnmi.key
+      trust certificate radsec-ca.pem
+!
+sflow sample 4096
+sflow polling-interval 30
+sflow run
+sflow interface egress enable default Ethernet8
 !
 radius-server host ${RADIUS_SERVER_IP} vrf MGMT tls ssl-profile RADSEC
 !

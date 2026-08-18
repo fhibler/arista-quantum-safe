@@ -68,7 +68,7 @@ make test-lab
 make test-lab-runner
 ```
 
-Individual test targets: `make test-radius`, `make test-pqc`, `make test-syslog`, `make test-macsec`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make shell-test-runner`.
+Individual test targets: `make test-radius`, `make test-pqc`, `make test-openconfig`, `make test-syslog`, `make test-macsec`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make shell-test-runner`.
 
 Offline validation (no deployed lab required):
 

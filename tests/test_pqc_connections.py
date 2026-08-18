@@ -216,18 +216,6 @@ def test_run_live_checks_happy_path(capsys) -> None:
             f"Negotiated TLS1.3 group: {PQC_GROUP}\n"
         )
 
-    def fake_run_gnmi_get(*, node: str, **kwargs: object):
-        _ = kwargs
-        return subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=(
-                f'[{{"source":"172.20.127.11:6030","updates":[{{"values":{{'
-                f'"system/config/hostname":"{node}"}}}}]}}]'
-            ),
-            stderr="",
-        )
-
     with (
         patch("lab.test_pqc_connections.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
@@ -247,10 +235,6 @@ def test_run_live_checks_happy_path(capsys) -> None:
         patch(
             "lab.syslog_checks.run_openssl_s_client",
             side_effect=fake_openssl_s_client,
-        ),
-        patch(
-            "lab.test_pqc_connections.run_gnmi_get",
-            side_effect=fake_run_gnmi_get,
         ),
         patch(
             "lab.test_pqc_connections.run_ssh_pqc_probe",

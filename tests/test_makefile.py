@@ -73,6 +73,7 @@ def test_makefile_exists() -> None:
         "test-radius",
         "test-kme",
         "test-pqc",
+        "test-openconfig",
         "test-syslog",
         "test-macsec",
         "test-macsec-reauth",
@@ -344,9 +345,17 @@ def test_test_kme_recipe_delegates_to_python_module() -> None:
 def test_test_pqc_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "test-pqc:" in content
-    pqc = content.split("test-pqc:")[1].split("test-macsec:")[0]
+    pqc = content.split("test-pqc:")[1].split("test-openconfig:")[0]
     assert "lab.test_pqc_connections" in pqc
     assert "successfully authenticated" not in pqc
+
+
+def test_test_openconfig_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-openconfig:" in content
+    openconfig = content.split("test-openconfig:")[1].split("test-syslog:")[0]
+    assert "lab.test_openconfig" in openconfig
+    assert "VERBOSE" in openconfig
 
 
 def test_test_macsec_recipe_delegates_to_python_module() -> None:

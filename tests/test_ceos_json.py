@@ -53,6 +53,11 @@ def test_json_transport_ssl_profile() -> None:
     assert json_transport_ssl_profile(payload, transport="missing") is None
 
 
+def test_json_transport_ssl_profile_top_level() -> None:
+    payload = {"enabled": True, "port": 9340, "sslProfile": "GRIBI"}
+    assert json_transport_ssl_profile(payload) == "GRIBI"
+
+
 def test_extract_ckn_from_json() -> None:
     payload = {"interfaces": [{"participants": [{"ckn": "e99229621701877766296aa8b76d7a07"}]}]}
     assert extract_ckn_from_json(payload) == "e99229621701877766296aa8b76d7a07"

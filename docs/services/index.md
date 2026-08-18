@@ -10,7 +10,11 @@ Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-
 |---------|------|-------------------|-------------|-----------|-----|
 | [SSH / NETCONF](ssh.md) | 22 | `mlkem768x25519-sha256` | Yes | **Yes** | [ssh.md](ssh.md) |
 | [eAPI](eapi.md) | 443 | `EAPI` | Yes | **Yes** | [eapi.md](eapi.md) |
-| [gNMI / gNOI](openconfig.md#gnmi-gnoi-grpc) | 6030 | `GNMI` | Yes | **Yes** | [openconfig.md](openconfig.md) |
+| [gNMI](openconfig.md#gnmi-gnoi-grpc) | 6030 | `GNMI` | Yes | **Yes** | [openconfig.md](openconfig.md) |
+| [gNOI](openconfig.md#gnmi-gnoi-grpc) | 6030 | `GNMI` (shared) | Yes | **Yes** | [openconfig.md](openconfig.md) |
+| [gRIBI](openconfig.md#gribi-grpc) | 9340 | `GRIBI` | Yes | **Yes** (expected) | [openconfig.md](openconfig.md) |
+| [gNSI](openconfig.md#gnsi-grpc) | service-specific | `GNSI` | Yes | **Yes** (Certz via `transport gnmi default`) | [openconfig.md](openconfig.md) |
+| [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy) | 6031 | `GNPSI` | Yes | TLS yes; subscribe may SKIP | [openconfig.md](openconfig.md) |
 | [RESTCONF](openconfig.md#restconf-https) | 6020 | `RESTCONF` | Yes | **Yes** | [openconfig.md](openconfig.md) |
 | [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) | 9543 | `GNMI` (reused) | Yes | **No** (WARN) | [openconfig.md](openconfig.md) |
 | [RadSec](radius-radsec.md) | 2083 | `RADSEC` | Yes | **Yes** | [radius-radsec.md](radius-radsec.md) |
@@ -37,7 +41,7 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 |-------|--------|
 | [SSH](ssh.md) | OpenSSH KEX, VRF MGMT, NETCONF transport |
 | [eAPI](eapi.md) | HTTPS JSON-RPC on port 443 |
-| [OpenConfig & gRPC](openconfig.md) | gNMI, gNOI, RESTCONF, eos-sdk-rpc |
+| [OpenConfig & gRPC](openconfig.md) | gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc |
 | [Syslog](syslog.md) | Remote TLS logging to syslog-ng |
 | [RADIUS / RadSec](radius-radsec.md) | RadSec AAA and EAP-TLS for 802.1X |
 | [MACsec](macsec.md) | Dynamic MACsec on ceos1-both <-> ceos2-pqc |
@@ -47,5 +51,5 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 
 - [Setup](../setup.md) — deploy prerequisites and Makefile targets
 - [Certificates and TLS 1.3](../misc/certificates-and-tls13.md) — PKI requirements and OpenSSL examples
-- [PQC connectivity tests](../tests/pqc.md) — `make test-pqc` with OpenSSL reproduction commands
+- [PQC connectivity tests](../tests/pqc.md) — `make test-pqc` and `make test-openconfig` with OpenSSL reproduction commands
 - [Test suite overview](../tests/index.md) — full `make test-lab` sequence

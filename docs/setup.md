@@ -99,7 +99,7 @@ Run `make help` for the authoritative target list in your clone.
 |--------|-------------|
 | `make test-lab` | All live lab checks |
 | `make test-lab-runner` | Same checks from mgmt-network harness (Docker only) |
-| `make test-radius` / `test-kme` / `test-pqc` / `test-syslog` / `test-macsec` / `test-qkd` / `test-hosts` | Individual live check sections |
+| `make test-radius` / `test-kme` / `test-pqc` / `test-openconfig` / `test-syslog` / `test-macsec` / `test-qkd` / `test-hosts` | Individual live check sections |
 | `make test-macsec-reauth` | MACsec plus ~75 s 802.1X reauth wait |
 | `make install-quadra` | Install QuaDRA swix on ceos1-both and ceos3-qkd (when present) |
 | `make ssh-ceos1-both` / `ssh-ceos2-pqc` / `ssh-ceos3-qkd` | EOS CLI shells |

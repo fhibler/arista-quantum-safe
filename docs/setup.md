@@ -47,7 +47,7 @@ make test-lab          # all live checks
 `make deploy` runs:
 
 1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
-2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 built from source)
+2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([PQC overview](pqc-overview.md#openssl-build-requirement-lab-containers) — OpenSSL 3.5 base images built from source, then linked into each service)
 3. `make check-ceos-image` — verify local `ceos:4.36.2F`
 4. `make deploy-kme` — `check-containerlab`, then staged KME deploy
 5. Key-pool wait (`wait-kme-pool`)
@@ -85,7 +85,9 @@ Run `make help` for the authoritative target list in your clone.
 
 | Target | Description |
 |--------|-------------|
-| `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build lab Docker images (includes image smoke tests) |
+| `make build-openssl` | Build both OpenSSL 3.5.7 base images (`-static` and `-shared`) |
+| `make build-openssl-static` / `make build-openssl-shared` | Build one base image (see [PQC overview](pqc-overview.md#shared-openssl-base-images)) |
+| `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build lab Docker images (service builds pull in the matching OpenSSL base; includes image smoke tests) |
 | `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
 | `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
 | `make destroy` | Tear down Containerlab lab |

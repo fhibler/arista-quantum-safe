@@ -6,34 +6,15 @@
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
 
 ARG ALPINE_VERSION=3.20
-ARG OPENSSL_VERSION=openssl-3.5.7
+ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-static
 ARG SYSLOG_NG_VERSION=4.8.1
 
-FROM alpine:${ALPINE_VERSION} AS openssl-build
-ARG OPENSSL_VERSION
-ARG TARGETARCH
-
-RUN apk add --no-cache build-base perl linux-headers wget tar
-
-RUN ARCH="${TARGETARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}" \
- && case "${ARCH}" in \
-      amd64)  OPENSSL_TARGET=linux-x86_64 ;; \
-      arm64)  OPENSSL_TARGET=linux-aarch64 ;; \
-      *) echo "unsupported architecture: ${ARCH}" >&2; exit 1 ;; \
-    esac \
- && wget -q "https://www.openssl.org/source/${OPENSSL_VERSION}.tar.gz" \
-      -O /tmp/openssl.tar.gz \
- && tar -xzf /tmp/openssl.tar.gz -C /tmp \
- && cd "/tmp/${OPENSSL_VERSION}" \
- && ./Configure "${OPENSSL_TARGET}" no-shared --prefix=/opt/openssl --openssldir=/opt/openssl \
- && make -j"$(nproc)" \
- && make install_sw \
- && test -f /opt/openssl/lib64/libcrypto.a || test -f /opt/openssl/lib/libcrypto.a
+FROM ${OPENSSL_IMAGE} AS openssl-base
 
 FROM alpine:${ALPINE_VERSION} AS syslog-ng-build
 ARG SYSLOG_NG_VERSION
 
-COPY --from=openssl-build /opt/openssl /opt/openssl
+COPY --from=openssl-base /opt/openssl /opt/openssl
 
 RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
 
@@ -70,7 +51,7 @@ FROM alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache glib libcurl json-c pcre2 libstdc++ tzdata tcpdump
 
-COPY --from=openssl-build /opt/openssl /opt/openssl
+COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=syslog-ng-build /opt/syslog-ng /opt/syslog-ng
 
 ENV PATH=/opt/syslog-ng/sbin:/opt/openssl/bin:$PATH

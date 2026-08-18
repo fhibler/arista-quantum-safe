@@ -7,33 +7,14 @@
 
 ARG ALPINE_VERSION=3.20
 ARG FREERADIUS_VERSION=release_3_2_6
-ARG OPENSSL_VERSION=openssl-3.5.7
+ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-static
 
-FROM alpine:${ALPINE_VERSION} AS openssl-build
-ARG OPENSSL_VERSION
-ARG TARGETARCH
-
-RUN apk add --no-cache build-base perl linux-headers wget tar
-
-RUN ARCH="${TARGETARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}" \
- && case "${ARCH}" in \
-      amd64)  OPENSSL_TARGET=linux-x86_64 ;; \
-      arm64)  OPENSSL_TARGET=linux-aarch64 ;; \
-      *) echo "unsupported architecture: ${ARCH}" >&2; exit 1 ;; \
-    esac \
- && wget -q "https://www.openssl.org/source/${OPENSSL_VERSION}.tar.gz" \
-      -O /tmp/openssl.tar.gz \
- && tar -xzf /tmp/openssl.tar.gz -C /tmp \
- && cd "/tmp/${OPENSSL_VERSION}" \
- && ./Configure "${OPENSSL_TARGET}" no-shared --prefix=/opt/openssl --openssldir=/opt/openssl \
- && make -j"$(nproc)" \
- && make install_sw \
- && test -f /opt/openssl/lib64/libcrypto.a || test -f /opt/openssl/lib/libcrypto.a
+FROM ${OPENSSL_IMAGE} AS openssl-base
 
 FROM alpine:${ALPINE_VERSION} AS freeradius-build
 ARG FREERADIUS_VERSION
 
-COPY --from=openssl-build /opt/openssl /opt/openssl
+COPY --from=openssl-base /opt/openssl /opt/openssl
 
 # curl-dev pulls Alpine openssl-dev (3.3); pin FreeRADIUS to our OpenSSL 3.5 static libs.
 RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
@@ -66,7 +47,7 @@ FROM alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl
 
-COPY --from=openssl-build /opt/openssl /opt/openssl
+COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius
 
 ENV PATH=/opt/openssl/bin:/opt/freeradius/sbin:/opt/freeradius/bin:$PATH

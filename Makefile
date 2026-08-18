@@ -26,6 +26,10 @@ KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
 TEST_RUNNER_IMAGE := quantum-safe-test-runner:latest
 TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile
+OPENSSL_VERSION_TAG := 3.5.7
+OPENSSL_SHARED_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-shared
+OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
+OPENSSL_DOCKERFILE := docker/openssl/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 # Do not inherit VERBOSE from the environment; use make test-lab VERBOSE=1 explicitly.
 VERBOSE       :=
@@ -39,7 +43,7 @@ LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
+        download-ceos download-ceos-help build-openssl build-openssl-shared build-openssl-static build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
         clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-openconfig test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
@@ -219,8 +223,22 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-radius: $(GEN_CONFIGS) ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
+build-openssl-shared: ## Build quantum-safe-openssl:3.5.7-shared (shared libs for test-runner)
+	docker buildx build --load --platform linux/$(HOST_ARCH) \
+		--build-arg OPENSSL_SHARED=1 \
+		-t $(OPENSSL_SHARED_IMAGE) -f $(OPENSSL_DOCKERFILE) .
+
+build-openssl-static: ## Build quantum-safe-openssl:3.5.7-static (static libs for radius/syslog)
+	docker buildx build --load --platform linux/$(HOST_ARCH) \
+		--build-arg OPENSSL_SHARED=0 \
+		-t $(OPENSSL_STATIC_IMAGE) -f $(OPENSSL_DOCKERFILE) .
+
+build-openssl: build-openssl-shared build-openssl-static ## Build both OpenSSL base images
+
+build-radius: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
+		-t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-radius-image
 
 test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
@@ -237,8 +255,10 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-build-syslog: $(GEN_CONFIGS) ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
+build-syslog: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
+		-t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-syslog-image
 
 test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
@@ -279,8 +299,10 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-build-test-runner: ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
+build-test-runner: build-openssl-shared ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
+	docker buildx build --load --platform linux/$(HOST_ARCH) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
+		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
 	@$(MAKE) --no-print-directory verify-test-runner-image
 
 verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
@@ -354,7 +376,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, a
 	rm -f .env; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
+		for repo in quantum-safe-openssl quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \

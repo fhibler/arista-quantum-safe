@@ -52,6 +52,9 @@ def test_makefile_exists() -> None:
         "import-ceos-help",
         "download-ceos",
         "download-ceos-help",
+        "build-openssl",
+        "build-openssl-static",
+        "build-openssl-shared",
         "build-radius",
         "build-syslog",
         "build-kme",
@@ -380,6 +383,7 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' in clean
     assert "rm -rf .venv .pytest_cache" in clean
     assert "docker images" in clean
+    assert "quantum-safe-openssl" in clean
     assert "quantum-safe-radius" in clean
     assert "quantum-safe-syslog" in clean
     assert "quantum-safe-kme" in clean

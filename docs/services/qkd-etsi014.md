@@ -17,7 +17,7 @@ See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 
     To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
 
-    The sections below describe how the lab is **configured** when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-qkd` skips with a warning.
+    The sections below describe how the lab is **configured** when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
 
 ## Configuration
 
@@ -229,7 +229,7 @@ make test-kme
 ### QuaDRA agent and key rotation
 
 ```bash
-make test-qkd    # skips when extension not installed
+make test-macsec-qkd    # skips when extension not installed
 ```
 
 Manual checks:
@@ -244,6 +244,6 @@ ping 10.255.0.6 source 10.255.0.5
 
 Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
-See [Test suite overview](../tests/index.md) (`make test-kme`, `make test-qkd`).
+See [Test suite overview](../tests/index.md) (`make test-kme`, `make test-macsec-qkd`). Test doc: [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 
 <- [Services overview](index.md)

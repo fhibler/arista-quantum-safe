@@ -82,8 +82,8 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 Expected: `kex: algorithm: mlkem768x25519-sha256`
 
-Automated: `make test-pqc` → `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
+Automated: `make test-ssh` → `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
 
-See [PQC tests](../tests/pqc.md#ssh).
+See [SSH tests](../tests/ssh.md).
 
 <- [Services overview](index.md)

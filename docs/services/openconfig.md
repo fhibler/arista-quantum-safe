@@ -53,7 +53,7 @@ gNOI uses the same gRPC endpoint and ssl profile as gNMI. **`make test-openconfi
 
 ### gNOI-specific verification
 
-gRPC reflection (expects `gnoi.system.System`; `gnoi.certificate.CertificateManagement` is not implemented on cEOS):
+gRPC reflection (expects `gnoi.system.System`):
 
 ```bash
 docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
@@ -63,9 +63,9 @@ docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
   --tls-version 1.3 services
 ```
 
-Stock `grpcurl` uses Go `crypto/tls` and cannot negotiate PQC-hybrid KEX against EOS; use `gnoic`/`gribic`/`gnmic` for live gRPC RPCs.
+Primary live gRPC probes use **gnoic**, **gribic**, **gnmic**, and **gnsic** (Go **1.24+**, PQC-hybrid `crypto/tls`) on **:6030**. **grpcurl** is rebuilt with Go **1.24+** in the test-runner image for **gNPSI :6031** and as an RPC **fallback** when primary clients fail — see [Tool chain](../misc/toolchain.md#grpcurl).
 
-`System/Ping` over mTLS (gnoic or grpcurl):
+`System/Ping` over mTLS (`gnoic`):
 
 ```bash
 docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
@@ -240,7 +240,7 @@ gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when c
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation** on IPv4:
 
     - PQC-only OpenSSL client → EOF / no handshake
-    - Explicit `-groups secp256r1` → TLS 1.3 with classical KEX (diagnostic / `make test-pqc` fallback)
+    - Explicit `-groups secp256r1` → TLS 1.3 with classical KEX (diagnostic / `make test-openconfig` fallback)
 
     `make test-openconfig` validates `[config]` and reports **`WARN`** on the IPv4 live probe instead of failing the suite. IPv6 live probes are **`SKIP`**ped.
 
@@ -324,6 +324,16 @@ docker exec arista-quantum-safe-test-runner gribic -a 172.20.127.11:9340 \
   --tls-key /etc/probe/certs/ceos1-both-client.key \
   get --aft IPv4
 ```
+
+### Caveats
+
+| Topic | Status on EOS 4.36.2F |
+|-------|------------------------|
+| Config | Profile valid; PQC-hybrid only (`X25519MLKEM768`) |
+| Live TLS | **Not PQC-safe** — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
+| Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
+
+`make test-openconfig` validates the **`GRIBI`** ssl profile in **`[config]`** and runs OpenSSL probes that try PQC-hybrid mTLS first, then fall back to an explicit **`secp256r1`** diagnostic (eos-sdk-rpc pattern). On 4.36.2F the live probe **WARN**s: wire accepts classical KEX while PQC-only clients get `handshake failure` (same class of issue as [eos-sdk-rpc](#eos-sdk-rpc-grpc-mtls)).
 
 ---
 
@@ -409,15 +419,49 @@ sflow run
 sflow interface egress enable default Ethernet8
 ```
 
-Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the L3 routed port towards each Alpine host (`host1`/`host2`/`host3`). Egress sampling on the same interface captures switch-to-host traffic. Host-to-host pings in `make test-lab` traverse this link, giving gNPSI something to sample when the cEOS sFlow dataplane is functional.
+Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the L3 routed port towards each Alpine host (`host1`/`host2`/`host3`). Egress sampling on the same interface captures switch-to-host traffic. On a deployed lab, sampled interfaces usually carry enough traffic for **`grpcurl` Subscribe** to receive datagrams during **`make test-openconfig`** (IPv4 and IPv6). If Subscribe **SKIP**s (no sample within 8 s), run **`make test-hosts`** or ping across a sampled link and retry.
 
 ### Caveats
 
-| Topic | Status on cEOS |
+| Topic | Status on EOS |
 |-------|----------------|
-| Config / TLS | Dedicated `GNPSI` profile; PQC-hybrid only |
-| Subscribe live | May **SKIP** — cEOS sFlow dataplane may not produce samples for gNPSI clients |
-| Platform support | **`make test-openconfig`** probes `show management api gnpsi`; unsupported cEOS images **SKIP** remaining gNPSI checks |
+| Config | Dedicated `GNPSI` profile; PQC-hybrid only |
+| Live TLS / mTLS | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get EOF / handshake failure (same class as [gRIBI](#gribi-grpc)) |
+| Subscribe live | **`grpcurl` Subscribe** receives sFlow datagrams on IPv4 and IPv6 when host traffic is present; `make test-openconfig` reports **WARN** (classical wire KEX on 4.36.2F) or **SKIP** only when no sample within the 8 s probe window |
+
+### Verification
+
+#### Configuration
+
+```bash
+docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
+enable
+show management security ssl profile GNPSI detail
+show management api gnpsi
+EOF
+```
+
+#### Live PQC mTLS and Subscribe
+
+mTLS + gRPC reflection (`gnoic`):
+
+```bash
+docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6031 \
+  --tls-ca /etc/probe/certs/radsec-ca.pem \
+  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
+  --tls-key /etc/probe/certs/ceos1-both-client.key \
+  --tls-version 1.3 services
+```
+
+`Subscribe` RPC (`grpcurl`; expects `gnpsi.gNPSI`):
+
+```bash
+docker exec arista-quantum-safe-test-runner grpcurl \
+  -cacert /etc/probe/certs/radsec-ca.pem \
+  -cert /etc/probe/certs/ceos1-both-client.pem \
+  -key /etc/probe/certs/ceos1-both-client.key \
+  -d '{}' '172.20.127.11:6031' gnpsi.gNPSI/Subscribe
+```
 
 ---
 
@@ -427,12 +471,12 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the
 |---------|------|---------|----------|------------------------|
 | gNMI | 6030 | `GNMI` | Yes | TLS, mTLS, GET |
 | gNOI | 6030 (shared) | `GNMI` | Yes | Ping RPC, reflection |
-| gRIBI | 9340 | `GRIBI` | Yes | mTLS + Get |
+| gRIBI | 9340 | `GRIBI` | **No** (WARN on 4.36.2F) | mTLS + Get |
 | gNSI | 6030 (via `transport gnmi default`) | `GNSI` profile; wire TLS on `GNMI` | Yes | Certz.GetProfileList (`-u admin`) |
-| gNPSI | 6031 | `GNPSI` | TLS yes; subscribe may SKIP | mTLS; Subscribe (SKIP common) |
+| gNPSI | 6031 | `GNPSI` | **No** (WARN on 4.36.2F) | mTLS wire probe, reflection, Subscribe (IPv4 + IPv6) |
 | RESTCONF | 6020 | `RESTCONF` | Yes | HTTPS handshake |
 | eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (WARN on IPv4) | mTLS; SKIP IPv6 |
 
-Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). PQC-only services (eAPI, SSH, RadSec): [PQC tests](../tests/pqc.md).
+Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). Related: [eAPI](../tests/eapi.md), [SSH](../tests/ssh.md), [RadSec](../tests/radsec.md).
 
 <- [Services overview](index.md)

@@ -17,7 +17,7 @@ PQC in Arista EOS 4.35+ applies primarily to **key establishment** — how two p
 
 - **Non-PQC** connections can be broken in future by a cryptographically relevant quantum computer attacking the classical KEX step (for example ECDH on Curve25519).
 - **PQC-safe** in this documentation means the lab has verified (or expects) negotiation of a **hybrid** construction that combines a classical algorithm with ML-KEM-768, so both must be broken to recover the session keys.
-- **Configurable ≠ PQC-safe:** an ssl profile can advertise `X25519MLKEM768` while the actual TLS client offers only classical groups. Always verify on the wire (`make test-pqc`, OpenSSL `s_client`, or packet capture) when that distinction matters.
+- **Configurable ≠ PQC-safe:** an ssl profile can advertise `X25519MLKEM768` while the actual TLS client offers only classical groups. Always verify on the wire (`make test-eapi`, `make test-syslog`, OpenSSL `s_client`, or packet capture) when that distinction matters.
 
 ### Hybrid PQC vs pure PQC
 
@@ -101,60 +101,16 @@ See [Services overview](services/index.md) for per-interface live PQC status.
 
 ## OpenSSL build requirement (lab containers)
 
-EOS implements switch-side TLS and SSH natively. **Peer containers in this lab cannot rely on stock Alpine or Docker Hub images** for PQC-hybrid RadSec or syslog-over-TLS — those images typically link against **OpenSSL 3.3.x or older**, which does **not** negotiate `X25519MLKEM768`.
+EOS implements switch-side TLS natively. **Peer containers cannot use stock Alpine OpenSSL** for PQC-hybrid RadSec or syslog-over-TLS — see [Tool chain — probe and peer client summary](misc/toolchain.md#probe-and-peer-client-summary) for per-client OOTB vs lab PQC-safe status, and [Setup](setup.md) for build targets (`make build-openssl`, `make build-test-runner`, etc.).
 
-The lab therefore **self-compiles OpenSSL 3.5.7** from source and links service binaries against `/opt/openssl`.
+Brief summary:
 
-### Shared OpenSSL base images
+| Base image | Used by |
+|------------|---------|
+| `quantum-safe-openssl:3.5.7-static` | FreeRADIUS, syslog-ng |
+| `quantum-safe-openssl:3.5.7-shared` | test-runner (`curl`, OpenSSH, `openssl s_client`) |
 
-OpenSSL is built once per link mode in [`docker/openssl/Dockerfile`](../docker/openssl/Dockerfile) and reused by the service Dockerfiles:
-
-| Base image | `./Configure` | Used by | Why |
-|------------|---------------|---------|-----|
-| `quantum-safe-openssl:3.5.7-static` | `no-shared` (`.a` archives) | `build-radius`, `build-syslog` | FreeRADIUS/syslog-ng compile against static libs so Alpine `curl-dev` pkg-config cannot pull in stock OpenSSL 3.3 |
-| `quantum-safe-openssl:3.5.7-shared` | `shared` (`libssl.so`) | `build-test-runner` | curl and OpenSSH link dynamically; runtime uses `LD_LIBRARY_PATH=/opt/openssl/lib` |
-
-Build the bases explicitly (optional — `make build-radius`, `build-syslog`, and `build-test-runner` invoke the matching base target automatically):
-
-```bash
-make build-openssl          # both static and shared (cold cache: ~4 min on arm64)
-make build-openssl-static   # radius + syslog only
-make build-openssl-shared   # test-runner only
-```
-
-On a warm cache, rebuilding `quantum-safe-test-runner:latest` skips the OpenSSL compile and reuses the tagged base image.
-
-### Service images
-
-| Image | Dockerfile | Build approach |
-|-------|------------|----------------|
-| `quantum-safe-radius:latest` | `docker/radius/Dockerfile` | `quantum-safe-openssl:3.5.7-static` → FreeRADIUS 3.2.6 linked against `/opt/openssl` |
-| `quantum-safe-syslog:latest` | `docker/syslog/Dockerfile` | `quantum-safe-openssl:3.5.7-static` → syslog-ng 4.8.1 linked against `/opt/openssl` |
-| `quantum-safe-test-runner:latest` | `docker/test-runner/Dockerfile` | `quantum-safe-openssl:3.5.7-shared` → curl 8.12 + OpenSSH 10 (PQC KEX) + gNMI/gRPC probe tools |
-
-At runtime, radius and syslog set:
-
-```text
-OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf   # radius
-OPENSSL_CONF=…/openssl-pqc.cnf            # syslog (equivalent policy)
-```
-
-The test-runner sets `OPENSSL_CONF=/etc/probe/openssl-pqc.cnf` for TLS probes.
-
-Smoke checks after build:
-
-```bash
-make build-radius       # build-openssl-static + test-radius-image
-make build-syslog       # build-openssl-static + test-syslog-image
-make build-test-runner  # build-openssl-shared + verify-test-runner-image
-```
-
-Each verifies `openssl list -tls-groups` includes **`X25519MLKEM768`** (and related hybrid names such as `MLKEM768` / `SecP256r1MLKEM768` where OpenSSL lists them).
-
-!!! note "Build time and architecture"
-    First build compiles OpenSSL (twice: static + shared) and each application (~minutes on a cold cache). Images are built for the **host architecture** (`amd64` / `arm64`) via `docker buildx build --load`. `make clean` removes `quantum-safe-openssl:*` along with the service images.
-
-The **KME simulator** image (`quantum-safe-kme:latest`) uses Python/Flask TLS for ETSI QKD 014 APIs; it is built separately (`docker/kme/Dockerfile`) with lab-generated mTLS PKI — see [QKD service](services/qkd-etsi014.md).
+The **KME simulator** (`quantum-safe-kme:latest`) uses Python/Flask mTLS separately — see [QKD service](services/qkd-etsi014.md).
 
 ## Verify what your peer offers
 
@@ -175,12 +131,14 @@ show running-config section management ssh
 Live hybrid negotiation:
 
 ```bash
-make test-pqc VERBOSE=1
+make test-eapi VERBOSE=1
+make test-ssh VERBOSE=1
+make test-radsec VERBOSE=1
 ```
 
 ## Related
 
 - [Services overview](services/index.md) — per-service configuration and caveats
 - [Certificates and TLS 1.3](misc/certificates-and-tls13.md) — PKI requirements and OpenSSL command examples
-- [PQC connectivity tests](tests/pqc.md) — handshake verification commands
+- [Test suite overview](tests/index.md) — per-service make targets and result summary
 - [Setup](setup.md) — build and deploy workflow

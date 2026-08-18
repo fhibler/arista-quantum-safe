@@ -1,8 +1,8 @@
-# MACsec tests
+# MACsec 802.1X tests
 
-`make test-macsec` runs `python -m lab.test_macsec` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link.
+`make test-macsec-dot1x` runs `python -m lab.test_macsec_dot1x` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link (dynamic MACsec via 802.1X EAP-TLS + MKA).
 
-Optional extended reauth wait: `make test-macsec-reauth` (`VERIFY_REAUTH=1`, ~75 s).
+Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s).
 
 ## What is checked
 
@@ -70,6 +70,6 @@ EOF
 
 The supplicant check asserts **`X25519MLKEM768`** in dot1x supplicant output — the RADIUS EAP-TLS tunnel uses PQC-hybrid key exchange. MACsec frame encryption uses MKA-derived keys (separate layer).
 
-Configuration reference: [MACsec service](../services/macsec.md).
+Configuration reference: [MACsec service](../services/macsec.md) (802.1X section).
 
-RadSec path validated separately: [RADIUS tests](radius.md).
+Related: [RadSec tests](radsec.md) (EAP-TLS backend), [MACsec QuaDRA QKD tests](macsec-qkd.md) (static SAK on Ethernet2).

@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary, report_warn
+from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_summary, report_warn
 from lab.topology_contract import (
     CEOS_QUADRA_NODES,
     KME_B_SAE_ID,
@@ -488,11 +488,13 @@ def run_qkd_checks(
     swix = quadra_swix_name()
     targets = QkdTargets(clab_name=clab_name)
 
-    print_section_header("QuaDRA / QKD verification (static MACsec key rotation)")
-    print("  [live]  show daemon quadra, agent role, next rotation, QuaDRA link ping")
-    print("  [keys]  static SAK profile cross-mapping (master tx ↔ slave rx)")
-    print("  [log]   %QUADRA-4-ROTATION_SUCCESS% when present (startup/recovery only)")
-    print("  [kme]   enc_keys / dec_keys in KME container logs\n")
+    print_test_header(
+        "QuaDRA / QKD verification (static MACsec key rotation)",
+        "  [live]  show daemon quadra, agent role, next rotation, QuaDRA link ping",
+        "  [keys]  static SAK profile cross-mapping (master tx ↔ slave rx)",
+        "  [log]   %QUADRA-4-ROTATION_SUCCESS% when present (startup/recovery only)",
+        "  [kme]   enc_keys / dec_keys in KME container logs",
+    )
 
     if not quadra_installed_on_nodes(targets, swix, verbose=verbose):
         report_summary(

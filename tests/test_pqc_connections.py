@@ -23,7 +23,8 @@ from lab.test_pqc_connections import (
     probe_radsec_from_switch,
     probe_ssh_pqc,
     probe_syslog_delivery,
-    run_live_checks,
+    run_eapi_checks,
+    run_ssh_checks,
     tls13_handshake,
 )
 from lab.report import CheckStatus
@@ -136,13 +137,9 @@ def test_probe_eapi_jsonrpc_requires_version_payload(ip_family: str) -> None:
             probe_eapi_jsonrpc("ceos1-both", switch_ip, family=ip_family)
 
 
-def test_run_live_checks_happy_path(capsys) -> None:
+def test_run_eapi_and_ssh_checks_happy_path(capsys) -> None:
     targets = _lab_targets()
     config_json = _pqc_config_json()
-    syslog_host_lines = "\n".join(
-        f"logging vrf MGMT host {ip} 6514 protocol tls ssl-profile SYSLOG"
-        for ip in (MGMT_IPS["syslog"], MGMT_IPV6_IPS["syslog"])
-    )
 
     def fake_docker_exec(container: str, command: str, *, input_text: str = "", check: bool = True, **kwargs: object):
         _ = check
@@ -175,12 +172,10 @@ def test_run_live_checks_happy_path(capsys) -> None:
             return "successfully authenticated"
         if "show running-config | section eos-sdk-rpc" in commands:
             return "management api eos-sdk-rpc\n   transport grpc default\n      ssl profile GNMI\n"
-        if "show running-config | section radius" in commands:
-            return f"radius-server host {MGMT_IPV6_IPS['radius']} vrf MGMT tls ssl-profile RADSEC\n"
         if "show running-config section logging" in commands:
-            return f"{syslog_host_lines}\nlogging trap informational\n"
+            raise AssertionError(f"unexpected logging commands in eapi/ssh test: {commands!r}")
         if f"show management security ssl profile {SYSLOG_SSL_PROFILE} detail" in commands:
-            return json.dumps({"state": "valid", "tls13Groups": [PQC_GROUP]})
+            raise AssertionError(f"unexpected syslog profile in eapi/ssh test: {commands!r}")
         if "show running-config section management ssh" in commands:
             return (
                 "management ssh\n"
@@ -219,21 +214,12 @@ def test_run_live_checks_happy_path(capsys) -> None:
     with (
         patch("lab.test_pqc_connections.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
-        patch("lab.test_pqc_connections.wait_for_syslog_healthy"),
-        patch(
-            "lab.test_pqc_connections.capture_eos_syslog_tls_key_share_group",
-            return_value=4588,
-        ),
         patch(
             "lab.test_pqc_connections.run_curl_eapi",
             return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout='{"modelName":"cEOSLab"}', stderr=""),
         ),
         patch(
-            "lab.test_pqc_connections.run_openssl_s_client",
-            side_effect=fake_openssl_s_client,
-        ),
-        patch(
-            "lab.syslog_checks.run_openssl_s_client",
+            "lab.tls_wire.run_openssl_s_client",
             side_effect=fake_openssl_s_client,
         ),
         patch(
@@ -241,24 +227,19 @@ def test_run_live_checks_happy_path(capsys) -> None:
             side_effect=fake_run_ssh_pqc_probe,
         ),
     ):
-        run_live_checks(clab_name=targets.clab_name, mgmt_subnet="172.20.127.0/24")
+        run_eapi_checks(clab_name=targets.clab_name, mgmt_subnet="172.20.127.0/24")
+        run_ssh_checks(clab_name=targets.clab_name, mgmt_subnet="172.20.127.0/24")
 
     output = capsys.readouterr().out
-    assert "=== radius ===" in output
-    assert "=== syslog ===" in output
-    assert "--- Collector TLS ---" in output
     assert "=== ceos1-both ===" in output
     assert "=== ceos2-pqc ===" in output
     assert "=== ceos3-qkd ===" in output
     assert "--- eAPI ---" in output
     assert "--- SSH ---" in output
-    assert "--- RadSec ---" in output
     assert "[config]" in output
     assert "[live / test-runner]" in output
-    assert "[live]" in output
-    assert "no cleartext syslog" not in output
-    assert "wire KEX X25519MLKEM768" in output
-    assert "PQC: ✓" in output
+    assert "eAPI: ✓" in output
+    assert "SSH: ✓" in output
 
 
 def test_probe_syslog_delivery_warns_on_classical_wire_kex(capsys) -> None:
@@ -350,7 +331,7 @@ def test_probe_radsec_from_switch_retries_until_auth_success(ip_family: str) -> 
 def test_probe_eossdkrpc_tls_skips_ipv6(capsys) -> None:
     targets = _lab_targets()
 
-    with patch("lab.test_pqc_connections.run_openssl_s_client") as fake_openssl:
+    with patch("lab.tls_wire.run_openssl_s_client") as fake_openssl:
         probe_eossdkrpc_tls(targets, "ceos1-both", family="ipv6")
 
     fake_openssl.assert_not_called()
@@ -374,23 +355,21 @@ def test_probe_eossdkrpc_tls_warns_on_classical_secp256r1_probe(capsys) -> None:
             "Peer Temp Key: ECDH, prime256v1, 256 bits\n"
         )
 
-    with patch("lab.test_pqc_connections.run_openssl_s_client", side_effect=fake_openssl):
+    with patch("lab.tls_wire.run_openssl_s_client", side_effect=fake_openssl):
         probe_eossdkrpc_tls(targets, "ceos1-both")
 
     output = capsys.readouterr().out
     assert calls["n"] == 2
     assert "WARN" in output
     assert "not PQC-safe" in output
-    assert "TLS 1.3 compliant" in output
-    assert "secp256r1" in output
-    assert "explicit client group secp256r1" in output
+    assert "KEX secp256r1" in output
 
 
 def test_probe_eossdkrpc_tls_warns_when_all_handshakes_fail(capsys) -> None:
     targets = _lab_targets()
 
     with patch(
-        "lab.test_pqc_connections.run_openssl_s_client",
+        "lab.tls_wire.run_openssl_s_client",
         return_value="Connecting\nunexpected eof while reading\n",
     ):
         probe_eossdkrpc_tls(targets, "ceos1-both")

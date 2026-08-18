@@ -37,7 +37,7 @@ def test_run_openconfig_checks_smoke(capsys) -> None:
 
     with (
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
-        patch("lab.test_pqc_connections.run_openssl_s_client", side_effect=fake_openssl_s_client),
+        patch("lab.tls_wire.run_openssl_s_client", side_effect=fake_openssl_s_client),
         patch("lab.test_pqc_connections.run_gnmi_get", side_effect=fake_run_gnmi_get),
         patch("lab.test_openconfig.run_openconfig_grpc_checks"),
     ):

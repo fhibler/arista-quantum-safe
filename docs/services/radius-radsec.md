@@ -144,8 +144,8 @@ docker exec arista-quantum-safe-test-runner sh -c \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
 
-Automated: `make test-radius` and RadSec section of `make test-pqc`.
+Automated: `make test-radsec` (reachability, AAA, collector TLS PQC).
 
-See [RADIUS tests](../tests/radius.md) and [PQC tests](../tests/pqc.md#radsec).
+See [RadSec tests](../tests/radsec.md).
 
 <- [Services overview](index.md)

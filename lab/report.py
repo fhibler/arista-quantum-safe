@@ -52,8 +52,21 @@ def bold(text: str, *, use_colors: bool | None = None) -> str:
     return f"{BOLD}{text}{RESET}"
 
 
+TEST_HEADER_BORDER = "=" * 42
+
+
 def print_section_header(text: str) -> None:
     print(bold(text))
+
+
+def print_test_header(title: str, *description_lines: str) -> None:
+    """Print a prominent bordered header for a lab test command."""
+    print(TEST_HEADER_BORDER)
+    print(bold(title))
+    for line in description_lines:
+        print(line)
+    print(TEST_HEADER_BORDER)
+    print()
 
 
 def print_device(name: str) -> None:

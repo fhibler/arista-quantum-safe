@@ -16,7 +16,7 @@ PQC applies to **key establishment only**. Server and client certificates remain
 Most TLS ssl profiles list **only** the hybrid group `X25519MLKEM768` — no classical ECDH fallback. Peers (FreeRADIUS, syslog-ng) match that policy where PQC-hybrid is enforced end-to-end.
 
 !!! note "Known EOS gaps"
-    **Syslog-over-TLS** and **eos-sdk-rpc** advertise PQC-hybrid in configuration but may negotiate classical key exchange on the wire. See [Services](services/index.md) for per-service caveats.
+    **Syslog-over-TLS**, **gRIBI**, **gNPSI**, and **eos-sdk-rpc** advertise PQC-hybrid in configuration but may negotiate classical key exchange on the wire on EOS 4.36.2F. See [Services](services/index.md) and [Test result summary](tests/index.md#result-summary) for per-service caveats.
 
 ## Quick links
 

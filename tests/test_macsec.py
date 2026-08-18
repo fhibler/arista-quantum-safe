@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lab.test_macsec import (
+from lab.test_macsec_dot1x import (
     AUTHENTICATOR,
     DOT1X_EAP_IDENTITY,
     MacsecCheckError,
@@ -133,7 +133,7 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
     with (
-        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_macsec_dot1x.ceos_cli", side_effect=fake_ceos_cli),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
     ):
         run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24")
@@ -169,7 +169,7 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
         raise AssertionError(commands)
 
     with (
-        patch("lab.test_macsec.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_macsec_dot1x.ceos_cli", side_effect=fake_ceos_cli),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
     ):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
@@ -186,8 +186,8 @@ def test_check_mka_participants_retries_until_peers_appear() -> None:
         peers = [] if call_count["n"] < 3 else ["peer1"]
         return {"participants": [{"ckn": ckn, "success": True, "livePeerList": peers}]}
 
-    with patch("lab.test_macsec.ceos_show_json", side_effect=fake_ceos_show_json):
-        with patch("lab.test_macsec.time.sleep") as sleep:
+    with patch("lab.test_macsec_dot1x.ceos_show_json", side_effect=fake_ceos_show_json):
+        with patch("lab.test_macsec_dot1x.time.sleep") as sleep:
             result = check_mka_participants("clab-test-ceos1-both", AUTHENTICATOR)
     assert result == ckn
     assert call_count["n"] == 3
@@ -216,8 +216,8 @@ def test_check_dot1x_reauth_cycle_happy_path() -> None:
     targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
 
     with (
-        patch("lab.test_macsec.time.sleep") as sleep,
-        patch("lab.test_macsec.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_macsec_dot1x.time.sleep") as sleep,
+        patch("lab.test_macsec_dot1x.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
     ):
         check_dot1x_reauth_cycle(
@@ -249,8 +249,8 @@ def test_check_dot1x_reauth_cycle_raises_when_login_ok_unchanged() -> None:
     targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
 
     with (
-        patch("lab.test_macsec.time.sleep"),
-        patch("lab.test_macsec.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_macsec_dot1x.time.sleep"),
+        patch("lab.test_macsec_dot1x.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
     ):
         with pytest.raises(MacsecCheckError, match="expected additional RADIUS Login OK"):

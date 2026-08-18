@@ -35,16 +35,45 @@ PUBLIC_REFERENCE_DOCS = (
 PUBLIC_MISC_DOCS = (
     "misc/index.md",
     "misc/certificates-and-tls13.md",
+    "misc/toolchain.md",
 )
 
 PUBLIC_TEST_DOCS = (
     "tests/index.md",
-    "tests/pqc.md",
+    "tests/eapi.md",
+    "tests/ssh.md",
+    "tests/radsec.md",
     "tests/openconfig.md",
-    "tests/radius.md",
     "tests/syslog.md",
-    "tests/macsec.md",
+    "tests/kme.md",
+    "tests/macsec-dot1x.md",
+    "tests/macsec-qkd.md",
+    "tests/hosts.md",
 )
+
+STALE_TEST_MODULE_PATTERNS = (
+    r"lab\.test_macsec(?!_(?:dot1x|qkd))",
+    r"lab\.test_qkd\b",
+    r"python -m lab\.test_macsec(?!_(?:dot1x|qkd))",
+    r"python -m lab\.test_qkd\b",
+    r"tests/macsec\.md",
+    r"tests/pqc\.md",
+    r"tests/radius\.md",
+    r"make test-macsec(?!-(?:dot1x|qkd))",
+    r"make test-qkd\b",
+    r"make test-pqc\b",
+    r"make test-radius\b",
+    r"lab\.test_lab\b.*host",
+)
+
+
+def test_public_docs_exclude_stale_test_module_refs() -> None:
+    for path in sorted(PUBLIC_DOCS.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for pattern in STALE_TEST_MODULE_PATTERNS:
+            assert re.search(pattern, text) is None, (
+                f"{path.relative_to(REPO_ROOT)} must not match stale test ref /{pattern}/"
+            )
 
 
 def test_public_readme_has_no_todo_placeholders() -> None:

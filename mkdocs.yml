@@ -61,14 +61,19 @@ nav:
       - QKD / ETSI 014: services/qkd-etsi014.md
   - Tests:
       - Overview: tests/index.md
-      - PQC connectivity: tests/pqc.md
+      - eAPI: tests/eapi.md
+      - SSH: tests/ssh.md
+      - RadSec: tests/radsec.md
       - OpenConfig connectivity: tests/openconfig.md
-      - RADIUS: tests/radius.md
       - Syslog: tests/syslog.md
-      - MACsec: tests/macsec.md
+      - KME (ETSI QKD 014): tests/kme.md
+      - MACsec (802.1X): tests/macsec-dot1x.md
+      - MACsec (QuaDRA QKD): tests/macsec-qkd.md
+      - Host routing: tests/hosts.md
   - Miscellaneous:
       - Overview: misc/index.md
       - Certificates and TLS 1.3: misc/certificates-and-tls13.md
+      - Tool chain: misc/toolchain.md
 
 plugins:
   - search

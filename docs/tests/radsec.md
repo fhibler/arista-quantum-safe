@@ -1,29 +1,30 @@
-# RADIUS tests
+# RadSec tests
 
-`make test-radius` runs the **radius** section of `lab.test_lab`.
+`make test-radsec` runs `python -m lab.test_radsec` — FreeRADIUS collector checks, per-switch reachability, RadSec AAA, and collector TLS PQC handshakes (IPv4 and IPv6).
 
 ## What is checked
 
 ### FreeRADIUS container
 
-| Check | Method |
-|-------|--------|
-| RadSec listener on :2083 | `docker exec … netstat -ltn` |
-| OpenSSL offers `X25519MLKEM768` | `openssl list -tls-groups` |
-| Radius config contract | `check_radius_config()` |
+| Check | Type | Method |
+|-------|------|--------|
+| RadSec listener on :2083 | `[config]` | `netstat -ltn` in radius container |
+| OpenSSL offers `X25519MLKEM768` | `[config]` | `openssl list -tls-groups` |
 
 ### Each EOS switch (ceos1-both, ceos2-pqc, ceos3-qkd)
 
-| Check | Method |
-|-------|--------|
-| MGMT reachability | `ping vrf MGMT <radius-ip> repeat 3` (IPv4 + IPv6) |
-| RadSec profile + config | `check_radsec_config()` — ssl profile RADSEC, radius transport |
-| RadSec AAA | `test aaa group RADIUS server … tls port 2083 vrf MGMT` (IPv4 + IPv6) |
+| Check | Type | Method |
+|-------|------|--------|
+| MGMT reachability | `[live]` | `ping vrf MGMT <radius-ip> repeat 3` (IPv4 + IPv6) |
+| RadSec profile + config | `[config]` | RADSEC ssl profile, `tls ssl-profile RADSEC` |
+| Collector TLS PQC | `[live / test-runner]` | `openssl s_client` to radius :2083 with switch client cert |
+| RadSec AAA | `[live]` | `test aaa group RADIUS server … tls port 2083 vrf MGMT` |
 
 ## Pass criteria
 
 - 0% packet loss to radius on both address families
 - RadSec ssl profile **valid** with PQC-hybrid group
+- Collector TLS negotiates **`X25519MLKEM768`**
 - `test aaa` returns **successfully authenticated**
 
 ## Manual reproduction
@@ -62,4 +63,4 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 Configuration reference: [RADIUS / RadSec service](../services/radius-radsec.md).
 
-Also covered by `make test-pqc` (RadSec section per node).
+See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.

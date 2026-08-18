@@ -9,6 +9,7 @@ ARG CURL_VERSION=8.12.1
 ARG OPENSSH_VERSION=10.0p1
 ARG GNMIC_VERSION=0.47.0
 ARG GRPCURL_VERSION=1.9.3
+ARG GO_VERSION=1.24.3
 ARG GNOIC_VERSION=0.2.1
 ARG GRIBIC_VERSION=0.0.14
 ARG GNSIC_VERSION=0.0.4
@@ -127,22 +128,19 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnmic /usr/local/bin/gnmic \
  && gnmic version
 
-FROM alpine:${ALPINE_VERSION} AS grpcurl-fetch
+FROM golang:${GO_VERSION}-alpine AS grpcurl-build
 ARG GRPCURL_VERSION
-ARG TARGETARCH
+ARG GO_VERSION=1.24.3
 
 RUN apk add --no-cache wget tar ca-certificates \
- && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
-      amd64|x86_64) echo x86_64 ;; \
-      arm64|aarch64) echo arm64 ;; \
-      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
-    esac)" \
- && wget -q --tries=5 --timeout=60 \
-      "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${ARCH}.tar.gz" \
+ && wget -q --tries=5 --timeout=120 \
+      "https://github.com/fullstorydev/grpcurl/archive/refs/tags/v${GRPCURL_VERSION}.tar.gz" \
       -O /tmp/grpcurl.tar.gz \
  && tar -xzf /tmp/grpcurl.tar.gz -C /tmp \
- && install -m 755 /tmp/grpcurl /usr/local/bin/grpcurl \
- && grpcurl --version
+ && cd "/tmp/grpcurl-${GRPCURL_VERSION}" \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/grpcurl ./cmd/grpcurl \
+ && go version -m /usr/local/bin/grpcurl | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
+ && /usr/local/bin/grpcurl --version
 
 FROM alpine:${ALPINE_VERSION} AS gnoic-fetch
 ARG GNOIC_VERSION
@@ -161,21 +159,18 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnoic /usr/local/bin/gnoic \
  && gnoic version
 
-FROM alpine:${ALPINE_VERSION} AS gribic-fetch
+FROM golang:${GO_VERSION}-alpine AS gribic-build
 ARG GRIBIC_VERSION
-ARG TARGETARCH
+ARG GO_VERSION=1.24.3
 
 RUN apk add --no-cache wget tar ca-certificates \
- && ARCH="$(case "${TARGETARCH:-$(uname -m)}" in \
-      amd64|x86_64) echo x86_64 ;; \
-      arm64|aarch64) echo aarch64 ;; \
-      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
-    esac)" \
- && wget -q --tries=5 --timeout=60 \
-      "https://github.com/karimra/gribic/releases/download/v${GRIBIC_VERSION}/gribic_${GRIBIC_VERSION}_Linux_${ARCH}.tar.gz" \
+ && wget -q --tries=5 --timeout=120 \
+      "https://github.com/karimra/gribic/archive/refs/tags/v${GRIBIC_VERSION}.tar.gz" \
       -O /tmp/gribic.tar.gz \
  && tar -xzf /tmp/gribic.tar.gz -C /tmp \
- && install -m 755 /tmp/gribic /usr/local/bin/gribic \
+ && cd "/tmp/gribic-${GRIBIC_VERSION}" \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/gribic . \
+ && go version -m /usr/local/bin/gribic | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
  && gribic version
 
 FROM alpine:${ALPINE_VERSION} AS gnsic-fetch
@@ -215,9 +210,9 @@ COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=curl-build /usr/local/bin/curl /usr/local/bin/curl
 COPY --from=openssh-build /usr/local/bin/ssh /usr/local/bin/ssh
 COPY --from=gnmic-fetch /usr/local/bin/gnmic /usr/local/bin/gnmic
-COPY --from=grpcurl-fetch /usr/local/bin/grpcurl /usr/local/bin/grpcurl
+COPY --from=grpcurl-build /usr/local/bin/grpcurl /usr/local/bin/grpcurl
 COPY --from=gnoic-fetch /usr/local/bin/gnoic /usr/local/bin/gnoic
-COPY --from=gribic-fetch /usr/local/bin/gribic /usr/local/bin/gribic
+COPY --from=gribic-build /usr/local/bin/gribic /usr/local/bin/gribic
 COPY --from=gnsic-fetch /usr/local/bin/gnsic /usr/local/bin/gnsic
 
 RUN if [ -f /opt/openssl/lib64/libssl.so ]; then ln -sfn lib64 /opt/openssl/lib; fi

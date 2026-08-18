@@ -72,14 +72,15 @@ def test_makefile_exists() -> None:
         "install-quadra",
         "test-lab",
         "test-lab-runner",
-        "test-radius",
+        "test-radsec",
         "test-kme",
-        "test-pqc",
+        "test-eapi",
+        "test-ssh",
         "test-openconfig",
         "test-syslog",
-        "test-macsec",
-        "test-macsec-reauth",
-        "test-qkd",
+        "test-macsec-dot1x",
+        "test-macsec-dot1x-reauth",
+        "test-macsec-qkd",
         "test-hosts",
     ],
 )
@@ -249,6 +250,18 @@ def test_check_ceos_image_fails_when_missing() -> None:
     assert "docker import download/cEOS64-lab-" in combined
 
 
+def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "DOCKER_BUILD_FLAGS" in content
+    assert "--progress=plain" in content
+    assert "CLAB_DEPLOY_FLAGS" in content
+    deploy = content.split("deploy: gen-topo")[1].split("destroy:")[0]
+    assert "CLAB_DEPLOY_FLAGS" in deploy
+    assert "deploy-kme $(MAKE_VERBOSE)" in deploy
+    assert "wait-kme-pool $(MAKE_VERBOSE)" in deploy
+    assert "docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS)" in content
+
+
 def test_makefile_defines_check_containerlab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "CLAB_MIN_VERSION ?=" in content
@@ -327,29 +340,36 @@ def test_makefile_defines_mgmt_subnet() -> None:
     assert "prepare-mgmt-net" not in content
 
 
-def test_test_radius_recipe_delegates_to_test_lab() -> None:
+def test_test_radsec_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-radius:" in content
-    radius = content.split("test-radius:")[1].split("test-kme:")[0]
-    assert "$(LAB_TEST)" in radius
-    assert "--section radius" in radius
-    assert "VERBOSE" in radius
+    assert "test-radsec:" in content
+    radsec = content.split("test-radsec:")[1].split("test-kme:")[0]
+    assert "lab.test_radsec" in radsec
+    assert "VERBOSE" in radsec
 
 
 def test_test_kme_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "test-kme:" in content
-    kme = content.split("test-kme:")[1].split("test-pqc:")[0]
+    kme = content.split("test-kme:")[1].split("test-eapi:")[0]
     assert "lab.test_kme" in kme
     assert "--section kme" not in kme
 
 
-def test_test_pqc_recipe_delegates_to_python_module() -> None:
+def test_test_eapi_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-pqc:" in content
-    pqc = content.split("test-pqc:")[1].split("test-openconfig:")[0]
-    assert "lab.test_pqc_connections" in pqc
-    assert "successfully authenticated" not in pqc
+    assert "test-eapi:" in content
+    eapi = content.split("test-eapi:")[1].split("test-ssh:")[0]
+    assert "lab.test_eapi" in eapi
+    assert "VERBOSE" in eapi
+
+
+def test_test_ssh_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-ssh:" in content
+    ssh = content.split("test-ssh:")[1].split("test-openconfig:")[0]
+    assert "lab.test_ssh" in ssh
+    assert "VERBOSE" in ssh
 
 
 def test_test_openconfig_recipe_delegates_to_python_module() -> None:
@@ -360,18 +380,26 @@ def test_test_openconfig_recipe_delegates_to_python_module() -> None:
     assert "VERBOSE" in openconfig
 
 
-def test_test_macsec_recipe_delegates_to_python_module() -> None:
+def test_test_macsec_dot1x_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-macsec:" in content
-    macsec = content.split("test-macsec:")[1].split("test-hosts:")[0]
-    assert "lab.test_macsec" in macsec
+    assert "test-macsec-dot1x:" in content
+    macsec = content.split("test-macsec-dot1x:")[1].split("test-macsec-dot1x-reauth:")[0]
+    assert "lab.test_macsec_dot1x" in macsec
 
 
-def test_test_qkd_recipe_delegates_to_python_module() -> None:
+def test_test_macsec_qkd_recipe_delegates_to_python_module() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-qkd:" in content
-    qkd = content.split("test-qkd:")[1].split("test-hosts:")[0]
-    assert "lab.test_qkd" in qkd
+    assert "test-macsec-qkd:" in content
+    qkd = content.split("test-macsec-qkd:")[1].split("test-hosts:")[0]
+    assert "lab.test_macsec_qkd" in qkd
+
+
+def test_test_hosts_recipe_delegates_to_python_module() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "test-hosts:" in content
+    hosts = content.split("test-hosts:")[1].split("# Export/publish")[0]
+    assert "lab.test_hosts" in hosts
+    assert "lab.test_lab" not in hosts
 
 
 def test_clean_recipe_removes_artifacts_and_images() -> None:

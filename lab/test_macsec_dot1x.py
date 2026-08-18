@@ -21,7 +21,7 @@ from lab.ceos_json import (
     parse_eos_json,
     ping_text_success,
 )
-from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary
+from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_summary
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
     DOT1X_EAP_IDENTITY,
@@ -424,9 +424,11 @@ def run_macsec_checks(
     supp_container = targets.ceos_container(SUPPLICANT)
     quadra_slave_container = targets.ceos_container(QUADRA_SLAVE)
 
-    print_section_header("MACsec verification (802.1X EAP-TLS + MKA on inter-switch link)")
-    print("  [config] EOS running-config stanzas")
-    print("  [live]   dot1x state, MKA participants, encrypted traffic, inter-switch ping\n")
+    print_test_header(
+        "MACsec verification (802.1X EAP-TLS + MKA on inter-switch link)",
+        "  [config] EOS running-config stanzas",
+        "  [live]   dot1x state, MKA participants, encrypted traffic, inter-switch ping",
+    )
 
     print_device(AUTHENTICATOR)
     if not skip_config:

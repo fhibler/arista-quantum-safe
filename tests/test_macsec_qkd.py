@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lab.test_qkd import (
+from lab.test_macsec_qkd import (
     MASTER,
     QkdCheckError,
     assert_plain_sak_key_exchange,
@@ -170,7 +170,7 @@ def test_kme_key_request_lines_filters_post_requests() -> None:
 
 
 def test_check_kme_key_request_logs() -> None:
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
 
     sample = (
         '"POST /api/v1/keys/c565d5aa-8670-4446-8471-b0e53e315d2a/enc_keys HTTP/1.1" 200 -'
@@ -228,7 +228,7 @@ def test_find_rotation_success_log() -> None:
         def __call__(self, _container: str, _commands: str, *, verbose: bool | None = None) -> str:
             return logs
 
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
 
     original = mod.ceos_cli
     mod.ceos_cli = FakeCli()  # type: ignore[assignment]
@@ -241,7 +241,7 @@ def test_find_rotation_success_log() -> None:
 
 
 def test_note_rotation_success_log_warns_when_absent(capsys) -> None:
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
 
     original = mod.ceos_cli
     mod.ceos_cli = lambda *_a, **_k: "unrelated syslog line\n"  # type: ignore[assignment]
@@ -257,7 +257,7 @@ def test_note_rotation_success_log_warns_when_absent(capsys) -> None:
 
 def test_note_rotation_success_log_reports_when_present(capsys) -> None:
     logs = "%QUADRA-4-ROTATION_SUCCESS: Successful QKD Macsec key rotation"
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
 
     original = mod.ceos_cli
     mod.ceos_cli = lambda *_a, **_k: logs  # type: ignore[assignment]
@@ -271,7 +271,7 @@ def test_note_rotation_success_log_reports_when_present(capsys) -> None:
 
 
 def test_run_qkd_checks_skips_when_extension_missing(capsys) -> None:
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
     from unittest.mock import patch
 
     with patch.object(mod, "quadra_installed_on_nodes", return_value=False):
@@ -282,7 +282,7 @@ def test_run_qkd_checks_skips_when_extension_missing(capsys) -> None:
 
 
 def test_run_qkd_checks_happy_path(capsys) -> None:
-    import lab.test_qkd as mod
+    import lab.test_macsec_qkd as mod
     from unittest.mock import patch
 
     from lab.topology_contract import quadra_swix_name

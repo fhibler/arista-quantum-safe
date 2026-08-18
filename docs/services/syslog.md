@@ -109,7 +109,7 @@ docker exec arista-quantum-safe-syslog openssl list -tls-groups | grep X25519MLK
 
 ### Live PQC handshake (collector-side)
 
-From the **test-runner** probe client (matches `make test-pqc` / `make test-syslog`):
+From the **test-runner** probe client (matches `make test-syslog`):
 
 ```bash
 docker exec arista-quantum-safe-test-runner sh -c \
@@ -151,7 +151,7 @@ docker exec arista-quantum-safe-syslog tshark -r /tmp/syslog-tls.pcap \
 
 Expect group **29 (`x25519`)**, not **4588 (`X25519MLKEM768`)** — see [Syslog tests](../tests/syslog.md#result-summary) for recorded wire KEX.
 
-Automated: `make test-pqc` (delivery + optional wire KEX capture) and `make test-syslog`.
+Automated: `make test-syslog` (delivery + optional wire KEX capture with **WARN** when not PQC-safe).
 
 See [Syslog tests](../tests/syslog.md).
 

@@ -98,7 +98,7 @@ Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS p
 |-------|------------------------|
 | EAP-TLS KEX | **PQC-safe** (`X25519MLKEM768` in supplicant detail) |
 | MACsec keys | Derived from EAP — not direct PQC wire protocol on MACsec frames |
-| Reauthentication | Period **60 s** — optional extended check via `make test-macsec-reauth` |
+| Reauthentication | Period **60 s** — optional extended check via `make test-macsec-dot1x-reauth` |
 | Static SAK / QKD paths | Out of scope for this page — see [QKD / ETSI 014](qkd-etsi014.md) |
 
 !!! note "Layer distinction"
@@ -128,7 +128,7 @@ Expect host **SUCCESS**, port **Authorized**, supplicant status **success**, EAP
 
 ### Live PQC (802.1X / EAP-TLS)
 
-Supplicant ssl profile detail should show `X25519MLKEM768`. RadSec and EAP-TLS paths are covered by `make test-macsec` and `make test-pqc`.
+Supplicant ssl profile detail should show `X25519MLKEM768`. RadSec and EAP-TLS paths are covered by `make test-macsec-dot1x` and `make test-radsec`.
 
 ### MKA / MACsec
 
@@ -151,8 +151,8 @@ ping 10.255.0.2 repeat 3
 EOF
 ```
 
-Automated: `make test-macsec` (and `VERIFY_REAUTH=1 make test-macsec-reauth` for periodic reauth).
+Automated: `make test-macsec-dot1x` (and `VERIFY_REAUTH=1 make test-macsec-dot1x-reauth` for periodic reauth).
 
-See [MACsec tests](../tests/macsec.md).
+See [MACsec 802.1X tests](../tests/macsec-dot1x.md). QuaDRA static SAK: [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 
 <- [Services overview](index.md)

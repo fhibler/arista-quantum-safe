@@ -28,9 +28,9 @@ def gnoic_mtls_args(node: str) -> str:
 def grpc_mtls_args(node: str) -> str:
     """Return grpcurl mTLS flags for a switch node.
 
-    grpcurl uses Go crypto/tls (not OpenSSL) and only accepts -cacert/-cert/-key.
-    Providing client cert material implicitly selects TLS; PQC KEX is enforced on
-    the switch side and verified separately via openssl s_client probes.
+    grpcurl uses Go crypto/tls (not OpenSSL). The test-runner image builds
+    grpcurl with Go 1.24+ so X25519MLKEM768 is offered by default; see
+    docs/misc/toolchain.md.
     """
     return (
         f"-cacert {probe_ca_path()} "
@@ -57,7 +57,7 @@ def grpcurl_invoke_command(
 
 
 def gnoic_services_command(target: str, *, node: str) -> str:
-    """List gRPC services via server reflection (PQC-capable; unlike stock grpcurl)."""
+    """List gRPC services via server reflection."""
     return f"gnoic -a {target!r} {gnoic_mtls_args(node)}services"
 
 

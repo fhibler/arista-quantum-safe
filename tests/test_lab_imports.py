@@ -17,7 +17,7 @@ from tests.scaffold_contract import REPO_ROOT
 
 
 def test_test_lab_modules_are_enumerated() -> None:
-    assert "lab.test_lab" in TEST_LAB_MODULES
+    assert "lab.test_hosts" in TEST_LAB_MODULES
     assert "lab.topology_contract" in TEST_LAB_MODULES
     assert len(TEST_LAB_MODULES) >= 7
 

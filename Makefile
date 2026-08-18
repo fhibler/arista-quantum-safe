@@ -34,23 +34,24 @@ HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 STAMP_DIR := .stamp
 OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
 OPENSSL_SHARED_STAMP := $(STAMP_DIR)/openssl-shared.$(HOST_ARCH)
-# Do not inherit VERBOSE from the environment; use make test-lab VERBOSE=1 explicitly.
+# Do not inherit VERBOSE from the environment; pass explicitly, e.g. make deploy VERBOSE=1.
 VERBOSE       :=
+# VERBOSE=1 → plain Docker build output and debug containerlab deploy logs.
+DOCKER_BUILD_FLAGS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
+CLAB_DEPLOY_FLAGS := $(if $(filter 1,$(VERBOSE)),-d,)
+MAKE_VERBOSE := $(if $(filter 1,$(VERBOSE)),VERBOSE=1,)
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
 MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-a'])")
 MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
 KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID; print(KME_SAE_ID)")
 
-LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
-
 # Image builds share one builder and tag the same OpenSSL bases — do not run under make -j.
 .NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared build-lab-images build-radius build-syslog build-kme build-test-runner
 
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-openconfig test-macsec test-macsec-reauth test-qkd test-hosts
+        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -59,11 +60,12 @@ help: ## Show available targets
 $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/ceos/quadra-daemon-master.cfg.in configs/ceos/quadra-daemon-slave.cfg.in configs/ceos/quadra-macsec-master.cfg.in configs/ceos/quadra-macsec-slave.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 
-gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides
-	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
+gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides (VERBOSE=1 echoes commands)
+	@if [ "$(VERBOSE)" = "1" ]; then set -x; fi; \
+	env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
 		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
-	@$(MAKE) --no-print-directory validate-topo
-	@$(MAKE) --no-print-directory sync-devcontainer
+	@$(MAKE) --no-print-directory validate-topo $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory sync-devcontainer $(MAKE_VERBOSE)
 
 sync-devcontainer: ## Sync CLAB_VERSION from Makefile into .devcontainer/devcontainer.json
 	@$(PYTHON) -m lab.sync_devcontainer --clab-version '$(CLAB_VERSION)'
@@ -233,7 +235,7 @@ build-openssl-shared: $(OPENSSL_SHARED_STAMP) ## Build quantum-safe-openssl:3.5.
 
 $(OPENSSL_SHARED_STAMP): $(OPENSSL_DOCKERFILE)
 	@mkdir -p $(STAMP_DIR)
-	docker buildx build --load --platform linux/$(HOST_ARCH) \
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_SHARED=1 \
 		-t $(OPENSSL_SHARED_IMAGE) -f $(OPENSSL_DOCKERFILE) .
 	@touch $@
@@ -242,7 +244,7 @@ build-openssl-static: $(OPENSSL_STATIC_STAMP) ## Build quantum-safe-openssl:3.5.
 
 $(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
 	@mkdir -p $(STAMP_DIR)
-	docker buildx build --load --platform linux/$(HOST_ARCH) \
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_SHARED=0 \
 		-t $(OPENSSL_STATIC_IMAGE) -f $(OPENSSL_DOCKERFILE) .
 	@touch $@
@@ -252,10 +254,10 @@ build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL b
 build-lab-images: build-openssl build-radius build-syslog build-kme build-test-runner ## Build all lab Docker images (OpenSSL bases once, then services)
 
 build-radius: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) \
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
 		-t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
-	@$(MAKE) --no-print-directory test-radius-image
+	@$(MAKE) --no-print-directory test-radius-image $(MAKE_VERBOSE)
 
 test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
 	@set -euo pipefail; \
@@ -272,10 +274,10 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 	echo "RadSec:     radiusd config OK"
 
 build-syslog: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) \
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
 		-t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
-	@$(MAKE) --no-print-directory test-syslog-image
+	@$(MAKE) --no-print-directory test-syslog-image $(MAKE_VERBOSE)
 
 test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
 	@set -euo pipefail; \
@@ -305,8 +307,9 @@ test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5
 	exit 1
 
 build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) -t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
-	@$(MAKE) --no-print-directory test-kme-image
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
+		-t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
+	@$(MAKE) --no-print-directory test-kme-image $(MAKE_VERBOSE)
 
 test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	@set -euo pipefail; \
@@ -316,10 +319,11 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	echo "KME:        entrypoint present"
 
 build-test-runner: build-openssl-shared ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) \
+	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
+		--build-arg GO_VERSION=1.24.3 \
 		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
-	@$(MAKE) --no-print-directory verify-test-runner-image
+	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
 
 verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
 	@set -euo pipefail; \
@@ -337,24 +341,28 @@ verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5
 	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
 	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
 	echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'strings /usr/local/bin/grpcurl | grep -q "go1.24"'; \
+	echo "Probe:      grpcurl built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
 	echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -q "go1.24"'; \
+	echo "Probe:      gribic built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
 	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"
 
 DEPLOY_KME_NODES := kme-a,kme-b
 
 deploy-kme: check-containerlab $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
-	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES)
+	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES) $(CLAB_DEPLOY_FLAGS)
 
 wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-lab-images check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
-	@$(MAKE) --no-print-directory deploy-kme
-	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
-	containerlab deploy -t $(CLAB_TOPO_GEN)
+deploy: gen-topo build-lab-images check-ceos-image ## Deploy lab (VERBOSE=1: plain Docker build logs + debug containerlab)
+	@$(MAKE) --no-print-directory deploy-kme $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory wait-kme-pool $(MAKE_VERBOSE)
+	containerlab deploy -t $(CLAB_TOPO_GEN) $(CLAB_DEPLOY_FLAGS)
 
 destroy: check-containerlab $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
@@ -450,33 +458,40 @@ test-lab-runner: ## All live lab checks from mgmt-network harness (docker + depl
 		sh /workspace/docker/test-runner/harness-entrypoint.sh test-lab VERBOSE=$(VERBOSE)
 
 test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radius
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-ssh
 	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-eapi
 	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-pqc
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-openconfig
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radsec
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
 	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-openconfig
 	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-qkd
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-dot1x
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-qkd
 	@echo
 	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
 	@echo
 	@echo "✓ All lab checks passed."
 
-test-radius: ## RadSec auth test from both switches (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section radius
+test-radsec: ## RadSec reachability, AAA, and collector PQC TLS (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_radsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-pqc: ## TLS 1.3 + PQC checks incl. syslog-over-TLS (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_pqc_connections --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+test-eapi: ## eAPI HTTPS + command-api PQC checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_eapi --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-ssh: ## SSH PQC KEX checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_ssh --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-openconfig: ## OpenConfig gRPC + RESTCONF PQC checks (requires deployed lab; VERBOSE=1 for full output)
@@ -487,20 +502,21 @@ test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-macsec: ## Dynamic MACsec checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+test-macsec-dot1x: ## Dynamic MACsec (802.1X EAP-TLS + MKA) checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_dot1x --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,) \
 		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
 
-test-macsec-reauth: ## MACsec + periodic 802.1X reauth wait (~75s; requires deployed lab)
-	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec
+test-macsec-dot1x-reauth: ## 802.1X MACsec + periodic reauth wait (~75s; requires deployed lab)
+	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec-dot1x
 
-test-qkd: ## QuaDRA daemon + QKD rotation checks (requires deployed lab; skips when swix absent)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_qkd --clab-name '$(CLAB_NAME)' \
+test-macsec-qkd: ## QuaDRA static SAK / QKD rotation checks (requires deployed lab; skips when swix absent)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(LAB_TEST) --section hosts
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_hosts --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
 # Export/publish targets live in internal/export.mk (not present in the public mirror).
 ifneq ($(wildcard internal/export.mk),)

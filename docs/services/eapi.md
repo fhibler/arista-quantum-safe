@@ -100,8 +100,8 @@ docker exec arista-quantum-safe-test-runner sh -c \
    -d "{\"jsonrpc\":\"2.0\",\"method\":\"runCmds\",\"params\":{\"version\":1,\"cmds\":[\"show version\"],\"format\":\"json\"},\"id\":1}"'
 ```
 
-Automated: `make test-pqc` → eAPI HTTPS + JSON-RPC checks per node (IPv4 and IPv6).
+Automated: `make test-eapi` → eAPI HTTPS + JSON-RPC checks per node (IPv4 and IPv6).
 
-See [PQC tests](../tests/pqc.md#eapi).
+See [eAPI tests](../tests/eapi.md).
 
 <- [Services overview](index.md)

@@ -43,6 +43,12 @@ from lab.probe_client import (
     probe_client_key_path,
     run_openssl_s_client,
 )
+from lab.tls_wire import (
+    TlsWireResult,
+    report_tls_wire_probe,
+    rpc_tls_wire_suffix,
+    run_tls_wire_probe,
+)
 from lab.report import CheckStatus, print_check_group, report_ok, report_skip, report_warn
 
 if TYPE_CHECKING:
@@ -60,6 +66,48 @@ GNPSI_UNSUPPORTED_MARKERS = (
     "unrecognized command",
     "no such command",
 )
+
+
+def _report_grpc_tls(
+    label: str,
+    family: str,
+    result: TlsWireResult,
+    *,
+    policy: str,
+    port: int | None = None,
+    error_label: str | None = None,
+) -> TlsWireResult:
+    return report_tls_wire_probe(
+        label,
+        family_label(family),
+        result,
+        policy=policy,  # type: ignore[arg-type]
+        report_fn=_report_live,
+        port=port,
+        error_label=error_label,
+    )
+
+
+def _grpc_tls_common(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str,
+    port: int,
+    verbose: bool | None,
+    mtls: bool,
+) -> dict[str, object]:
+    ip = targets.ceos_mgmt_ip(node, family)
+    common: dict[str, object] = dict(
+        connect=hostport(ip, port),
+        ca_file=probe_ca_path(),
+        clab_name=targets.clab_name,
+        verbose=verbose,
+    )
+    if mtls:
+        common["cert_file"] = probe_client_cert_path(node)
+        common["key_file"] = probe_client_key_path(node)
+    return common
 
 
 def _report_config(detail: str) -> None:
@@ -110,20 +158,17 @@ def probe_gnoi_tls(
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
-) -> None:
-    from lab.test_pqc_connections import assert_pqc_hybrid_tls
-
-    ip = targets.ceos_mgmt_ip(node, family)
-    output = run_openssl_s_client(
-        connect=hostport(ip, GNMI_PORT),
-        ca_file=probe_ca_path(),
-        clab_name=targets.clab_name,
-        verbose=verbose,
+) -> TlsWireResult:
+    result = run_tls_wire_probe(
+        **_grpc_tls_common(targets, node, family=family, port=GNMI_PORT, verbose=verbose, mtls=False),
+        classical_fallback=False,
     )
-    assert_pqc_hybrid_tls(output, label=f"{node} gNOI transport TLS")
-    _report_live(
-        f"gNOI transport TLS handshake ({family_label(family)}, TLS 1.3, {TLS_PQC_GROUP})",
-        probe_client=True,
+    return _report_grpc_tls(
+        "gNOI transport TLS handshake",
+        family,
+        result,
+        policy="strict",
+        error_label=f"{node} gNOI transport TLS",
     )
 
 
@@ -132,6 +177,7 @@ def probe_gnoi_ping(
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
     from lab.test_pqc_connections import PqcConnectionError
@@ -162,8 +208,9 @@ def probe_gnoi_ping(
         body = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         raise PqcConnectionError(f"{node} gNOI Ping: {body[-500:]}")
+    wire = rpc_tls_wire_suffix(tls_wire)
     _report_live(
-        f"gNOI System/Ping RPC ({family_label(family)}, mTLS, {TLS_PQC_GROUP})",
+        f"gNOI System/Ping RPC ({family_label(family)}, mTLS, {wire})",
         probe_client=True,
     )
 
@@ -173,6 +220,7 @@ def probe_gnoi_reflection(
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
     from lab.test_pqc_connections import PqcConnectionError
@@ -192,8 +240,10 @@ def probe_gnoi_reflection(
     missing = [svc for svc in GNOI_REFLECTION_SERVICES if svc not in body]
     if missing:
         raise PqcConnectionError(f"{node} gNOI reflection: missing services {missing!r}")
+    wire = rpc_tls_wire_suffix(tls_wire)
     _report_live(
-        f"gNOI gRPC reflection lists {', '.join(GNOI_REFLECTION_SERVICES)} ({family_label(family)})",
+        f"gNOI gRPC reflection lists {', '.join(GNOI_REFLECTION_SERVICES)} "
+        f"({family_label(family)}, {wire})",
         probe_client=True,
     )
 
@@ -227,14 +277,36 @@ def check_gribi_ssl_profile(targets: LabTargets, node: str, *, verbose: bool | N
     _report_config(f"gRIBI ssl profile {GRIBI_SSL_PROFILE} PQC-hybrid only ({TLS_PQC_GROUP})")
 
 
-def probe_gribi_mtls(
+def probe_gribi_tls(
     targets: LabTargets,
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
+) -> TlsWireResult:
+    """Probe gRIBI mTLS wire negotiation (WARN when classical KEX is accepted)."""
+    result = run_tls_wire_probe(
+        **_grpc_tls_common(targets, node, family=family, port=GRIBI_PORT, verbose=verbose, mtls=True),
+    )
+    return _report_grpc_tls(
+        "gRIBI gRPC mTLS handshake",
+        family,
+        result,
+        policy="warn",
+        port=GRIBI_PORT,
+        error_label=f"{node} gRIBI mTLS",
+    )
+
+
+def probe_gribi_mtls(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
+    verbose: bool | None = None,
 ) -> None:
-    """Verify gRIBI mTLS and PQC-hybrid KEX via gribic (openssl s_client cannot speak gRPC/HTTP2)."""
+    """Verify gRIBI Get RPC over mTLS (WARN when TLS probe did not confirm PQC-hybrid KEX)."""
     from lab.test_pqc_connections import PqcConnectionError
 
     ip = targets.ceos_mgmt_ip(node, family)
@@ -263,8 +335,11 @@ def probe_gribi_mtls(
         body = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         raise PqcConnectionError(f"{node} gRIBI mTLS Get: {body[-500:]}")
+    wire = rpc_tls_wire_suffix(tls_wire)
+    status = CheckStatus.OK if tls_wire and tls_wire.pqc_confirmed else CheckStatus.WARN
     _report_live(
-        f"gRIBI gRPC mTLS + Get RPC ({family_label(family)}, {TLS_PQC_GROUP})",
+        f"gRIBI gRPC mTLS + Get RPC ({family_label(family)}, {wire})",
+        status=status,
         probe_client=True,
     )
 
@@ -334,23 +409,19 @@ def probe_gnsi_tls(
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
-) -> None:
-    from lab.test_pqc_connections import assert_pqc_hybrid_tls
-
+) -> TlsWireResult:
     ip = targets.ceos_mgmt_ip(node, family)
     port = _gnsi_port(targets, node, verbose=verbose)
-    output = run_openssl_s_client(
-        connect=hostport(ip, port),
-        ca_file=probe_ca_path(),
-        cert_file=probe_client_cert_path(node),
-        key_file=probe_client_key_path(node),
-        clab_name=targets.clab_name,
-        verbose=verbose,
+    result = run_tls_wire_probe(
+        **_grpc_tls_common(targets, node, family=family, port=port, verbose=verbose, mtls=True),
+        classical_fallback=False,
     )
-    assert_pqc_hybrid_tls(output, label=f"{node} gNSI mTLS")
-    _report_live(
-        f"gNSI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {TLS_PQC_GROUP})",
-        probe_client=True,
+    return _report_grpc_tls(
+        "gNSI gRPC mTLS handshake",
+        family,
+        result,
+        policy="strict",
+        error_label=f"{node} gNSI mTLS",
     )
 
 
@@ -359,6 +430,7 @@ def probe_gnsi_certz_profilelist(
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
     """Certz.GetProfileList over gNSI transport gnmi default (Certz omitted from gRPC reflection)."""
@@ -381,8 +453,9 @@ def probe_gnsi_certz_profilelist(
         raise PqcConnectionError(
             f"{node} gNSI Certz.GetProfileList: expected ssl profile {GNSI_SSL_PROFILE!r} in response"
         )
+    wire = rpc_tls_wire_suffix(tls_wire)
     _report_live(
-        f"gNSI Certz.GetProfileList RPC ({family_label(family)}, mTLS, {TLS_PQC_GROUP})",
+        f"gNSI Certz.GetProfileList RPC ({family_label(family)}, mTLS, {wire})",
         probe_client=True,
     )
 
@@ -475,8 +548,40 @@ def probe_gnpsi_tls(
     *,
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
+) -> TlsWireResult | None:
+    """OpenSSL mTLS wire probe for gNPSI (WARN when classical KEX is accepted)."""
+    common = _grpc_tls_common(
+        targets, node, family=family, port=GNPSI_PORT, verbose=verbose, mtls=True
+    )
+    result = run_tls_wire_probe(**common)
+    if not result.tls13:
+        raw = run_openssl_s_client(**common)
+        if "connection refused" in raw.lower():
+            _report_live(
+                f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped — "
+                f"port {GNPSI_PORT} not listening on vrf MGMT despite enabled transport",
+                status=CheckStatus.SKIP,
+                probe_client=True,
+            )
+            return None
+    return _report_grpc_tls(
+        "gNPSI gRPC mTLS handshake",
+        family,
+        result,
+        policy="warn",
+        port=GNPSI_PORT,
+        error_label=f"{node} gNPSI mTLS",
+    )
+
+
+def probe_gnpsi_services(
+    targets: LabTargets,
+    node: str,
+    *,
+    family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
+    verbose: bool | None = None,
 ) -> None:
-    """Verify gNPSI mTLS via gnoic (openssl s_client cannot complete HTTP/2 gRPC handshakes)."""
     from lab.test_pqc_connections import PqcConnectionError
 
     ip = targets.ceos_mgmt_ip(node, family)
@@ -486,23 +591,18 @@ def probe_gnpsi_tls(
         command,
         clab_name=targets.clab_name,
         verbose=verbose,
-        title=f"{node} gNPSI mTLS ({family_label(family)})",
+        title=f"{node} gNPSI gRPC reflection ({family_label(family)})",
     )
     body = result.stdout + result.stderr
     if result.returncode != 0:
-        if "Connection refused" in body or "connection refused" in body.lower():
-            _report_live(
-                f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped — "
-                f"port {GNPSI_PORT} not listening on vrf MGMT despite enabled transport",
-                status=CheckStatus.SKIP,
-                probe_client=True,
-            )
-            return
         raise PqcConnectionError(f"{node} gNPSI mTLS: {body[-500:]}")
-    if "gnpsi.gNPSI" not in body:
-        raise PqcConnectionError(f"{node} gNPSI mTLS: expected gnpsi.gNPSI in reflection")
+    if GNPSI_SERVICE not in body:
+        raise PqcConnectionError(f"{node} gNPSI mTLS: expected {GNPSI_SERVICE!r} in reflection")
+    wire = rpc_tls_wire_suffix(tls_wire)
+    status = CheckStatus.OK if tls_wire and tls_wire.pqc_confirmed else CheckStatus.WARN
     _report_live(
-        f"gNPSI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {TLS_PQC_GROUP})",
+        f"gNPSI gRPC reflection lists {GNPSI_SERVICE} ({family_label(family)}, {wire})",
+        status=status,
         probe_client=True,
     )
 
@@ -512,34 +612,11 @@ def probe_gnpsi_subscribe(
     node: str,
     *,
     family: str = IP_FAMILY_IPV4,
+    tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GNPSI_PORT)
-    list_cmd = gnoic_services_command(target, node=node)
-    result = run_grpc_probe(
-        list_cmd,
-        clab_name=targets.clab_name,
-        verbose=verbose,
-        title=f"{node} gNPSI grpc reflection ({family_label(family)})",
-    )
-    body = result.stdout + result.stderr
-    if result.returncode != 0:
-        _report_live(
-            f"gNPSI subscribe ({family_label(family)}), skipped — "
-            f"cEOS sFlow→gNPSI pipeline may not produce datagrams",
-            status=CheckStatus.SKIP,
-            probe_client=True,
-        )
-        return
-    if GNPSI_SERVICE not in body:
-        _report_live(
-            f"gNPSI subscribe ({family_label(family)}), skipped — "
-            f"{GNPSI_SERVICE} not in gRPC reflection",
-            status=CheckStatus.SKIP,
-            probe_client=True,
-        )
-        return
     invoke = grpcurl_invoke_command(target, node=node, rpc=GNPSI_SUBSCRIBE_RPC, data="{}")
     sub_result = run_grpc_probe(
         f"timeout 8 sh -c {invoke!r} || true",
@@ -548,9 +625,12 @@ def probe_gnpsi_subscribe(
         title=f"{node} gNPSI subscribe ({family_label(family)})",
     )
     sub_body = sub_result.stdout + sub_result.stderr
+    wire = rpc_tls_wire_suffix(tls_wire)
     if sub_result.returncode == 0 and sub_body.strip():
+        status = CheckStatus.OK if tls_wire and tls_wire.pqc_confirmed else CheckStatus.WARN
         _report_live(
-            f"gNPSI subscribe received datagram ({family_label(family)}, mTLS)",
+            f"gNPSI subscribe received datagram ({family_label(family)}, mTLS, {wire})",
+            status=status,
             probe_client=True,
         )
         return
@@ -576,9 +656,9 @@ def run_openconfig_grpc_checks(
         if not skip_config:
             check_gnoi_config(targets, node, verbose=verbose)
         for family in IP_FAMILIES:
-            probe_gnoi_tls(targets, node, family=family, verbose=verbose)
-            probe_gnoi_ping(targets, node, family=family, verbose=verbose)
-            probe_gnoi_reflection(targets, node, family=family, verbose=verbose)
+            gnoi_wire = probe_gnoi_tls(targets, node, family=family, verbose=verbose)
+            probe_gnoi_ping(targets, node, family=family, tls_wire=gnoi_wire, verbose=verbose)
+            probe_gnoi_reflection(targets, node, family=family, tls_wire=gnoi_wire, verbose=verbose)
 
         print_check_group("gRIBI")
         if not skip_config:
@@ -586,14 +666,27 @@ def run_openconfig_grpc_checks(
             check_gribi_ssl_profile(targets, node, verbose=verbose)
             check_gribi_ipv6_binding(targets, node, verbose=verbose)
         for family in IP_FAMILIES:
-            probe_gribi_mtls(targets, node, family=family, verbose=verbose)
+            gribi_wire = probe_gribi_tls(targets, node, family=family, verbose=verbose)
+            probe_gribi_mtls(
+                targets,
+                node,
+                family=family,
+                tls_wire=gribi_wire,
+                verbose=verbose,
+            )
 
         print_check_group("gNSI")
         if not skip_config:
             check_gnsi_config(targets, node, verbose=verbose)
         for family in IP_FAMILIES:
-            probe_gnsi_tls(targets, node, family=family, verbose=verbose)
-            probe_gnsi_certz_profilelist(targets, node, family=family, verbose=verbose)
+            gnsi_wire = probe_gnsi_tls(targets, node, family=family, verbose=verbose)
+            probe_gnsi_certz_profilelist(
+                targets,
+                node,
+                family=family,
+                tls_wire=gnsi_wire,
+                verbose=verbose,
+            )
 
         print_check_group("gNPSI")
         if not skip_config:
@@ -606,5 +699,20 @@ def run_openconfig_grpc_checks(
         if not gnpsi_enabled:
             continue
         for family in IP_FAMILIES:
-            probe_gnpsi_tls(targets, node, family=family, verbose=verbose)
-            probe_gnpsi_subscribe(targets, node, family=family, verbose=verbose)
+            gnpsi_wire = probe_gnpsi_tls(targets, node, family=family, verbose=verbose)
+            if gnpsi_wire is None:
+                continue
+            probe_gnpsi_services(
+                targets,
+                node,
+                family=family,
+                tls_wire=gnpsi_wire,
+                verbose=verbose,
+            )
+            probe_gnpsi_subscribe(
+                targets,
+                node,
+                family=family,
+                tls_wire=gnpsi_wire,
+                verbose=verbose,
+            )

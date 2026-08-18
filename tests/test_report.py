@@ -18,6 +18,7 @@ from lab.report import (
     format_check_line,
     format_summary,
     print_section_header,
+    print_test_header,
     report_check,
     status_marker,
     visible_len,
@@ -109,4 +110,18 @@ def test_print_section_header(capsys, monkeypatch) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     print_section_header("KME verification (ETSI QKD 014)")
     assert capsys.readouterr().out == "KME verification (ETSI QKD 014)\n"
+
+
+def test_print_test_header(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    print_test_header(
+        "SSH verification (PQC KEX mlkem768x25519-sha256)",
+        "  [config] EOS management ssh KEX, ciphers, vrf MGMT",
+        "  grouped by check type; IPv4 and IPv6 under each",
+    )
+    output = capsys.readouterr().out
+    assert output.startswith("=" * 42 + "\n")
+    assert "SSH verification (PQC KEX mlkem768x25519-sha256)" in output
+    assert "  [config] EOS management ssh KEX, ciphers, vrf MGMT" in output
+    assert output.endswith("=" * 42 + "\n\n")
 

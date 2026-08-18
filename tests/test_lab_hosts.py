@@ -1,5 +1,5 @@
 from lab.report import ICON_FAIL, ICON_OK
-from lab.test_lab import (
+from lab.test_hosts import (
     format_host_connectivity_matrix,
     host_data_ips,
     host_data_ips6,
@@ -34,8 +34,8 @@ def test_host_ping_groups_cover_all_off_diagonal() -> None:
     assert all(src != dst for src, dst, _ in groups)
 
 
-def test_format_host_connectivity_matrix_all_ok_ipv4() -> None:
-    results = {
+def test_format_host_connectivity_matrix_all_ok() -> None:
+    results_v4 = {
         ("host1", "host2"): True,
         ("host1", "host3"): True,
         ("host2", "host1"): True,
@@ -43,34 +43,20 @@ def test_format_host_connectivity_matrix_all_ok_ipv4() -> None:
         ("host3", "host1"): True,
         ("host3", "host2"): True,
     }
-    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV4)
-    assert "HOST ROUTING (data-plane ping matrix — IPv4)" in matrix
+    results_v6 = dict(results_v4)
+    matrix = format_host_connectivity_matrix(results_v4, results_v6)
+    assert "HOST ROUTING (data-plane ping matrix)" in matrix
     assert "host1" in matrix
     assert "10.0.1.1" in matrix
-    assert "host1 →" in matrix
-    assert matrix.count(ICON_OK) == 6
-    assert ICON_FAIL not in matrix
-
-
-def test_format_host_connectivity_matrix_all_ok_ipv6() -> None:
-    results = {
-        ("host1", "host2"): True,
-        ("host1", "host3"): True,
-        ("host2", "host1"): True,
-        ("host2", "host3"): True,
-        ("host3", "host1"): True,
-        ("host3", "host2"): True,
-    }
-    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV6)
-    assert "HOST ROUTING (data-plane ping matrix — IPv6)" in matrix
     assert "2001:db8:1::1" in matrix
     assert "2001:db8:2::1" in matrix
-    assert matrix.count(ICON_OK) == 6
+    assert "host1 →" in matrix
+    assert matrix.count(ICON_OK) == 12
     assert ICON_FAIL not in matrix
 
 
 def test_format_host_connectivity_matrix_shows_failures() -> None:
-    results = {
+    results_v4 = {
         ("host1", "host2"): True,
         ("host1", "host3"): False,
         ("host2", "host1"): True,
@@ -78,6 +64,7 @@ def test_format_host_connectivity_matrix_shows_failures() -> None:
         ("host3", "host1"): True,
         ("host3", "host2"): False,
     }
-    matrix = format_host_connectivity_matrix(results, family=IP_FAMILY_IPV4)
-    assert matrix.count(ICON_FAIL) == 2
-    assert matrix.count(ICON_OK) == 4
+    results_v6 = dict(results_v4)
+    matrix = format_host_connectivity_matrix(results_v4, results_v6)
+    assert matrix.count(ICON_FAIL) == 4
+    assert matrix.count(ICON_OK) == 8

@@ -21,7 +21,7 @@ from lab.kme_http import (
     ceos_kme_curl_exec_argv,
     kme_curl_argv,
 )
-from lab.report import CheckStatus, print_device, print_section_header, report_ok, report_summary
+from lab.report import CheckStatus, print_device, print_test_header, report_ok, report_summary
 from lab.topology_contract import (
     CEOS_KME_NODES,
     KME_B_SAE_ID,
@@ -317,9 +317,11 @@ def run_kme_checks(
     )
     hosts = tuple(sorted(host_nodes if host_nodes is not None else CEOS_KME_NODES))
 
-    print_section_header("KME verification (ETSI QKD 014)")
-    print("  [kme]  SAE status, peer domain, enc/dec round-trip (inside KME containers)")
-    print("  [host] strict TLS chain verify from cEOS SAE clients\n")
+    print_test_header(
+        "KME verification (ETSI QKD 014)",
+        "  [kme]  SAE status, peer domain, enc/dec round-trip (inside KME containers)",
+        "  [host] strict TLS chain verify from cEOS SAE clients",
+    )
 
     key_id: str | None = None
     key_b64: str | None = None

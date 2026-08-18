@@ -7,8 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.probe_client import live_check_prefix
-from lab.report import CheckStatus, print_check_group, print_device, print_section_header, report_ok, report_summary, report_warn
+from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_summary
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
@@ -16,18 +15,20 @@ from lab.syslog_checks import (
     check_switch_syslog_logging_config,
     check_switch_syslog_ssl_profile_detail,
     check_syslog_collector_listeners,
-    probe_syslog_delivery_no_cleartext,
-    probe_syslog_tls_pqc,
     wait_for_syslog_healthy,
+)
+from lab.test_pqc_connections import (
+    PqcConnectionError,
+    check_syslog_collector_config,
+    lab_targets_for_subnet,
+    probe_syslog_delivery,
+    probe_syslog_tls,
 )
 from lab.topology_contract import (
     IP_FAMILIES,
-    IP_FAMILY_IPV4,
-    IP_FAMILY_IPV6,
     LAB_NAME,
     SYSLOG_SSL_PROFILE,
     container_name,
-    family_label,
     mgmt_ips_for_subnet,
     mgmt_ipv6_ips_for_subnet,
 )
@@ -36,14 +37,6 @@ from lab.verbose import echo_command, echo_result, verbose_enabled
 
 def report_config(detail: str) -> None:
     report_ok("[config]", detail)
-
-
-def report_live(detail: str, *, status: CheckStatus = CheckStatus.OK, probe_client: bool = False) -> None:
-    prefix = live_check_prefix() if probe_client else "[live]  "
-    if status is CheckStatus.WARN:
-        report_warn(prefix, detail)
-    else:
-        report_ok(prefix, detail)
 
 
 def docker_exec(
@@ -74,33 +67,30 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     ips6 = mgmt_ipv6_ips_for_subnet()
     syslog_ips = (ips["syslog"], ips6["syslog"])
-    syslog_container = container_name("syslog", lab_name=clab_name)
+    targets = lab_targets_for_subnet(clab_name=clab_name, mgmt_subnet=mgmt_subnet)
 
-    print_section_header("Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)")
-    print(
-        f"  collector: {syslog_ips[0]} (IPv4), {syslog_ips[1]} (IPv6)  profile: {SYSLOG_SSL_PROFILE}"
+    print_test_header(
+        "Syslog verification (TLS 1.3 + hybrid KEX, no cleartext)",
+        f"  collector: {syslog_ips[0]} (IPv4), {syslog_ips[1]} (IPv6)  profile: {SYSLOG_SSL_PROFILE}",
+        "  [live]   delivery + optional wire KEX capture (WARN when not PQC-safe)",
+        "  grouped by check type; IPv4 and IPv6 under each",
     )
-    print("  grouped by check type; IPv4 and IPv6 under each\n")
 
+    print_device("syslog")
     if not skip_live:
-        wait_for_syslog_healthy(syslog_container)
+        check_syslog_collector_config(targets, verbose=None)
+        wait_for_syslog_healthy(targets.syslog_container)
         print_check_group("Collector TLS")
         for family in IP_FAMILIES:
-            addr = ips["syslog"] if family == IP_FAMILY_IPV4 else ips6["syslog"]
-            probe_syslog_tls_pqc(
-                syslog_ip=addr,
-                clab_name=clab_name,
-                syslog_container=syslog_container,
-            )
-            report_live(
-                f"syslog-ng TLS handshake ({family_label(family)}, TLS 1.3, {PQC_GROUP})",
-                probe_client=True,
-            )
+            try:
+                probe_syslog_tls(targets, family=family, verbose=None)
+            except PqcConnectionError as exc:
+                raise SyslogCheckError(str(exc)) from exc
     else:
-        udp = docker_exec(syslog_container, "netstat -lun").stdout
-        tcp = docker_exec(syslog_container, "netstat -ltn").stdout
+        udp = docker_exec(targets.syslog_container, "netstat -lun").stdout
+        tcp = docker_exec(targets.syslog_container, "netstat -ltn").stdout
         check_syslog_collector_listeners(udp, tcp)
-        groups = docker_exec(syslog_container, "openssl list -tls-groups").stdout
+        groups = docker_exec(targets.syslog_container, "openssl list -tls-groups").stdout
         if PQC_GROUP not in groups:
             raise SyslogCheckError(f"syslog OpenSSL groups must include {PQC_GROUP!r}")
         report_config(f"collector TLS :6514 only, OpenSSL groups include {PQC_GROUP}")
@@ -125,26 +115,12 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
 
         print_check_group("Delivery")
         for family in IP_FAMILIES:
-            switch_ip = ips[node] if family == IP_FAMILY_IPV4 else ips6[node]
-            needle = f"quantum-safe-syslog-probe-{node}-{family}"
+            try:
+                probe_syslog_delivery(targets, node, family=family, verbose=None)
+            except PqcConnectionError as exc:
+                raise SyslogCheckError(str(exc)) from exc
 
-            def send_log(needle: str = needle) -> None:
-                ceos_cli(node, clab_name, f'echo "send log level informational message {needle}"')
-
-            probe_syslog_delivery_no_cleartext(
-                docker_exec,
-                send_log,
-                syslog_container=syslog_container,
-                switch_ip=switch_ip,
-                node=node,
-                needle=needle,
-                marker_id=f"{node}-{family}",
-            )
-            report_live(
-                f"{node} TLS syslog delivered ({family_label(family)}), no cleartext from {switch_ip}"
-            )
-
-    mode = "config checks only" if skip_live else "config and live delivery (no cleartext)"
+    mode = "config checks only" if skip_live else "config and live delivery (wire KEX WARN when not PQC-safe)"
     report_summary("Syslog", f"{mode} passed for all cEOS nodes")
 
 

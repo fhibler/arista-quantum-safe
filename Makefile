@@ -31,6 +31,9 @@ OPENSSL_SHARED_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-shared
 OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
 OPENSSL_DOCKERFILE := docker/openssl/Dockerfile
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+STAMP_DIR := .stamp
+OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
+OPENSSL_SHARED_STAMP := $(STAMP_DIR)/openssl-shared.$(HOST_ARCH)
 # Do not inherit VERBOSE from the environment; use make test-lab VERBOSE=1 explicitly.
 VERBOSE       :=
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
@@ -42,8 +45,11 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 LAB_TEST = $(PYTHON) -m lab.test_lab --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 	--clab-topo-gen '$(CLAB_TOPO_GEN)' $(if $(filter 1,$(VERBOSE)),--verbose,)
 
+# Image builds share one builder and tag the same OpenSSL bases — do not run under make -j.
+.NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared build-lab-images build-radius build-syslog build-kme build-test-runner
+
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-openssl build-openssl-shared build-openssl-static build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
+        download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
         clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radius test-syslog test-kme test-pqc test-openconfig test-macsec test-macsec-reauth test-qkd test-hosts
 
 help: ## Show available targets
@@ -223,17 +229,27 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-openssl-shared: ## Build quantum-safe-openssl:3.5.7-shared (shared libs for test-runner)
+build-openssl-shared: $(OPENSSL_SHARED_STAMP) ## Build quantum-safe-openssl:3.5.7-shared (shared libs for test-runner)
+
+$(OPENSSL_SHARED_STAMP): $(OPENSSL_DOCKERFILE)
+	@mkdir -p $(STAMP_DIR)
 	docker buildx build --load --platform linux/$(HOST_ARCH) \
 		--build-arg OPENSSL_SHARED=1 \
 		-t $(OPENSSL_SHARED_IMAGE) -f $(OPENSSL_DOCKERFILE) .
+	@touch $@
 
-build-openssl-static: ## Build quantum-safe-openssl:3.5.7-static (static libs for radius/syslog)
+build-openssl-static: $(OPENSSL_STATIC_STAMP) ## Build quantum-safe-openssl:3.5.7-static (static libs for radius/syslog)
+
+$(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
+	@mkdir -p $(STAMP_DIR)
 	docker buildx build --load --platform linux/$(HOST_ARCH) \
 		--build-arg OPENSSL_SHARED=0 \
 		-t $(OPENSSL_STATIC_IMAGE) -f $(OPENSSL_DOCKERFILE) .
+	@touch $@
 
-build-openssl: build-openssl-shared build-openssl-static ## Build both OpenSSL base images
+build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL base images
+
+build-lab-images: build-openssl build-radius build-syslog build-kme build-test-runner ## Build all lab Docker images (OpenSSL bases once, then services)
 
 build-radius: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) \
@@ -335,7 +351,7 @@ wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, po
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-radius build-syslog build-kme build-test-runner check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
+deploy: gen-topo build-lab-images check-ceos-image ## Deploy lab (KME first, wait for keys, then full topo)
 	@$(MAKE) --no-print-directory deploy-kme
 	@$(MAKE) --no-print-directory wait-kme-pool VERBOSE=$(VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN)
@@ -374,6 +390,7 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, a
 	rm -rf tmp; \
 	echo "=== Removing local secrets ==="; \
 	rm -f .env; \
+	rm -rf "$(STAMP_DIR)"; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
 		for repo in quantum-safe-openssl quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \

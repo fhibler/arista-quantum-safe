@@ -34,3 +34,7 @@ site/
 __pycache__/
 *.py[cod]
 .venv/
+
+# Make build stamps (OpenSSL base images)
+.stamp/*
+!.stamp/.gitkeep

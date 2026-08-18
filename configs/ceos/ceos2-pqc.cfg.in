@@ -76,7 +76,7 @@ management api gnsi
 !
 management api gnpsi
    transport grpc default
-      vrf MGMT
+      listen-address vrf MGMT ::
       port 6031
       ssl profile GNPSI
       source sFlow

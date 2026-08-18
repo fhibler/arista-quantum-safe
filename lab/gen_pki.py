@@ -32,16 +32,16 @@ def _generate_server_cert(
     out: Path,
     name: str,
     role: str,
-    mgmt_ips: tuple[str, ...],
+    san_ips: tuple[str, ...],
     ca_crt: Path,
     ca_key: Path,
 ) -> None:
-    """Create or refresh a per-switch TLS server cert when mgmt SANs change."""
+    """Create or refresh a per-switch TLS server cert when SANs change."""
     marker = work / f"{name}-{role}-san"
     server_key = work / f"{name}-{role}.key"
     server_csr = work / f"{name}-{role}.csr"
     server_crt = work / f"{name}-{role}.crt"
-    marker_key = ",".join(mgmt_ips)
+    marker_key = ",".join(san_ips)
     if marker.is_file() and server_crt.is_file() and marker.read_text(encoding="utf-8").strip() == marker_key:
         pass
     else:
@@ -61,11 +61,11 @@ def _generate_server_cert(
             ]
         )
         server_ext = work / f"{name}-{role}.ext"
-        san_ips = ",".join(_san_ip(ip) for ip in mgmt_ips)
+        san_entries = ",".join(_san_ip(ip) for ip in san_ips)
         _write_ext(
             server_ext,
             [
-                f"subjectAltName = {san_ips},DNS:{name},DNS:{container_name(name)}",
+                f"subjectAltName = {san_entries},DNS:{name},DNS:{container_name(name)}",
                 "extendedKeyUsage = serverAuth",
                 "keyUsage = digitalSignature,keyEncipherment",
             ],
@@ -343,7 +343,7 @@ def generate_radsec_pki(
                 out=out,
                 name=name,
                 role=role,
-                mgmt_ips=san_ips,
+                san_ips=san_ips,
                 ca_crt=ca_crt,
                 ca_key=ca_key,
             )

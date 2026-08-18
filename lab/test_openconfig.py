@@ -82,7 +82,7 @@ def run_openconfig_checks(
         "OpenConfig",
         f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
         "passed (gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc; "
-        "WARN on eos-sdk-rpc not PQC-safe; SKIP on gNPSI subscribe / unsupported cEOS gNPSI)",
+        "WARN on eos-sdk-rpc not PQC-safe)",
     )
 
 

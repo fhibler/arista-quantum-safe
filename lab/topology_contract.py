@@ -1043,6 +1043,12 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg gNPSI transport must reference ssl profile {GNPSI_SSL_PROFILE}")
         if f"port {GNPSI_PORT}" not in gnpsi:
             errors.append(f"{ceos}.cfg gNPSI transport must listen on port {GNPSI_PORT}")
+        if "listen-address vrf MGMT ::" not in gnpsi:
+            errors.append(f"{ceos}.cfg gNPSI transport must listen on vrf MGMT (:: dual-stack)")
+        if "listen-address vrf MGMT 0.0.0.0" in gnpsi:
+            errors.append(
+                f"{ceos}.cfg gNPSI allows only one listen-address; use vrf MGMT :: (not 0.0.0.0)"
+            )
         if "source sFlow" not in gnpsi:
             errors.append(f"{ceos}.cfg gNPSI transport must use source sFlow")
         if "no disabled" not in gnpsi:

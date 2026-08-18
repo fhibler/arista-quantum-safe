@@ -50,6 +50,8 @@ if TYPE_CHECKING:
 
 GNOI_PING_RPC = "gnoi.system.System/Ping"
 GNOI_REFLECTION_SERVICES = ("gnoi.system.System",)
+GNPSI_SERVICE = "gnpsi.gNPSI"
+GNPSI_SUBSCRIBE_RPC = f"{GNPSI_SERVICE}/Subscribe"
 EOS_ADMIN_USERNAME = "admin"
 GNPSI_UNSUPPORTED_MARKERS = (
     "invalid input",
@@ -437,10 +439,34 @@ def check_gnpsi_config(targets: LabTargets, node: str, *, verbose: bool | None =
         raise PqcConnectionError(f"{node} gNPSI: expected port {GNPSI_PORT}, got {port}")
     if not json_tree_contains(gnpsi, "sflow", case_sensitive=False):
         raise PqcConnectionError(f"{node} gNPSI: expected source sFlow in JSON output")
+    if not json_tree_contains(gnpsi, "MGMT"):
+        raise PqcConnectionError(f"{node} gNPSI: expected listen-address vrf MGMT in JSON output")
     _report_config(
         f"gNPSI ssl profile {GNPSI_SSL_PROFILE} valid ({TLS_PQC_GROUP}), "
-        f"transport enabled port {GNPSI_PORT} source sFlow"
+        f"transport enabled port {GNPSI_PORT} source sFlow vrf MGMT"
     )
+
+
+def check_gnpsi_ipv6_binding(
+    targets: LabTargets,
+    node: str,
+    *,
+    verbose: bool | None = None,
+) -> None:
+    from lab.test_pqc_connections import PqcConnectionError, ceos_show_json
+
+    container = targets.ceos_container(node)
+    gnpsi = ceos_show_json(container, "show management api gnpsi", verbose=verbose)
+    transports = gnpsi.get("transports") if isinstance(gnpsi, dict) else None
+    default = transports.get("default") if isinstance(transports, dict) else None
+    vrfs = default.get("vrfs") if isinstance(default, dict) else None
+    mgmt = vrfs.get("MGMT") if isinstance(vrfs, dict) else None
+    addresses = mgmt.get("ipAddrs") if isinstance(mgmt, dict) else None
+    if not isinstance(addresses, list) or "::" not in addresses:
+        raise PqcConnectionError(
+            f"{node} gNPSI IPv6 binding: expected listen-address vrf MGMT ::"
+        )
+    _report_config("gNPSI listen on vrf MGMT :: (dual-stack IPv4/IPv6)")
 
 
 def probe_gnpsi_tls(
@@ -450,26 +476,31 @@ def probe_gnpsi_tls(
     family: str = IP_FAMILY_IPV4,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import assert_pqc_hybrid_tls
+    """Verify gNPSI mTLS via gnoic (openssl s_client cannot complete HTTP/2 gRPC handshakes)."""
+    from lab.test_pqc_connections import PqcConnectionError
 
     ip = targets.ceos_mgmt_ip(node, family)
-    output = run_openssl_s_client(
-        connect=hostport(ip, GNPSI_PORT),
-        ca_file=probe_ca_path(),
-        cert_file=probe_client_cert_path(node),
-        key_file=probe_client_key_path(node),
+    target = grpc_target(ip, GNPSI_PORT)
+    command = gnoic_services_command(target, node=node)
+    result = run_grpc_probe(
+        command,
         clab_name=targets.clab_name,
         verbose=verbose,
+        title=f"{node} gNPSI mTLS ({family_label(family)})",
     )
-    if "Connection refused" in output or "connect error" in output.lower():
-        _report_live(
-            f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped — "
-            f"port {GNPSI_PORT} not listening on cEOS despite enabled transport",
-            status=CheckStatus.SKIP,
-            probe_client=True,
-        )
-        return
-    assert_pqc_hybrid_tls(output, label=f"{node} gNPSI TLS")
+    body = result.stdout + result.stderr
+    if result.returncode != 0:
+        if "Connection refused" in body or "connection refused" in body.lower():
+            _report_live(
+                f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped — "
+                f"port {GNPSI_PORT} not listening on vrf MGMT despite enabled transport",
+                status=CheckStatus.SKIP,
+                probe_client=True,
+            )
+            return
+        raise PqcConnectionError(f"{node} gNPSI mTLS: {body[-500:]}")
+    if "gnpsi.gNPSI" not in body:
+        raise PqcConnectionError(f"{node} gNPSI mTLS: expected gnpsi.gNPSI in reflection")
     _report_live(
         f"gNPSI gRPC mTLS handshake ({family_label(family)}, TLS 1.3, {TLS_PQC_GROUP})",
         probe_client=True,
@@ -501,20 +532,15 @@ def probe_gnpsi_subscribe(
             probe_client=True,
         )
         return
-    subscribe_rpc = None
-    for line in body.splitlines():
-        if "Subscribe" in line or "Stream" in line:
-            subscribe_rpc = line.strip()
-            break
-    if not subscribe_rpc:
+    if GNPSI_SERVICE not in body:
         _report_live(
             f"gNPSI subscribe ({family_label(family)}), skipped — "
-            f"no Subscribe RPC in reflection (cEOS sFlow dataplane limitation)",
+            f"{GNPSI_SERVICE} not in gRPC reflection",
             status=CheckStatus.SKIP,
             probe_client=True,
         )
         return
-    invoke = grpcurl_invoke_command(target, node=node, rpc=subscribe_rpc, data="{}")
+    invoke = grpcurl_invoke_command(target, node=node, rpc=GNPSI_SUBSCRIBE_RPC, data="{}")
     sub_result = run_grpc_probe(
         f"timeout 8 sh -c {invoke!r} || true",
         clab_name=targets.clab_name,
@@ -574,10 +600,11 @@ def run_openconfig_grpc_checks(
             gnpsi_enabled = probe_gnpsi_ceos_support(targets, node, verbose=verbose)
             if gnpsi_enabled:
                 check_gnpsi_config(targets, node, verbose=verbose)
+                check_gnpsi_ipv6_binding(targets, node, verbose=verbose)
         elif gnpsi_enabled:
             gnpsi_enabled = gnpsi_supported_on_ceos(targets, node, verbose=verbose)
         if not gnpsi_enabled:
             continue
         for family in IP_FAMILIES:
             probe_gnpsi_tls(targets, node, family=family, verbose=verbose)
-        probe_gnpsi_subscribe(targets, node, family=IP_FAMILY_IPV4, verbose=verbose)
+            probe_gnpsi_subscribe(targets, node, family=family, verbose=verbose)

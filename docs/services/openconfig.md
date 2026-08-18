@@ -370,14 +370,14 @@ Port is read from `show management api gnsi | json` (`transports.default.port`, 
 | Profile | `GNPSI` (dedicated) |
 | Source | sFlow |
 
-gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least one interface.
+gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least one interface. Unlike gRIBI/gNMI (which use `vrf MGMT` on the transport), gNPSI binds the listen socket with **`listen-address vrf MGMT`** — `vrf MGMT` alone is not accepted under `management api gnpsi transport grpc`. Only **one** `listen-address` is permitted; **`listen-address vrf MGMT ::`** dual-stacks IPv4 and IPv6 on MGMT.
 
 ### Configuration
 
 ```text
 management api gnpsi
    transport grpc default
-      vrf MGMT
+      listen-address vrf MGMT ::
       port 6031
       ssl profile GNPSI
       source sFlow

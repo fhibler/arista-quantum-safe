@@ -46,7 +46,7 @@ PQC in Arista EOS 4.35+ applies primarily to **key establishment** — how two p
 
 | Group | Type | Used by lab policy? | Notes |
 |-------|------|---------------------|-------|
-| **`X25519MLKEM768`** | Hybrid (X25519 + ML-KEM-768) | **Yes** — primary | EOS ssl profiles `EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`; strict peers (FreeRADIUS) |
+| **`X25519MLKEM768`** | Hybrid (X25519 + ML-KEM-768) | **Yes** — primary | EOS ssl profiles `EAPI`, `RADSEC`, `GNMI`, `GRIBI`, `GNSI`, `GNPSI`, `RESTCONF`, `DOT1X`; strict peers (FreeRADIUS) |
 | `ecdh_x25519` / `x25519` | Classical | Fallback only where explicitly allowed | SYSLOG profile and syslog-ng collector; EOS syslog **client** often negotiates this on the wire |
 | `secp256r1`, `secp384r1`, … | Classical | Not in strict profiles | Appear in permissive probes / legacy clients |
 | **`MLKEM768`** | Pure PQC | **No** on EOS | May appear in `openssl list -tls-groups` inside lab containers; not configured on switches |
@@ -92,7 +92,7 @@ These are **not** “PQC ciphers” in the sense of ML-KEM — they are standard
 
 | Layer | Policy |
 |-------|--------|
-| Strict ssl profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) | **`X25519MLKEM768` only** — no classical ECDH fallback |
+| Strict ssl profiles (`EAPI`, `RADSEC`, `GNMI`, `GRIBI`, `GNSI`, `GNPSI`, `RESTCONF`, `DOT1X`) | **`X25519MLKEM768` only** — no classical ECDH fallback |
 | FreeRADIUS RadSec | **`Groups = X25519MLKEM768`** via OpenSSL config |
 | SSH management | **`mlkem768x25519-sha256`** preferred |
 | SYSLOG profile | Hybrid listed **with classical fallback** (operational compromise for syslog client support) |

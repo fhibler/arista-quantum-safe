@@ -62,6 +62,7 @@ nav:
   - Tests:
       - Overview: tests/index.md
       - PQC connectivity: tests/pqc.md
+      - OpenConfig connectivity: tests/openconfig.md
       - RADIUS: tests/radius.md
       - Syslog: tests/syslog.md
       - MACsec: tests/macsec.md

@@ -2,6 +2,8 @@
 
 This page covers **gNMI**, **gNOI** (same gRPC transport), **gRIBI**, **gNSI**, **gNPSI**, **RESTCONF**, and **eos-sdk-rpc** TLS configuration on EOS.
 
+Live checks: **`make test-openconfig`** ([test matrix](../tests/openconfig.md)).
+
 | Item | Value |
 |------|-------|
 | Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
@@ -329,22 +331,31 @@ docker exec arista-quantum-safe-test-runner gribic -a 172.20.127.11:9340 \
 
 | Item | Value |
 |------|-------|
-| Profile | `GNSI` (dedicated) |
+| Port | **6030** (shared gNMI listener) |
+| Profile | `GNSI` (dedicated ssl profile; wire TLS uses **`GNMI`** on :6030) |
 | Services | `certz`, `authz` |
-| Transport | `vrf MGMT` |
+| Transport | `transport gnmi default` (not `transport grpc`) |
 
-Each gNSI microservice uses its own ssl profile in this lab (even when certificate files match gNMI).
+The lab defines a dedicated **`GNSI`** ssl profile under `management security` (PQC-hybrid-only, mTLS trust). Certz/Authz RPCs register on the gNMI listener when bound with **`transport gnmi default`**.
 
 ### Configuration
 
 ```text
+management security
+   ssl profile GNSI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
+      trust certificate radsec-ca.pem
+!
 management api gnsi
    transport gnmi default
    service authz
    service certz
 ```
 
-The lab still defines a dedicated **`GNSI`** ssl profile under `management security` (PQC-hybrid-only, mTLS trust). Certz/Authz attach to the **gNMI** listener (`transport gnmi default`, port **6030**); they do not use a separate `transport grpc` stanza (EOS 4.36.2F rejects that).
+EOS 4.36.2F **rejects** `transport grpc default` under `management api gnsi` (the stanza is dropped from startup-config). Use **`transport gnmi default`** instead.
 
 ### Verification
 
@@ -375,6 +386,14 @@ gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least 
 ### Configuration
 
 ```text
+management security
+   ssl profile GNPSI
+      tls versions 1.3
+      key-establishment-group X25519MLKEM768
+      cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+      certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
+      trust certificate radsec-ca.pem
+!
 management api gnpsi
    transport grpc default
       listen-address vrf MGMT ::
@@ -382,6 +401,9 @@ management api gnpsi
       ssl profile GNPSI
       source sFlow
       no disabled
+!
+interface Ethernet8
+   sflow enable
 !
 sflow run
 sflow interface egress enable default Ethernet8
@@ -401,16 +423,16 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the
 
 ## Summary
 
-| Service | Port | Profile | Live PQC |
-|---------|------|---------|---------------------|
-| gNMI | 6030 | GNMI | Yes |
-| gNOI | 6030 (shared transport) | GNMI | Yes (separate RPC checks) |
-| gRIBI | 9340 | GRIBI | Yes (expected) |
-| gNSI | service-specific | GNSI | Yes (expected) |
-| gNPSI | 6031 | GNPSI | TLS yes; subscribe may SKIP |
-| RESTCONF | 6020 | RESTCONF | Yes |
-| eos-sdk-rpc | 9543 | GNMI | **No** (config OK; wire gap) |
+| Service | Port | Profile | Live PQC | `make test-openconfig` |
+|---------|------|---------|----------|------------------------|
+| gNMI | 6030 | `GNMI` | Yes | TLS, mTLS, GET |
+| gNOI | 6030 (shared) | `GNMI` | Yes | Ping RPC, reflection |
+| gRIBI | 9340 | `GRIBI` | Yes | mTLS + Get |
+| gNSI | 6030 (via `transport gnmi default`) | `GNSI` profile; wire TLS on `GNMI` | Yes | Certz.GetProfileList (`-u admin`) |
+| gNPSI | 6031 | `GNPSI` | TLS yes; subscribe may SKIP | mTLS; Subscribe (SKIP common) |
+| RESTCONF | 6020 | `RESTCONF` | Yes | HTTPS handshake |
+| eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (WARN on IPv4) | mTLS; SKIP IPv6 |
 
-Automated checks: `make test-openconfig`. Details: [PQC tests](../tests/pqc.md).
+Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). PQC-only services (eAPI, SSH, RadSec): [PQC tests](../tests/pqc.md).
 
 <- [Services overview](index.md)

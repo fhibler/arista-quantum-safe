@@ -40,6 +40,7 @@ PUBLIC_MISC_DOCS = (
 PUBLIC_TEST_DOCS = (
     "tests/index.md",
     "tests/pqc.md",
+    "tests/openconfig.md",
     "tests/radius.md",
     "tests/syslog.md",
     "tests/macsec.md",

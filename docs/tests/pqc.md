@@ -84,7 +84,9 @@ Set `PROBE_CLIENT=host` to use host curl (devcontainer only) or `PROBE_CLIENT=ra
 
 ## gNMI / RESTCONF / eos-sdk-rpc
 
-**gNMI TLS** (:6030), **mTLS** (client cert `ceos*-client.pem`), and **GET** (gnmic, same client cert):
+These services are exercised by **`make test-openconfig`** (not `make test-pqc`). See [OpenConfig tests](openconfig.md) for the full check matrix and manual commands.
+
+**gNMI** (:6030) — TLS, mTLS, and `gnmic get`:
 
 ```bash
 docker exec arista-quantum-safe-test-runner sh -c \
@@ -104,25 +106,9 @@ docker exec arista-quantum-safe-test-runner gnmic -a 172.20.127.11:6030 \
   get --path '/system/config/hostname' --format json
 ```
 
-**RESTCONF** (:6020): same pattern without client cert.
+**RESTCONF** (:6020): HTTPS handshake without client cert (see [OpenConfig service](../services/openconfig.md#restconf-https)).
 
-**eos-sdk-rpc** (:9543): two-step live probe from **test-runner** on **IPv4 only**:
-
-1. PQC-only OpenSSL (`X25519MLKEM768`) — PASS if hybrid negotiates
-2. If step 1 fails: explicit `-groups secp256r1` — expect **TLS 1.3** with classical **`secp256r1`** (**not PQC-safe**, TLS 1.3 compliant)
-
-**IPv6:** **SKIP** — `local interface Management0` binds the interface primary **IPv4** only (see [OpenConfig — eos-sdk-rpc](../services/openconfig.md#eos-sdk-rpc-grpc-mtls)). gNMI on the same profile uses `vrf MGMT` and listens dual-stack on **6030**.
-
-Diagnostic command (IPv4, step 2):
-
-```bash
-docker exec arista-quantum-safe-test-runner sh -c \
-  'openssl s_client -connect 172.20.127.11:9543 -tls1_3 -groups secp256r1 \
-   -CAfile /etc/probe/certs/radsec-ca.pem \
-   -cert /etc/probe/certs/ceos1-both-client.pem \
-   -key /etc/probe/certs/ceos1-both-client.key \
-   -brief </dev/null 2>&1'
-```
+**eos-sdk-rpc** (:9543): mTLS probe with PQC-only then classical fallback diagnostic — **WARN** / **SKIP** IPv6 (see [OpenConfig tests](openconfig.md)).
 
 ---
 
@@ -175,18 +161,19 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ## Result summary
 
-Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless noted):
+Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless noted). Rows for **gNMI through eos-sdk-rpc** are validated by **`make test-openconfig`**; eAPI, SSH, RadSec, and syslog rows by **`make test-pqc`**.
 
 | Service | TLS 1.3 compliant | KEX configured | KEX used (live) | PQC-safe |
 |---------|---------------------|----------------|-----------------|----------|
 | SSH | N/A (SSH, not TLS) | `mlkem768x25519-sha256` | `mlkem768x25519-sha256` | Yes |
 | eAPI | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| gNMI / RESTCONF | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gNMI | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gNOI (transport + RPC) | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| gRIBI | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
-| gNSI | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
-| gNPSI (TLS) | Yes | `X25519MLKEM768` | `X25519MLKEM768` (expected) | Yes (expected) |
+| gRIBI | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gNSI Certz | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gNPSI (TLS) | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gNPSI (subscribe) | SKIP or Yes | — | sFlow-dependent | — |
+| RESTCONF | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | RadSec | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | Syslog (EOS to collector) | Yes | `X25519MLKEM768` (+ classical fallback) | `x25519` | No |
 | eos-sdk-rpc (IPv4) | Yes | `X25519MLKEM768` | `secp256r1` | No |
@@ -199,7 +186,7 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 |--------|---------|
 | **TLS 1.3 compliant** | Live session uses TLS 1.3 (or SSH for port 22). **Yes** = encrypted with the expected protocol version; **No** = handshake fails or falls back. |
 | **KEX configured** | Key-establishment group(s) in EOS `ssl profile` or `management ssh` config (what the switch is configured to offer). |
-| **KEX used (live)** | Group negotiated on the wire during `make test-pqc` live checks. |
+| **KEX used (live)** | Group negotiated on the wire during live checks (`make test-pqc` or `make test-openconfig`, per row above). |
 | **PQC-safe** | **Yes** when the live KEX is the lab hybrid (`X25519MLKEM768` or `mlkem768x25519-sha256`); **No** when classical KEX is used or PQC negotiation fails. |
 | **SKIP** | Check not run — known platform/config limitation (not a failure). |
 
@@ -209,5 +196,7 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 - **eos-sdk-rpc (IPv4):** Configured for TLS 1.3 + `X25519MLKEM768` (ssl profile **`GNMI`**). PQC-only probe gets **EOF** on port **9543**; fallback **`-groups secp256r1`** completes TLS 1.3 with classical KEX — not PQC-safe, TLS 1.3 compliant.
 - **eos-sdk-rpc (IPv6):** **SKIP** in `make test-openconfig`. Binding uses `local interface Management0`, which listens on the interface primary **IPv4** only — not `vrf MGMT` like gNMI (`Listen addresses: ::` on **6030**). Management0 has IPv6 configured; the eos-sdk-rpc transport does not bind it. Control-plane ACL permits TCP 9543 on IPv6; the gap is the service binding model, not the ACL.
 - **Syslog collector probe:** `openssl s_client` from **test-runner** to syslog-ng (:6514), once per address family — validates the collector accepts PQC-hybrid; separate from the EOS syslog client path above.
+
+- **OpenConfig gRPC / RESTCONF:** gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc — see [OpenConfig tests](openconfig.md) (`make test-openconfig`).
 
 See service pages for configuration context: [Services overview](../services/index.md), [SSH](../services/ssh.md), [eAPI](../services/eapi.md), [OpenConfig](../services/openconfig.md), [Syslog](../services/syslog.md), [RadSec](../services/radius-radsec.md).

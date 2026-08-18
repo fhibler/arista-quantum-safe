@@ -25,6 +25,7 @@ Use **`VERBOSE=1`** to echo every command and full output:
 
 ```bash
 make test-pqc VERBOSE=1
+make test-openconfig VERBOSE=1
 ```
 
 ## Check labels
@@ -58,7 +59,8 @@ Result tables in the detailed test pages reflect live runs against the lab defau
 
 ## Detailed test docs
 
-- [PQC connectivity](pqc.md) — TLS 1.3 + hybrid KEX on all management services
+- [PQC connectivity](pqc.md) — TLS 1.3 + hybrid KEX on eAPI, SSH, RadSec, syslog (`make test-pqc`)
+- [OpenConfig connectivity](openconfig.md) — gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc (`make test-openconfig`)
 - [RADIUS / RadSec](radius.md)
 - [Syslog](syslog.md)
 - [MACsec](macsec.md)

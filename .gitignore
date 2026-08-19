@@ -36,5 +36,4 @@ __pycache__/
 .venv/
 
 # Make build stamps (OpenSSL base images)
-.stamp/*
-!.stamp/.gitkeep
+.stamp/

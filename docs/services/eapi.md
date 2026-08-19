@@ -28,13 +28,6 @@ management security
       certificate ceos1-both-eapi.pem key ceos1-both-eapi.key
 ```
 
-| Profile directive | Value |
-|-------------------|-------|
-| `tls versions` | `1.3` only |
-| `key-establishment-group` | `X25519MLKEM768` |
-| `cipher v1.3` | `TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256` |
-| `certificate` / `key` | `ceos1-both-eapi.pem` / `ceos1-both-eapi.key` (example on ceos1-both) |
-
 PKI is installed post-boot via Containerlab exec (`copy flash:…`); filenames are referenced in startup-config only.
 
 ### Service binding

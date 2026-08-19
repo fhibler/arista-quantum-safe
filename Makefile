@@ -3,6 +3,9 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+# Optional local overrides (gitignored). Loaded before ?= defaults below.
+-include .env
+
 CLAB_VERSION  ?= 0.78.2
 CLAB_MIN_VERSION ?= 0.78.0
 CEOS_IMAGE ?= ceos:4.36.2F
@@ -17,6 +20,7 @@ CLAB_PREFIX   := arista
 CLAB_NAME     := quantum-safe
 CLAB_MGMT_NETWORK := quantum-safe-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
+VERBOSE       ?=
 GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem syslog-server.pem syslog-server.key ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem kme-sae-bundle.pem kme-sae-b-bundle.pem)
 RADIUS_IMAGE  := quantum-safe-radius:latest
 RADIUS_DOCKERFILE := docker/radius/Dockerfile
@@ -34,8 +38,7 @@ HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 STAMP_DIR := .stamp
 OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
 OPENSSL_SHARED_STAMP := $(STAMP_DIR)/openssl-shared.$(HOST_ARCH)
-# Do not inherit VERBOSE from the environment; pass explicitly, e.g. make deploy VERBOSE=1.
-VERBOSE       :=
+# VERBOSE=1 in .env or on the command line, e.g. make deploy VERBOSE=1.
 # VERBOSE=1 → plain Docker build output and debug containerlab deploy logs.
 DOCKER_BUILD_FLAGS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
 CLAB_DEPLOY_FLAGS := $(if $(filter 1,$(VERBOSE)),-d,)
@@ -51,7 +54,7 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 
 .PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
+        clean reset inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
@@ -201,8 +204,7 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		$(MAKE) --no-print-directory import-ceos; \
 		exit 0; \
 	fi; \
-	set -a; [ -f .env ] && . ./.env; set +a; \
-	if [ -z "$${ARISTA_TOKEN:-}" ]; then \
+	if [ -z "$(ARISTA_TOKEN)" ]; then \
 		echo "ARISTA_TOKEN not set. Copy .env.example → .env or export token."; \
 		echo "Get token: https://www.arista.com/en/users/profile"; \
 		echo "Manual fallback: make import-ceos-help"; \
@@ -218,7 +220,7 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 	fi; \
 	mkdir -p "$(CEOS_DOWNLOAD_DIR)"; \
 	cd "$(CEOS_DOWNLOAD_DIR)" && \
-	ARISTA_GET_EOS_OUTPUT="." "$$PY" -m eos_downloader.cli.cli --token "$$ARISTA_TOKEN" get eos \
+	ARISTA_GET_EOS_OUTPUT="." "$$PY" -m eos_downloader.cli.cli --token "$(ARISTA_TOKEN)" get eos \
 		--version "$(CEOS_VERSION)" \
 		--format "$$CEOS_FORMAT" \
 		--output "." \
@@ -367,7 +369,7 @@ deploy: gen-topo build-lab-images check-ceos-image ## Deploy lab (VERBOSE=1: pla
 destroy: check-containerlab $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
 	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
 
-clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, and build cache
+clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 	@set -uo pipefail; \
 	echo "=== Destroying lab (if deployed) ==="; \
 	if [ -f "$(CLAB_TOPO_GEN)" ]; then \
@@ -389,15 +391,11 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, a
 	echo "=== Cleaning lab logs ==="; \
 	find lab/logs/radius -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
 	find lab/logs/syslog -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
-	echo "=== Removing download tarballs ==="; \
-	rm -rf "$(CEOS_DOWNLOAD_DIR)"; \
 	echo "=== Removing Python virtualenv and test caches ==="; \
 	rm -rf .venv .pytest_cache; \
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true; \
 	echo "=== Removing tmp/ workspace ==="; \
 	rm -rf tmp; \
-	echo "=== Removing local secrets ==="; \
-	rm -f .env; \
 	rm -rf "$(STAMP_DIR)"; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
@@ -415,7 +413,18 @@ clean: ## Full reset: destroy lab, remove artifacts, downloads, Docker images, a
 		echo "=== Pruning Docker build cache ==="; \
 		docker buildx prune -af 2>/dev/null || true; \
 	fi; \
-	echo "=== Clean complete ==="
+	echo "=== Clean complete (download/ and .env preserved) ==="
+
+reset: clean ## Reset repo to latest commit: discard local edits and remove all gitignored/untracked files
+	@set -euo pipefail; \
+	if ! command -v git >/dev/null 2>&1; then \
+		echo "git not found — cannot reset working tree" >&2; \
+		exit 1; \
+	fi; \
+	echo "=== Resetting git working tree to HEAD ==="; \
+	git reset --hard HEAD; \
+	git clean -fdx; \
+	echo "=== Reset complete ==="
 
 redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so destroy has a local topology file)
 

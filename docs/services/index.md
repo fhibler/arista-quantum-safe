@@ -29,6 +29,8 @@ Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-
     - **Config PQC** — hybrid group appears in EOS config / passes `[config]` checks.
     - Certificates stay classical (RSA/ECDSA); PQC applies to **key establishment** only.
 
+Each service page follows the same chapter order: **Configuration** (ssl profile + service binding, plus peer/collector config where applicable) → **Caveats** (`| Topic | Status on EOS |` table and admonitions) → **Verification** (CLI/probe commands, then **`make test-*`**). Multi-service pages ([OpenConfig & gRPC](openconfig.md)) repeat that pattern per protocol section.
+
 ## Lab policy
 
 Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X25519MLKEM768` — no classical ECDH fallback. FreeRADIUS uses matching OpenSSL policy (`docker/radius/openssl-pqc.cnf`).

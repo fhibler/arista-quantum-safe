@@ -49,41 +49,16 @@ management api gnmi
       ssl profile GNMI
 ```
 
-gNOI uses the same gRPC endpoint and ssl profile as gNMI. **`make test-openconfig`** reports **separate gNOI check lines** (transport TLS, `System/Ping` RPC, gRPC reflection) so agent-level PQC regressions are visible even when gNMI GET passes.
-
-### gNOI-specific verification
-
-gRPC reflection (expects `gnoi.system.System`):
-
-```bash
-docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
-  --tls-ca /etc/probe/certs/radsec-ca.pem \
-  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
-  --tls-key /etc/probe/certs/ceos1-both-client.key \
-  --tls-version 1.3 services
-```
-
-Primary live gRPC probes use **gnoic**, **gribic**, **gnmic**, and **gnsic** (Go **1.24+**, PQC-hybrid `crypto/tls`) on **:6030**. **grpcurl** is rebuilt with Go **1.24+** in the test-runner image for **gNPSI :6031** and as an RPC **fallback** when primary clients fail — see [Tool chain](../misc/toolchain.md#grpcurl).
-
-`System/Ping` over mTLS (`gnoic`):
-
-```bash
-docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
-  --tls-ca /etc/probe/certs/radsec-ca.pem \
-  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
-  --tls-key /etc/probe/certs/ceos1-both-client.key \
-  --tls-version 1.3 system ping --destination 127.0.0.1 --count 1 --do-not-resolve
-```
-
----
+gNOI shares the same gRPC endpoint and **`GNMI`** ssl profile as gNMI.
 
 ### Caveats
 
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only |
-| Live TLS | **PQC-safe** |
+| Live wire | **PQC-safe** — TLS 1.3 + `X25519MLKEM768` |
 | Live mTLS | **PQC-safe** with lab client cert |
+| gNOI | Same transport and PQC policy as gNMI; separate **`make test-openconfig`** check lines |
 
 ### Verification
 
@@ -121,6 +96,32 @@ docker exec arista-quantum-safe-test-runner sh -c \
    -brief </dev/null 2>&1' \
   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
+
+#### gNOI (Ping and reflection)
+
+Primary live gRPC probes use **gnoic**, **gribic**, **gnmic**, and **gnsic** (Go **1.24+**, PQC-hybrid `crypto/tls`) on **:6030**. **grpcurl** is rebuilt with Go **1.24+** in the test-runner image for **gNPSI :6031** and as an RPC **fallback** when primary clients fail — see [Tool chain](../misc/toolchain.md#grpcurl).
+
+gRPC reflection (expects `gnoi.system.System`):
+
+```bash
+docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
+  --tls-ca /etc/probe/certs/radsec-ca.pem \
+  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
+  --tls-key /etc/probe/certs/ceos1-both-client.key \
+  --tls-version 1.3 services
+```
+
+`System/Ping` over mTLS (`gnoic`):
+
+```bash
+docker exec arista-quantum-safe-test-runner gnoic -a 172.20.127.11:6030 \
+  --tls-ca /etc/probe/certs/radsec-ca.pem \
+  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
+  --tls-key /etc/probe/certs/ceos1-both-client.key \
+  --tls-version 1.3 system ping --destination 127.0.0.1 --count 1 --do-not-resolve
+```
+
+Automated: **`make test-openconfig`** — gNMI TLS/mTLS/GET and separate gNOI lines ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -161,7 +162,7 @@ management api restconf
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only |
-| Live wire | **PQC-safe** |
+| Live wire | **PQC-safe** — TLS 1.3 + `X25519MLKEM768` |
 
 ### Verification
 
@@ -182,8 +183,10 @@ docker exec arista-quantum-safe-test-runner sh -c \
   'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.11:6020 -tls1_3 \
    -CAfile /etc/probe/certs/radsec-ca.pem -brief </dev/null 2>&1' \
-  | grep -E 'Protocol|Negotiated TLS1.3 group'
+   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
+
+Automated: **`make test-openconfig`** — RESTCONF HTTPS handshake ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -230,8 +233,8 @@ gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when c
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile lists `X25519MLKEM768` |
-| IPv4 live wire | **Not PQC-safe** — PQC-only probe EOF; explicit `secp256r1` client completes TLS 1.3 |
-| IPv6 live wire | **No listener** — `local interface Management0` binds IPv4 only; `make test-openconfig` **SKIP**s IPv6 |
+| Live wire (IPv4) | **Not PQC-safe** — PQC-only probe EOF; explicit `secp256r1` client completes TLS 1.3 |
+| Live wire (IPv6) | **No listener** — `local interface Management0` binds IPv4 only; `make test-openconfig` **SKIP**s IPv6 |
 
 !!! note "IPv6 limitation (binding model)"
     **Not an ACL issue.** Control-plane ACLs permit TCP **9543** on both IPv4 and IPv6. Management0 has an IPv6 address, but eos-sdk-rpc does not listen on it because the transport is bound via **`local interface Management0`**, which resolves to the primary IPv4. There is no equivalent of gNMI's **`vrf MGMT`** dual-stack listener for eos-sdk-rpc in this lab config.
@@ -279,8 +282,10 @@ docker exec arista-quantum-safe-test-runner sh -c \
    -cert /etc/probe/certs/ceos1-both-client.pem \
    -key /etc/probe/certs/ceos1-both-client.key \
    -brief </dev/null 2>&1' \
-  | grep -E 'Protocol|Negotiated TLS1.3 group'
+   | grep -E 'Protocol|Negotiated TLS1.3 group'
 ```
+
+Automated: **`make test-openconfig`** — mTLS on IPv4 (**WARN** when not PQC-safe); IPv6 **SKIP** ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -294,6 +299,10 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ### Configuration
 
+#### SSL profile `GRIBI`
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in` (reuses gNMI cert/key files):
+
 ```text
 management security
    ssl profile GRIBI
@@ -302,7 +311,11 @@ management security
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
       certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
       trust certificate radsec-ca.pem
-!
+```
+
+#### Service binding
+
+```text
 management api gribi
    transport grpc default
       vrf MGMT
@@ -311,10 +324,10 @@ management api gribi
 
 ### Caveats
 
-| Topic | Status on EOS 4.36.2F |
+| Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; PQC-hybrid only (`X25519MLKEM768`) |
-| Live TLS | **Not PQC-safe** — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
+| Live wire | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
 | Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
 
 !!! warning "Known EOS gap — gRIBI"
@@ -324,19 +337,27 @@ management api gribi
 
 ### Verification
 
+#### Configuration
+
 ```bash
 docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
 enable
 show management security ssl profile GRIBI detail
 show management api gribi
 EOF
+```
 
+#### Live PQC mTLS
+
+```bash
 docker exec arista-quantum-safe-test-runner gribic -a 172.20.127.11:9340 \
   --tls-ca /etc/probe/certs/radsec-ca.pem \
   --tls-cert /etc/probe/certs/ceos1-both-client.pem \
   --tls-key /etc/probe/certs/ceos1-both-client.key \
   get --aft IPv4
 ```
+
+Automated: **`make test-openconfig`** — mTLS + Get (**WARN** on 4.36.2F) ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -353,6 +374,10 @@ The lab defines a dedicated **`GNSI`** ssl profile under `management security` (
 
 ### Configuration
 
+#### SSL profile `GNSI`
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in`:
+
 ```text
 management security
    ssl profile GNSI
@@ -361,16 +386,46 @@ management security
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
       certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
       trust certificate radsec-ca.pem
-!
+```
+
+#### Service binding
+
+```text
 management api gnsi
    transport gnmi default
    service authz
    service certz
 ```
 
-EOS 4.36.2F **rejects** `transport grpc default` under `management api gnsi` (the stanza is dropped from startup-config). Use **`transport gnmi default`** instead.
+Certz/Authz RPCs register on the shared gNMI listener (**:6030**). Wire TLS on that port uses the **`GNMI`** ssl profile, not `GNSI`.
+
+### Caveats
+
+| Topic | Status on EOS |
+|-------|------------------------|
+| Config | Dedicated `GNSI` profile valid; PQC-hybrid only |
+| Live wire | **PQC-safe** on shared gNMI listener (`GNMI` profile on :6030) |
+| Transport | Use **`transport gnmi default`** — `transport grpc default` is dropped on 4.36.2F |
+| RPC access | Certz not in gRPC reflection; use **`gnsic -u admin`** |
+
+!!! note "Transport binding"
+    EOS 4.36.2F **rejects** `transport grpc default` under `management api gnsi` (the stanza is dropped from startup-config). Use **`transport gnmi default`** instead.
 
 ### Verification
+
+#### Configuration
+
+Port is read from `show management api gnsi | json` (`transports.default.port`, typically **6030**).
+
+```bash
+docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
+enable
+show management security ssl profile GNSI detail
+show management api gnsi
+EOF
+```
+
+#### Live PQC mTLS (Certz)
 
 **Certz is not advertised in gRPC reflection**; use **`gnsic`** with mTLS **and** gRPC metadata username (`admin`, nopassword in the lab):
 
@@ -382,7 +437,7 @@ docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030
   certz get-profile-list
 ```
 
-Port is read from `show management api gnsi | json` (`transports.default.port`, typically **6030**).
+Automated: **`make test-openconfig`** — Certz.GetProfileList with `-u admin` ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -398,6 +453,10 @@ gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least 
 
 ### Configuration
 
+#### SSL profile `GNPSI`
+
+Complete profile from `configs/ceos/ceos1-both.cfg.in`:
+
 ```text
 management security
    ssl profile GNPSI
@@ -406,7 +465,11 @@ management security
       cipher v1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
       certificate ceos1-both-gnmi.pem key ceos1-both-gnmi.key
       trust certificate radsec-ca.pem
-!
+```
+
+#### Service binding
+
+```text
 management api gnpsi
    transport grpc default
       listen-address vrf MGMT ::
@@ -422,6 +485,8 @@ sflow run
 sflow interface egress enable default Ethernet8
 ```
 
+gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least one interface. Unlike gRIBI/gNMI (which use `vrf MGMT` on the transport), gNPSI binds the listen socket with **`listen-address vrf MGMT`** — `vrf MGMT` alone is not accepted under `management api gnpsi transport grpc`. Only **one** `listen-address` is permitted; **`listen-address vrf MGMT ::`** dual-stacks IPv4 and IPv6 on MGMT.
+
 Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the L3 routed port towards each Alpine host (`host1`/`host2`/`host3`). Egress sampling on the same interface captures switch-to-host traffic. On a deployed lab, sampled interfaces usually carry enough traffic for **`grpcurl` Subscribe** to receive datagrams during **`make test-openconfig`** (IPv4 and IPv6). If Subscribe **SKIP**s (no sample within 8 s), run **`make test-hosts`** or ping across a sampled link and retry.
 
 ### Caveats
@@ -429,8 +494,8 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the
 | Topic | Status on EOS |
 |-------|----------------|
 | Config | Dedicated `GNPSI` profile; PQC-hybrid only |
-| Live TLS / mTLS | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get EOF / handshake failure (same class as [gRIBI](#gribi-grpc)) |
-| Subscribe live | **`grpcurl` Subscribe** receives sFlow datagrams on IPv4 and IPv6 when host traffic is present; `make test-openconfig` reports **WARN** (classical wire KEX on 4.36.2F) or **SKIP** only when no sample within the 8 s probe window |
+| Live wire | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get EOF / handshake failure (same class as [gRIBI](#gribi-grpc)) |
+| Subscribe live | **`grpcurl` Subscribe** receives sFlow datagrams on IPv4 and IPv6 when host traffic is present; **WARN** (classical wire KEX on 4.36.2F) or **SKIP** only when no sample within the 8 s probe window |
 
 !!! warning "Known EOS gap — gNPSI"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **6031** negotiate classical KEX (`secp256r1`) on EOS 4.36.2F. PQC-only clients get EOF / handshake failure.
@@ -470,6 +535,8 @@ docker exec arista-quantum-safe-test-runner grpcurl \
   -key /etc/probe/certs/ceos1-both-client.key \
   -d '{}' '172.20.127.11:6031' gnpsi.gNPSI/Subscribe
 ```
+
+Automated: **`make test-openconfig`** — mTLS wire probe, reflection, Subscribe on IPv4 and IPv6 (**WARN** on 4.36.2F) ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 

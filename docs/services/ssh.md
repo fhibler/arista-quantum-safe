@@ -10,6 +10,8 @@ SSH on **VRF MGMT** uses OpenSSH-style **PQC-hybrid key exchange**, not TLS ssl 
 | Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
 | Certificates | Classical SSH host keys (unchanged by PQC policy) |
 
+See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
+
 ## Configuration
 
 ### SSH security policy
@@ -49,8 +51,6 @@ management api netconf
 | Config | Hybrid KEX listed and preferred |
 | Live wire | **PQC-safe** — negotiates `mlkem768x25519-sha256` |
 | Certificates | Classical host keys (unchanged by PQC policy) |
-
-No known PQC gap for SSH/NETCONF in this lab.
 
 ## Verification
 

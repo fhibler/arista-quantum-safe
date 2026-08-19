@@ -17,7 +17,7 @@
 Requires an [Arista portal token](https://www.arista.com/en/users/profile) with an active maintenance contract:
 
 ```bash
-cp .env.example .env          # add ARISTA_TOKEN
+cp .env.example .env          # optional overrides (CEOS_IMAGE, MGMT_SUBNET, ARISTA_TOKEN, …)
 make download-ceos-help
 make download-ceos            # selects cEOS64 or cEOSarm for host arch
 make check-ceos-image
@@ -93,7 +93,8 @@ Run `make help` for the authoritative target list in your clone.
 | `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
 | `make destroy` | Tear down Containerlab lab |
 | `make redeploy` | `gen-topo`, then `destroy`, then `deploy` |
-| `make clean` | Full reset (lab, images, build cache, `.gen/`, downloads) |
+| `make clean` | Tear down lab, remove build artifacts and Docker images (keeps `download/` and `.env`) |
+| `make reset` | `clean`, then `git reset --hard HEAD` and `git clean -fdx` (discards local edits and all gitignored files) |
 | `make inspect` | Node status |
 
 ### Live tests and shells
@@ -134,6 +135,8 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
 | `VERBOSE` | (unset) | `VERBOSE=1 make deploy` — plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
 
+Copy `.env.example` → `.env` to set any of the above persistently. The Makefile `-include`s `.env` for every target (command-line assignments override).
+
 ## Devcontainer
 
 A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reproducible Containerlab environment. Rebuild after pulling changes.
@@ -152,4 +155,6 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |
 | Host ping failures | Verify data-plane routes in rendered `lab/.gen/ceos*.cfg` |
 
-Reset everything: `make clean` then redeploy from scratch.
+Reset lab artifacts while keeping cEOS tarballs and `.env`: `make clean`, then redeploy from scratch.
+
+To discard **all** local changes and gitignored files (including `download/` and `.env`), use `make reset` instead.

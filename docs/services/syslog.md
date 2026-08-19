@@ -40,7 +40,7 @@ logging vrf MGMT host 2001:db8:127::53 6514 protocol tls ssl-profile SYSLOG
 
 Rendered templates use `${SYSLOG_SERVER_IPV4}` and `${SYSLOG_SERVER_IPV6}` placeholders.
 
-### Collector (syslog-ng)
+### Peer — syslog-ng collector
 
 Built from `docker/syslog/Dockerfile`. TLS listener in `configs/syslog/syslog-ng.conf`:
 
@@ -78,17 +78,16 @@ Cleartext UDP/TCP **514 is disabled** — only TLS **6514** listens.
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile lists `X25519MLKEM768` first |
-| Live wire (EOS → syslog-ng) | **Not PQC-safe** — typically negotiates **`x25519`** |
-| Collector probe (client → syslog-ng) | **PQC-safe** when using PQC OpenSSL |
+| Live wire (EOS → collector) | **Not PQC-safe** — typically negotiates **`x25519`** |
+| Live wire (probe → collector) | **PQC-safe** when using PQC OpenSSL |
 
 !!! warning "Known EOS gap — syslog client"
     The EOS syslog TLS **client** does not offer ML-KEM hybrid groups in ClientHello even when the ssl profile advertises them. The collector accepts classical `x25519`, so logs still flow.
 
     Tightening both sides to PQC-only would **break** remote syslog on current EOS builds.
 
-### Connection limit
-
-syslog-ng defaults to **`max-connections(10)`** in some builds; the lab template sets **32**. Each switch opens **persistent TLS sessions** to IPv4 and IPv6 collectors (two sessions per switch × three switches ≈ 6 slots). Leave headroom for probes and health checks.
+!!! note "Connection limit"
+    syslog-ng defaults to **`max-connections(10)`** in some builds; the lab template sets **32**. Each switch opens **persistent TLS sessions** to IPv4 and IPv6 collectors (two sessions per switch × three switches ≈ 6 slots). Leave headroom for probes and health checks.
 
 ## Verification
 

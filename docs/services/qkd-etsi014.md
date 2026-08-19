@@ -12,13 +12,6 @@ This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the ma
 
 See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 
-!!! danger "QuaDRA is not publicly available"
-    **QuaDRA** (Quantum keys Distribution and Rotation Agent) is an **Arista EOS SDK extension** that is **not distributed in this public repository** and is **not generally available for download**.
-
-    To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
-
-    The sections below describe how the lab is **configured** when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
-
 ## Configuration
 
 ### Architecture overview
@@ -206,6 +199,13 @@ show daemon quadra
 | Dynamic vs static MACsec | Ethernet1 (ceos1 ↔ ceos2) uses 802.1X; Ethernet2/1 (ceos1 ↔ ceos3) uses QuaDRA static SAK |
 | Key rotation interval | Lab default **120 s** on master (`option key-rotation value 120s`) |
 
+!!! danger "QuaDRA is not publicly available"
+    **QuaDRA** (Quantum keys Distribution and Rotation Agent) is an **Arista EOS SDK extension** that is **not distributed in this public repository** and is **not generally available for download**.
+
+    To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
+
+    The configuration sections above describe how the lab is set up when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
+
 ## Verification
 
 ### Configuration
@@ -244,6 +244,8 @@ ping 10.255.0.6 source 10.255.0.5
 
 Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
-See [Test suite overview](../tests/index.md) (`make test-kme`, `make test-macsec-qkd`). Test doc: [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
+Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static SAK — skips when extension not installed).
+
+See [KME tests](../tests/kme.md) and [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 
 <- [Services overview](index.md)

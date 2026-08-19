@@ -96,7 +96,8 @@ Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS p
 
 | Topic | Status on EOS |
 |-------|------------------------|
-| EAP-TLS KEX | **PQC-safe** (`X25519MLKEM768` in supplicant detail) |
+| Config | `DOT1X` profile lists `X25519MLKEM768` |
+| Live wire (EAP-TLS) | **PQC-safe** (`X25519MLKEM768` in supplicant detail) |
 | MACsec keys | Derived from EAP — not direct PQC wire protocol on MACsec frames |
 | Reauthentication | Period **60 s** — optional extended check via `make test-macsec-dot1x-reauth` |
 | Static SAK / QKD paths | Out of scope for this page — see [QKD / ETSI 014](qkd-etsi014.md) |

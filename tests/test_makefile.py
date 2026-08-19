@@ -63,6 +63,7 @@ def test_makefile_exists() -> None:
         "deploy",
         "destroy",
         "clean",
+        "reset",
         "redeploy",
         "inspect",
         "ssh-ceos1-both",
@@ -90,7 +91,7 @@ def test_make_help_lists_target(target: str) -> None:
 
 
 def test_gen_topo_default_image() -> None:
-    _run_make("gen-topo")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     assert GEN_TOPOLOGY_PATH.is_file()
     data = load_topology(GEN_TOPOLOGY_PATH)
     image = data["topology"]["kinds"]["arista_ceos"]["image"]
@@ -109,7 +110,7 @@ def test_gen_topo_custom_ceos_image() -> None:
 
 def test_gen_topo_custom_mgmt_subnet() -> None:
     custom = "192.168.28.0/24"
-    _run_make("gen-topo", f"MGMT_SUBNET={custom}")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={custom}")
     data = load_topology(GEN_TOPOLOGY_PATH)
     assert data["mgmt"]["ipv4-subnet"] == custom
     assert data["topology"]["nodes"]["radius"]["mgmt-ipv4"] == "192.168.28.50"
@@ -118,7 +119,7 @@ def test_gen_topo_custom_mgmt_subnet() -> None:
 
 
 def test_gen_topo_substitutes_placeholders() -> None:
-    _run_make("gen-topo")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     src = TOPOLOGY_PATH.read_text(encoding="utf-8")
     gen = GEN_TOPOLOGY_PATH.read_text(encoding="utf-8")
     assert "${CEOS_IMAGE}" in src
@@ -130,13 +131,14 @@ def test_gen_topo_substitutes_placeholders() -> None:
 
 
 def test_validate_topo_passes_via_make() -> None:
-    result = _run_make("validate-topo")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
+    result = _run_make("validate-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     assert result.returncode == 0
     assert GEN_TOPOLOGY_PATH.is_file()
 
 
 def test_validate_topo_fails_on_contract_violation(tmp_path: Path) -> None:
-    _run_make("gen-topo")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     broken = tmp_path / "broken.clab.yml"
     broken.write_text(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     data = yaml.safe_load(broken.read_text(encoding="utf-8"))
@@ -148,7 +150,7 @@ def test_validate_topo_fails_on_contract_violation(tmp_path: Path) -> None:
 
 
 def test_render_preserves_yaml_structure() -> None:
-    _run_make("gen-topo")
+    _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))
     assert data["topology"]["nodes"]["radius"]["image"] == "quantum-safe-radius:latest"
     assert data["topology"]["kinds"]["arista_ceos"]["image"] == DEFAULT_CEOS_IMAGE
@@ -208,9 +210,9 @@ def test_download_ceos_loads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPa
             dotenv.unlink(missing_ok=True)
 
 
-def test_download_ceos_recipe_sources_dotenv() -> None:
+def test_download_ceos_recipe_loads_dotenv_via_makefile() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "[ -f .env ] && . ./.env" in content
+    assert "-include .env" in content
 
 
 def test_download_ceos_recipe_uses_download_dir() -> None:
@@ -404,10 +406,10 @@ def test_test_hosts_recipe_delegates_to_python_module() -> None:
 
 def test_clean_recipe_removes_artifacts_and_images() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    clean = content.split("clean:")[1].split("redeploy:")[0]
+    clean = content.split("clean:")[1].split("reset:")[0]
     assert "containerlab destroy" in clean
     assert "rm -rf lab/.gen lab/.gen.*" in clean
-    assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' in clean
+    assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' not in clean
     assert "rm -rf .venv .pytest_cache" in clean
     assert 'rm -rf ".stamp"' in clean or 'rm -rf "$(STAMP_DIR)"' in clean
     assert "docker images" in clean
@@ -416,9 +418,18 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert "quantum-safe-syslog" in clean
     assert "quantum-safe-kme" in clean
     assert "docker rmi" in clean
-    assert "rm -f .env" in clean
+    assert "rm -f .env" not in clean
+    assert "download/ and .env preserved" in clean
     assert "CLAB_MGMT_NETWORK" in clean
     assert "docker network rm" in clean
+
+
+def test_reset_recipe_resets_git_worktree() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    reset = content.split("reset:")[1].split("redeploy:")[0]
+    assert "clean" in reset
+    assert "git reset --hard HEAD" in reset
+    assert "git clean -fdx" in reset
 
 
 def test_root_makefile_has_no_export_targets() -> None:

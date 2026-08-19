@@ -25,3 +25,5 @@ def test_gitignore_patterns(repo_root: Path) -> None:
 def test_env_example_has_arista_token(repo_root: Path) -> None:
     content = (repo_root / ".env.example").read_text(encoding="utf-8")
     assert "ARISTA_TOKEN=" in content
+    assert "CEOS_IMAGE=" in content
+    assert "MGMT_SUBNET=" in content

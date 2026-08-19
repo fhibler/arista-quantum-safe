@@ -59,7 +59,7 @@ dot1x
       ssl profile DOT1X
 ```
 
-### FreeRADIUS (RadSec server)
+### Peer — FreeRADIUS (RadSec server)
 
 Image: `docker/radius/Dockerfile` — FreeRADIUS 3.2.6 + OpenSSL 3.5.7.
 
@@ -101,12 +101,12 @@ EAP-TLS for 802.1X is terminated in `mods-available/eap`. Policy `policy.d/macse
 
 | Topic | Status on EOS |
 |-------|------------------------|
-| RadSec config | PQC-hybrid only on switch and server |
-| RadSec live wire | **PQC-safe** |
-| EAP-TLS (dot1x) | **PQC-safe** — hybrid group in supplicant handshake |
+| Config | PQC-hybrid only on switch and server |
+| Live wire (RadSec) | **PQC-safe** |
+| Live wire (EAP-TLS) | **PQC-safe** — hybrid group in supplicant handshake |
 | RADIUS shared secret | Lab uses TLS certs; RadSec port not classic UDP 1812 |
 
-!!! note
+!!! note "Lab AAA policy"
     `test aaa` uses a lab-only `Auth-Type := Accept` policy for management AAA checks. Production deployments should use proper user credentials.
 
 ## Verification

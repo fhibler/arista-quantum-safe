@@ -42,6 +42,29 @@ make test-openconfig VERBOSE=1
 | `WARN` | **Not PQC-safe** (often still TLS 1.3 compliant); check passes (not a failure) |
 | `SKIP` | Known platform/config limitation — check not run (not a failure) |
 
+## Suite summary line
+
+Each `make test-*` target ends with a one-line summary that counts individual checks (`[config]`, `[live]`, `[live / test-runner]`, etc.):
+
+```text
+OpenConfig: ✓ — 87 passed, 12 warnings
+HOSTS: ✓ — 12 passed
+RadSec: ✓ — 42 passed
+```
+
+| Part | Meaning |
+|------|---------|
+| **Name** | Suite label (e.g. `OpenConfig`, `RadSec`, `HOSTS`) |
+| **✓ / ✗** | Overall outcome — **✓** when no check failed; **✗** when the suite aborts |
+| **passed** | Checks that completed successfully |
+| **warnings** | Checks marked **WARN** (e.g. classical wire KEX) — still a pass |
+| **failed** | Shown only when failed checks were recorded before abort |
+| **skipped** | Checks marked **SKIP** (platform limitation — not a failure) |
+
+Only non-zero buckets are shown. On failure the summary is printed to stderr, e.g. `OpenConfig FAILED: ✗ — <first error>`.
+
+`make test-lab` prints each suite's summary in order, then `✓ All lab checks passed.` when every suite succeeds.
+
 ## Default management addresses
 
 | Node | IPv4 | IPv6 |

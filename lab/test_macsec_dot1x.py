@@ -21,7 +21,7 @@ from lab.ceos_json import (
     parse_eos_json,
     ping_text_success,
 )
-from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_summary
+from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_check_summary, report_summary, reset_check_stats
 from lab.topology_contract import (
     CEOS_DATA_PLANE,
     DOT1X_EAP_IDENTITY,
@@ -409,6 +409,7 @@ def run_macsec_checks(
     verify_reauth: bool = False,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     from lab.topology_contract import mgmt_ips_for_subnet, mgmt_ipv6_ips_for_subnet
 
     ips = mgmt_ips_for_subnet(mgmt_subnet)
@@ -483,13 +484,7 @@ def run_macsec_checks(
         verbose=verbose,
     )
 
-    checks = "[config] and [live] checks" if not skip_config else "live checks only"
-    reauth_note = ", reauth cycle" if verify_reauth else ""
-    report_summary(
-        "MACsec",
-        f"all {checks}{reauth_note} passed "
-        "(802.1X EAP-TLS + QuaDRA static MACsec, encrypted traffic)",
-    )
+    report_check_summary("MACsec")
 
 
 def main(argv: list[str] | None = None) -> int:

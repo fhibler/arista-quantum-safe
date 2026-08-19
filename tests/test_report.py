@@ -11,15 +11,19 @@ from lab.report import (
     BRIGHT_RED,
     BOLD,
     GREEN,
+    CheckStats,
     CheckStatus,
     align_right,
     bold,
     colors_enabled,
+    format_check_counts,
     format_check_line,
     format_summary,
     print_section_header,
     print_test_header,
     report_check,
+    report_check_summary,
+    reset_check_stats,
     status_marker,
     visible_len,
 )
@@ -50,6 +54,25 @@ def test_format_summary_uses_status_marker(monkeypatch) -> None:
         format_summary("PQC", "handshake failed", CheckStatus.FAIL)
         == "PQC FAILED: ✗ — handshake failed"
     )
+
+
+def test_format_check_counts_omits_zero_buckets() -> None:
+    assert format_check_counts(CheckStats(ok=42, warn=3)) == "42 passed, 3 warnings"
+    assert format_check_counts(CheckStats(ok=1)) == "1 passed"
+    assert format_check_counts(CheckStats(warn=1)) == "1 warning"
+    assert format_check_counts(CheckStats()) == "0 checks"
+
+
+def test_report_check_increments_stats(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    reset_check_stats()
+    report_check("[live]  ", "SSH ok", CheckStatus.OK)
+    report_check("[live]  ", "classical fallback", CheckStatus.WARN)
+    report_check("[live]  ", "skipped probe", CheckStatus.SKIP)
+    capsys.readouterr()
+    report_check_summary("OpenConfig")
+    summary = capsys.readouterr().out.strip()
+    assert summary == "OpenConfig: ✓ — 1 passed, 1 warning, 1 skipped"
 
 
 def test_format_check_line_warn_is_prominent(monkeypatch) -> None:

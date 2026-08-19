@@ -16,10 +16,10 @@ Stock Linux packages and upstream release binaries often **fail that requirement
 | **FreeRADIUS** (RadSec) | radius | OpenSSL (static) | **No** | Linked OSSL 3.5 static | **Yes** |
 | **syslog-ng** (collector) | syslog | OpenSSL (static) | **No** | Linked OSSL 3.5 static | **Yes** (collector-side probe) |
 | **gnmic** | test-runner | Go `crypto/tls` | **Yes** — release **0.47.0** (Go **1.25+**) | Upstream tarball | **Yes** |
-| **gnoic** | test-runner | Go `crypto/tls` | **Yes** — release **0.2.1** (Go **1.24+**) | Upstream tarball | **Yes** |
-| **gnsic** | test-runner | Go `crypto/tls` | **Yes** — release **0.0.4** (Go **1.24+**) | Upstream tarball | **Yes** |
-| **gribic** | test-runner | Go `crypto/tls` | **No** — release **0.0.14** (Go **1.21**) | Source build **0.0.14** with Go **1.24.3** | **Yes** (rebuilt like grpcurl) |
-| **grpcurl** | test-runner | Go `crypto/tls` | **No** — release built with Go **1.21** | Source build **1.9.3** with Go **1.24.3** | **Partial** — gNPSI RPCs on `:6031` work but wire KEX often classical (WARN); `:6030` handshake fails (use gnoic/gnmic/gnsic) |
+| **gnoic** | test-runner | Go `crypto/tls` | **Yes** — release **0.2.1** (Go **1.25+**) | Upstream tarball | **Yes** |
+| **gnsic** | test-runner | Go `crypto/tls` | **Yes** — release **0.0.4** (Go **1.25+**) | Upstream tarball | **Yes** |
+| **gribic** | test-runner | Go `crypto/tls` | **No** — release **0.0.14** (`go 1.21` in upstream `go.mod`) | Source-build **0.0.14** (Go **1.25.1**, `go mod edit -go=1.25`) | **Yes** |
+| **grpcurl** | test-runner | Go `crypto/tls` | **No** — release **1.9.3** (`go 1.21` in upstream `go.mod`) | Source-build **1.9.3** (Go **1.25.1**, `go mod edit -go=1.25`) | **Partial** — gNPSI RPCs on `:6031` work but wire KEX often classical (WARN); `:6030` handshake fails (use gnoic/gnmic/gnsic) |
 | **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | Stock Alpine Python | **No** — ETSI mTLS; not validated against strict PQC profiles |
 | **EOS cEOS** | ceos* | Arista (native) | N/A (switch image) | Vendor image + templates | **Yes** when profile is strict (see [Services](../services/index.md) for wire exceptions) |
 
@@ -40,10 +40,9 @@ EOS-side exceptions (config lists hybrid; wire may be classical): [Syslog](../se
 | **OpenSSL** (radius, syslog, probes) | Alpine/Docker Hub images ship OpenSSL **3.3.x or older** — no `X25519MLKEM768` | Self-build **OpenSSL 3.5.7**; link peers against `/opt/openssl` |
 | **curl** | Links to system OpenSSL without PQC groups | Compile **curl 8.12** against custom OpenSSL in test-runner |
 | **OpenSSH client** | No `mlkem768x25519-sha256` in distro builds | Compile **OpenSSH 10** against custom OpenSSL in test-runner |
-| **grpcurl** | Upstream release built with **Go 1.21** — no PQ hybrids in `crypto/tls` | **Rebuild grpcurl 1.9.3 from source with Go 1.24+** |
-| **gribic** | Upstream release built with **Go 1.21** — no PQ hybrids in `crypto/tls` | **Rebuild gribic 0.0.14 from source with Go 1.24+** |
-| **gnoic / gnsic** | Go **1.24+** prebuilts OK | Pin gnoic/gnsic tarballs |
-| **gnmic** | gNMI GET over mTLS | Prebuilt release (verify periodically against EOS strict profiles) |
+| **grpcurl** | Upstream **`go 1.21`** in `go.mod` — linked binary offers classical KEX only (`tlsmlkem=0`) | Source-build **1.9.3** with Go **1.25.1**; **`go mod edit -go=1.25`** before compile |
+| **gribic** | Upstream **`go 1.21`** in `go.mod` — same `tlsmlkem=0` default | Source-build **0.0.14** with Go **1.25.1**; **`go mod edit -go=1.25`** before compile |
+| **gnoic / gnsic / gnmic** | Go **1.25+** prebuilt tarballs OK | Pin upstream release tarballs |
 
 Build entry points: `make build-openssl`, `make build-radius`, `make build-syslog`, `make build-test-runner`. Smoke checks: `make verify-test-runner-image`, plus the radius and syslog image test Makefile targets.
 
@@ -64,17 +63,19 @@ See also [PQC overview — OpenSSL build requirement](../pqc-overview.md#openssl
 
 ## Go `crypto/tls` (gRPC clients)
 
-Go **1.24+** enables hybrid post-quantum key exchange **`X25519MLKEM768`** by default in `crypto/tls` (see [Go release notes](https://go.dev/doc/go1.24)). Go programs **ignore** `OPENSSL_CONF` — they use the Go runtime’s TLS stack only.
+Go **1.24+** enables hybrid post-quantum key exchange **`X25519MLKEM768`** in `crypto/tls` when **`tlsmlkem=1`** (the default for modules declaring **`go 1.24`** or newer). Go programs **ignore** `OPENSSL_CONF` — they use the Go runtime’s TLS stack only.
+
+Upstream **grpcurl** and **gribic** tarballs still declare **`go 1.21`** in `go.mod`. Compiling them with a Go **1.25+** toolchain alone is not enough: the linked binary inherits GODEBUG defaults from that directive, so **`tlsmlkem=0`** unless the build runs **`go mod edit -go=1.25`** (matching the Dockerfile **`GO_VERSION=1.25.1`** pin) before **`go build`**.
 
 ### grpcurl
 
-[grpcurl](https://github.com/fullstorydev/grpcurl) release **v1.9.3** binaries on GitHub are built with **Go 1.21**. Against this lab’s strict EOS profiles they cannot complete a TLS handshake (no shared group).
+[grpcurl](https://github.com/fullstorydev/grpcurl) release **v1.9.3** GitHub binaries are built from that upstream **`go 1.21`** module — against strict EOS profiles they offer classical KEX only and cannot complete a PQC-only handshake.
 
-The test-runner image therefore **compiles grpcurl v1.9.3 from source** with **Go 1.24.3** (`GO_VERSION` build-arg in the Dockerfile). grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go 1.24 defaults apply.
+The test-runner image **source-builds grpcurl v1.9.3** with Go **1.25.1** and **`go mod edit -go=1.25`** before compile. grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go **1.25** defaults apply.
 
-**Verified against deployed EOS (4.36.2F):** with Go **1.24.3**, grpcurl completes mTLS and gNPSI RPCs on **:6031** (reflection `list` and `gnpsi.gNPSI/Subscribe` as exercised by `make test-openconfig`). The EOS listener often negotiates **classical wire KEX** (`secp256r1`) despite the strict **`GNPSI`** profile — the suite **WARN**s (same class as gRIBI).
+**Verified against deployed EOS (4.36.2F):** the source-built client completes mTLS and gNPSI RPCs on **:6031** (reflection `list` and `gnpsi.gNPSI/Subscribe` as exercised by `make test-openconfig`). The EOS listener often negotiates **classical wire KEX** (`secp256r1`) despite the strict **`GNPSI`** profile — the suite **WARN**s (same class as gRIBI).
 
-On the shared **gNMI/gNOI listener (:6030)**, EOS still rejects grpcurl with `tls: handshake failure` even after the Go 1.24 rebuild. **`gnoic`**, **gnmic**, and **gnsic** negotiate `X25519MLKEM768` there — use those clients for `:6030`. grpcurl remains a **fallback** for gNOI/gRIBI RPC invoke paths and the primary client for gNPSI subscribe.
+On the shared **gNMI/gNOI listener (:6030)**, EOS still rejects grpcurl with `tls: handshake failure` even after the source-build. **`gnoic`**, **gnmic**, and **gnsic** negotiate `X25519MLKEM768` there — use those clients for `:6030`. grpcurl remains a **fallback** for gNOI/gRIBI RPC invoke paths and the primary client for gNPSI subscribe.
 
 Manual spot-check (lab deployed, certs mounted in test-runner):
 
@@ -90,13 +91,13 @@ Expect `gnpsi.gNPSI` and `grpc.reflection.v1.ServerReflection`. Transport PQC on
 
 ### gnoic, gribic, gnsic
 
-These OpenConfig clients are shipped as **prebuilt** Linux tarballs from [karimra](https://github.com/karimra) releases. Current pins (`gnoic` **0.2.1**, `gnsic` **0.0.4**) are built with **Go 1.24+** and are **primary** live gRPC probes in `make test-openconfig`.
+**gnoic** (**0.2.1**) and **gnsic** (**0.0.4**) ship as **prebuilt** Linux tarballs from [karimra](https://github.com/karimra) releases (Go **1.25+**). They are **primary** live gRPC probes in `make test-openconfig`.
 
-**gribic** **0.0.14** upstream tarballs are still on **Go 1.21**. The test-runner image **compiles gribic v0.0.14 from source** with **Go 1.24.3** (same approach as grpcurl). `make test-openconfig` probes PQC-hybrid mTLS on `:9340` with OpenSSL first; on EOS 4.36.2F the wire still accepts classical KEX — the suite **WARN**s (same pattern as eos-sdk-rpc) before the gRIBI Get RPC check.
+**gribic** **0.0.14** uses the same **source-build** pattern as grpcurl: compile with Go **1.25.1** and **`go mod edit -go=1.25`** before **`go build`**. `make test-openconfig` probes PQC-hybrid mTLS on `:9340` with OpenSSL first, then runs **`gribic get`**. On EOS 4.36.2F the wire still accepts classical KEX — the suite **WARN**s (same pattern as eos-sdk-rpc) before the gRIBI Get RPC check.
 
 ### gnmic
 
-gNMI GET uses a prebuilt **gnmic** release. Re-verify against EOS when bumping `GNMIC_VERSION` — if upstream regress to an older Go toolchain, rebuild from source the same way as grpcurl.
+**gnmic** (**0.47.0**) is a prebuilt release tarball (Go **1.25+**). Re-verify against EOS when bumping `GNMIC_VERSION` — if upstream regresses to an older `go` directive, use the same source-build approach as grpcurl and gribic.
 
 ## What is *not* customized
 
@@ -108,7 +109,7 @@ gNMI GET uses a prebuilt **gnmic** release. Re-verify against EOS when bumping `
 
 ## Operational notes
 
-- **`GODEBUG=tlsmlkem=0`** disables PQ hybrids in Go — do not set this in the test-runner environment.
+- **`GODEBUG=tlsmlkem=0`** disables PQ hybrids in Go — do not set this in the test-runner environment. For **grpcurl** and **gribic**, the Dockerfile avoids that default by running **`go mod edit -go=1.25`** before compile (see [Go `crypto/tls`](#go-cryptotls-grpc-clients)).
 - **`OPENSSL_CONF`** affects OpenSSL binaries only (`curl`, `openssl s_client`), not Go gRPC clients.
 - After changing Dockerfile pins, run `make build-test-runner` and `make verify-test-runner-image`, then spot-check live handshakes with `make test-openconfig VERBOSE=1`.
 

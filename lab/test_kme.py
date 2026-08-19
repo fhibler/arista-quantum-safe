@@ -21,7 +21,7 @@ from lab.kme_http import (
     ceos_kme_curl_exec_argv,
     kme_curl_argv,
 )
-from lab.report import CheckStatus, print_device, print_test_header, report_ok, report_summary
+from lab.report import CheckStatus, print_device, print_test_header, report_ok, report_check_summary, report_summary, reset_check_stats
 from lab.topology_contract import (
     CEOS_KME_NODES,
     KME_B_SAE_ID,
@@ -309,6 +309,7 @@ def run_kme_checks(
     host_nodes: tuple[str, ...] | None = None,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     targets = KmeTargets(
         clab_name=clab_name,
@@ -346,12 +347,7 @@ def run_kme_checks(
         check_ceos_host_kme_tls(targets, node, verbose=verbose)
         print()
 
-    summary_parts: list[str] = []
-    if kme_nodes:
-        summary_parts.append(f"KME nodes {', '.join(kme_nodes)}")
-    if hosts:
-        summary_parts.append(f"hosts {', '.join(hosts)} (lab CA {CEOS_KME_CA_CERT})")
-    report_summary("KME", "; ".join(summary_parts))
+    report_check_summary("KME")
 
 
 def main(argv: list[str] | None = None) -> int:

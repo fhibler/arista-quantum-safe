@@ -13,8 +13,10 @@ from lab.report import (
     bold,
     print_test_header,
     report_check,
+    report_check_summary,
     report_ok,
     report_summary,
+    reset_check_stats,
     status_marker,
     visible_len,
 )
@@ -191,6 +193,7 @@ def _ping_host(
 
 
 def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
+    reset_check_stats()
     if verbose:
         from lab.test_lab import section
 
@@ -232,7 +235,7 @@ def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     if failed:
         raise HostRoutingError(f"host routing failed: {', '.join(failed)}")
     if not verbose:
-        report_summary("HOSTS", "all data-plane ping pairs reachable (IPv4 and IPv6)")
+        report_check_summary("HOSTS")
 
 
 def main(argv: list[str] | None = None) -> int:

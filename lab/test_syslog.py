@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_summary
+from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_check_summary, report_summary, reset_check_stats
 from lab.syslog_checks import (
     PQC_GROUP,
     SyslogCheckError,
@@ -64,6 +64,7 @@ def ceos_cli(node: str, clab_name: str, commands: str) -> str:
 
 
 def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> None:
+    reset_check_stats()
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     ips6 = mgmt_ipv6_ips_for_subnet()
     syslog_ips = (ips["syslog"], ips6["syslog"])
@@ -120,8 +121,7 @@ def run_checks(*, clab_name: str, mgmt_subnet: str, skip_live: bool = False) -> 
             except PqcConnectionError as exc:
                 raise SyslogCheckError(str(exc)) from exc
 
-    mode = "config checks only" if skip_live else "config and live delivery (wire KEX WARN when not PQC-safe)"
-    report_summary("Syslog", f"{mode} passed for all cEOS nodes")
+    report_check_summary("Syslog")
 
 
 def main(argv: list[str] | None = None) -> int:

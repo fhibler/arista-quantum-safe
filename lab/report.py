@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from typing import TextIO
 
@@ -27,6 +28,50 @@ class CheckStatus(Enum):
     WARN = "warn"
     FAIL = "fail"
     SKIP = "skip"
+
+
+@dataclass
+class CheckStats:
+    ok: int = 0
+    warn: int = 0
+    fail: int = 0
+    skip: int = 0
+
+    def record(self, status: CheckStatus) -> None:
+        if status is CheckStatus.OK:
+            self.ok += 1
+        elif status is CheckStatus.WARN:
+            self.warn += 1
+        elif status is CheckStatus.FAIL:
+            self.fail += 1
+        elif status is CheckStatus.SKIP:
+            self.skip += 1
+
+
+_check_stats = CheckStats()
+
+
+def reset_check_stats() -> None:
+    global _check_stats
+    _check_stats = CheckStats()
+
+
+def check_stats() -> CheckStats:
+    return _check_stats
+
+
+def format_check_counts(stats: CheckStats | None = None) -> str:
+    stats = stats or _check_stats
+    parts: list[str] = []
+    if stats.ok:
+        parts.append(f"{stats.ok} passed")
+    if stats.warn:
+        parts.append(f"{stats.warn} warning{'s' if stats.warn != 1 else ''}")
+    if stats.fail:
+        parts.append(f"{stats.fail} failed")
+    if stats.skip:
+        parts.append(f"{stats.skip} skipped")
+    return ", ".join(parts) if parts else "0 checks"
 
 
 _STATUS_ICONS = {
@@ -123,6 +168,7 @@ def format_check_line(prefix: str, detail: str, status: CheckStatus = CheckStatu
 
 
 def report_check(prefix: str, detail: str, status: CheckStatus = CheckStatus.OK) -> None:
+    check_stats().record(status)
     print(format_check_line(prefix, detail, status))
 
 
@@ -153,3 +199,10 @@ def report_summary(
     file: TextIO | None = None,
 ) -> None:
     print(format_summary(name, detail, status), file=file)
+
+
+def report_check_summary(name: str, *, file: TextIO | None = None) -> None:
+    """Print a suite summary from accumulated check counts (passed/warning/failed/skipped)."""
+    stats = check_stats()
+    status = CheckStatus.FAIL if stats.fail else CheckStatus.OK
+    report_summary(name, format_check_counts(stats), status, file=file)

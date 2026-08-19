@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_summary
+from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_check_summary, report_summary, reset_check_stats
 from lab.test_pqc_connections import (
     CEOS_NODES,
     PqcConnectionError,
@@ -28,6 +28,7 @@ def run_radsec_checks(
     skip_config: bool = False,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     targets = lab_targets_for_subnet(clab_name=clab_name, mgmt_subnet=mgmt_subnet)
     radius_ip = targets.mgmt_ips["radius"]
     radius_ipv6 = targets.mgmt_ips6["radius"]
@@ -76,11 +77,7 @@ def run_radsec_checks(
             probe_radsec_from_switch(targets, node, family=family, verbose=verbose)
 
     print()
-    report_summary(
-        "RadSec",
-        f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (reachability, collector TLS, AAA; IPv4 and IPv6)",
-    )
+    report_check_summary("RadSec")
 
 
 def main(argv: list[str] | None = None) -> int:

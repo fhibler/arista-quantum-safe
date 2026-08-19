@@ -16,7 +16,9 @@ Six directed pairs per family (12 live checks total):
 ## Pass criteria
 
 - All off-diagonal ping pairs succeed for IPv4 and IPv6
-- Summary line: `HOSTS: ✓ — all data-plane ping pairs reachable (IPv4 and IPv6)`
+- Summary line: `HOSTS: ✓ — 12 passed` (one count per live ping check; IPv4 + IPv6)
+
+See [Test suite overview — Suite summary line](index.md#suite-summary-line) for the summary format used by all lab test targets.
 
 ## Manual reproduction
 

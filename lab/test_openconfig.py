@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_summary
+from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_check_summary, report_summary, reset_check_stats
 from lab.test_openconfig_grpc import run_openconfig_grpc_checks
 from lab.test_pqc_connections import (
     CEOS_NODES,
@@ -33,6 +33,7 @@ def run_openconfig_checks(
     skip_config: bool = False,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     ips = mgmt_ips_for_subnet(mgmt_subnet)
     ips6 = mgmt_ipv6_ips_for_subnet()
     targets = LabTargets(
@@ -81,12 +82,7 @@ def run_openconfig_checks(
             probe_eossdkrpc_tls(targets, node, family=family, verbose=verbose)
 
     print()
-    report_summary(
-        "OpenConfig",
-        f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc; "
-        "WARN on eos-sdk-rpc, gRIBI, and gNPSI not PQC-safe)",
-    )
+    report_check_summary("OpenConfig")
 
 
 def main(argv: list[str] | None = None) -> int:

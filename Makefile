@@ -323,7 +323,7 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 build-test-runner: build-openssl-shared ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
-		--build-arg GO_VERSION=1.24.3 \
+		--build-arg GO_VERSION=1.25.1 \
 		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
 	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
 
@@ -343,11 +343,11 @@ verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5
 	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
 	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
 	echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'strings /usr/local/bin/grpcurl | grep -q "go1.24"'; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'strings /usr/local/bin/grpcurl | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
 	echo "Probe:      grpcurl built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
 	echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -q "go1.24"'; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
 	echo "Probe:      gribic built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
 	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"

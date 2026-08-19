@@ -64,10 +64,12 @@ from lab.report import (
     print_device,
     print_test_header,
     report_check,
+    report_check_summary,
     report_ok,
     report_skip,
     report_summary,
     report_warn,
+    reset_check_stats,
 )
 from lab.tls_wire import (
     CLASSICAL_PROBE_GROUP,
@@ -863,6 +865,7 @@ def run_eapi_checks(
     skip_config: bool = False,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     targets = lab_targets_for_subnet(clab_name=clab_name, mgmt_subnet=mgmt_subnet)
 
     print_test_header(
@@ -891,11 +894,7 @@ def run_eapi_checks(
             )
 
     print()
-    report_summary(
-        "eAPI",
-        f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        "passed (HTTPS + command-api, IPv4 and IPv6)",
-    )
+    report_check_summary("eAPI")
 
 
 def run_ssh_checks(
@@ -905,6 +904,7 @@ def run_ssh_checks(
     skip_config: bool = False,
     verbose: bool | None = None,
 ) -> None:
+    reset_check_stats()
     targets = lab_targets_for_subnet(clab_name=clab_name, mgmt_subnet=mgmt_subnet)
 
     print_test_header(
@@ -926,8 +926,4 @@ def run_ssh_checks(
             probe_ssh_pqc(targets, node, family=family, verbose=verbose)
 
     print()
-    report_summary(
-        "SSH",
-        f"all {'live checks only' if skip_config else '[config] and [live] checks'} "
-        f"passed ({SSH_PQC_KEX}, IPv4 and IPv6)",
-    )
+    report_check_summary("SSH")

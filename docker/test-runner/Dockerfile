@@ -9,7 +9,7 @@ ARG CURL_VERSION=8.12.1
 ARG OPENSSH_VERSION=10.0p1
 ARG GNMIC_VERSION=0.47.0
 ARG GRPCURL_VERSION=1.9.3
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.25.1
 ARG GNOIC_VERSION=0.2.1
 ARG GRIBIC_VERSION=0.0.14
 ARG GNSIC_VERSION=0.0.4
@@ -130,7 +130,7 @@ RUN apk add --no-cache wget tar ca-certificates \
 
 FROM golang:${GO_VERSION}-alpine AS grpcurl-build
 ARG GRPCURL_VERSION
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.25.1
 
 RUN apk add --no-cache wget tar ca-certificates \
  && wget -q --tries=5 --timeout=120 \
@@ -138,6 +138,8 @@ RUN apk add --no-cache wget tar ca-certificates \
       -O /tmp/grpcurl.tar.gz \
  && tar -xzf /tmp/grpcurl.tar.gz -C /tmp \
  && cd "/tmp/grpcurl-${GRPCURL_VERSION}" \
+ && GO_MOD="$(echo "${GO_VERSION}" | sed 's/\.[0-9]*$//')" \
+ && go mod edit -go="${GO_MOD}" \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/grpcurl ./cmd/grpcurl \
  && go version -m /usr/local/bin/grpcurl | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
  && /usr/local/bin/grpcurl --version
@@ -161,7 +163,7 @@ RUN apk add --no-cache wget tar ca-certificates \
 
 FROM golang:${GO_VERSION}-alpine AS gribic-build
 ARG GRIBIC_VERSION
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.25.1
 
 RUN apk add --no-cache wget tar ca-certificates \
  && wget -q --tries=5 --timeout=120 \
@@ -169,6 +171,8 @@ RUN apk add --no-cache wget tar ca-certificates \
       -O /tmp/gribic.tar.gz \
  && tar -xzf /tmp/gribic.tar.gz -C /tmp \
  && cd "/tmp/gribic-${GRIBIC_VERSION}" \
+ && GO_MOD="$(echo "${GO_VERSION}" | sed 's/\.[0-9]*$//')" \
+ && go mod edit -go="${GO_MOD}" \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/gribic . \
  && go version -m /usr/local/bin/gribic | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
  && gribic version

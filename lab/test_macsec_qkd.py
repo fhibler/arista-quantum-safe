@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_summary, report_warn
+from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_check_summary, report_summary, report_warn, reset_check_stats
 from lab.topology_contract import (
     CEOS_QUADRA_NODES,
     KME_B_SAE_ID,
@@ -485,6 +485,7 @@ def run_qkd_checks(
     verbose: bool | None = None,
 ) -> bool:
     """Run QuaDRA checks. Returns True when checks ran, False when skipped."""
+    reset_check_stats()
     swix = quadra_swix_name()
     targets = QkdTargets(clab_name=clab_name)
 
@@ -517,7 +518,7 @@ def run_qkd_checks(
         verbose=verbose,
     )
     check_master_rotation_schedule(MASTER, master_status)
-    master_rotation_logged = note_rotation_success_log(master_container, MASTER, verbose=verbose)
+    note_rotation_success_log(master_container, MASTER, verbose=verbose)
 
     print()
     print_device(SLAVE)
@@ -529,7 +530,7 @@ def run_qkd_checks(
         expected_role=EXPECTED_AGENT_ROLES[SLAVE],
         verbose=verbose,
     )
-    slave_rotation_logged = note_rotation_success_log(slave_container, SLAVE, verbose=verbose)
+    note_rotation_success_log(slave_container, SLAVE, verbose=verbose)
 
     print()
     print_device("QuaDRA MACsec keys")
@@ -556,16 +557,7 @@ def run_qkd_checks(
     print_device("QuaDRA link")
     check_quadra_link_ping(master_container, slave_container, verbose=verbose)
 
-    rotation_note = (
-        "rotation success in recent syslog"
-        if master_rotation_logged and slave_rotation_logged
-        else "steady-state rotation (no recent ROTATION_SUCCESS syslog)"
-    )
-    report_summary(
-        "QuaDRA",
-        f"daemon master/slave healthy, static SAK keys in sync, {rotation_note}, "
-        "KME enc_keys/dec_keys seen, next rotation scheduled",
-    )
+    report_check_summary("QuaDRA")
     return True
 
 

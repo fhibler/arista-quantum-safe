@@ -6,12 +6,12 @@ QuaDRA static SAK / MACsec rotation is separate: **`make test-macsec-qkd`**.
 
 ## What is checked
 
-| Check | Method |
-|-------|--------|
-| kme-a SAE status | Inside `kme-a` container — locked SAE ID, peer link |
-| kme-b peer status | Inside `kme-b` container |
-| enc/dec round-trip | `enc_keys` on kme-a → `dec_keys` on kme-b (32-byte key) |
-| cEOS SAE TLS | Strict chain verify from **ceos1-both** and **ceos3-qkd** to both KME HTTPS APIs |
+| Check | Type | Method |
+|-------|------|--------|
+| kme-a SAE status | `[kme]` | Inside `kme-a` container — locked SAE ID, peer link |
+| kme-b peer status | `[kme]` | Inside `kme-b` container |
+| enc/dec round-trip | `[kme]` | `enc_keys` on kme-a → `dec_keys` on kme-b (32-byte key) |
+| cEOS SAE TLS | `[host]` | Strict chain verify from **ceos1-both** and **ceos3-qkd** to both KME HTTPS APIs |
 
 ## Pass criteria
 
@@ -33,4 +33,6 @@ docker exec arista-quantum-safe-ceos1-both ip netns exec ns-MGMT curl -sf \
 
 Configuration reference: [QKD / ETSI 014 service](../services/qkd-etsi014.md).
 
-Related: [MACsec QuaDRA QKD tests](macsec-qkd.md), [Test suite overview](index.md).
+Related: [MACsec QuaDRA QKD tests](macsec-qkd.md).
+
+<- [Test suite overview](index.md)

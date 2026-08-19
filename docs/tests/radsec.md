@@ -2,6 +2,8 @@
 
 `make test-radsec` runs `python -m lab.test_radsec` — FreeRADIUS collector checks, per-switch reachability, RadSec AAA, and collector TLS PQC handshakes (IPv4 and IPv6).
 
+**Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** on the `RADSEC` ssl profile.
+
 ## What is checked
 
 ### FreeRADIUS container
@@ -44,13 +46,8 @@ docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
 enable
 test aaa group RADIUS server 172.20.127.50 tls port 2083 vrf MGMT
 EOF
-```
 
-## OpenSSL handshake check
-
-Verify TLS 1.3 + `X25519MLKEM768` on RadSec (switch client credentials):
-
-```bash
+# Collector TLS PQC (switch client credentials)
 docker exec arista-quantum-safe-test-runner sh -c \
   'OPENSSL_CONF=/etc/probe/openssl-pqc.cnf \
    openssl s_client -connect 172.20.127.50:2083 -tls1_3 \
@@ -64,3 +61,5 @@ docker exec arista-quantum-safe-test-runner sh -c \
 Configuration reference: [RADIUS / RadSec service](../services/radius-radsec.md).
 
 See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+
+<- [Test suite overview](index.md)

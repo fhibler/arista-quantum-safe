@@ -2,33 +2,45 @@
 
 `make test-macsec-dot1x` runs `python -m lab.test_macsec_dot1x` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link (dynamic MACsec via 802.1X EAP-TLS + MKA).
 
-Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s). After the wait the port must stay **Authorized**, both peers must still **match on CKN**, and RADIUS must show an extra `Login OK`. CKN may rotate — each EAP-TLS reauth derives a new MSK / `EAP-Session-Id`.
+Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s).
+
+**Policy:** The RADIUS EAP-TLS tunnel uses PQC-hybrid **`X25519MLKEM768`**. MACsec frame encryption uses MKA-derived keys (separate layer).
 
 ## What is checked
 
 ### Authenticator (ceos1-both)
 
-| Check | Method |
-|-------|--------|
-| dot1x + macsec config | Running-config: authenticator, reauth period, `mac security profile dynamic` |
-| 802.1X host state | `show dot1x hosts` -> identity SUCCESS |
-| Port authorization | `show dot1x interface Ethernet1 detail` -> Authorized |
-| MKA peers | `show mac security participants interface Ethernet1 detail` |
-| MACsec status | Traffic protected, active key |
-| CKN match | Same connectivity association key as supplicant |
+| Check | Type | Method |
+|-------|------|--------|
+| dot1x + macsec config | `[config]` | Running-config: authenticator, reauth period, `mac security profile dynamic` |
+| 802.1X host state | `[live]` | `show dot1x hosts` → identity SUCCESS |
+| Port authorization | `[live]` | `show dot1x interface Ethernet1 detail` → Authorized |
+| MKA peers | `[live]` | `show mac security participants interface Ethernet1 detail` |
+| MACsec status | `[live]` | Traffic protected, active key |
+| CKN match | `[live]` | Same connectivity association key as supplicant |
 
 ### Supplicant (ceos2-pqc)
 
-| Check | Method |
-|-------|--------|
-| Supplicant config | EAP-TLS + ssl profile DOT1X |
-| 802.1X status | `show dot1x supplicant` -> success, tls |
-| PQC in EAP-TLS | Output contains `X25519MLKEM768` |
-| MKA / MACsec | Matching CKN, protected traffic |
+| Check | Type | Method |
+|-------|------|--------|
+| Supplicant config | `[config]` | EAP-TLS + ssl profile DOT1X |
+| 802.1X status | `[live]` | `show dot1x supplicant` → success, tls |
+| PQC in EAP-TLS | `[live]` | Output contains `X25519MLKEM768` |
+| MKA / MACsec | `[live]` | Matching CKN, protected traffic |
 
 ### Inter-switch connectivity
 
-Ping across the MACsec-protected /30 (`10.255.0.1` <-> `10.255.0.2`).
+| Check | Type | Method |
+|-------|------|--------|
+| Protected path ping | `[live]` | Ping across the MACsec-protected /30 (`10.255.0.1` ↔ `10.255.0.2`) |
+
+### Optional reauth (`VERIFY_REAUTH=1`)
+
+| Check | Type | Method |
+|-------|------|--------|
+| Port still authorized | `[live]` | Wait ~75 s; `show dot1x` still Authorized |
+| Matching CKN | `[live]` | Peers still agree (CKN may rotate — new EAP-TLS MSK) |
+| RADIUS Login OK | `[live]` | Extra `Auth: Login OK` in radius log |
 
 ## Pass criteria
 
@@ -36,6 +48,7 @@ Ping across the MACsec-protected /30 (`10.255.0.1` <-> `10.255.0.2`).
 - MKA live peers with **matching CKN**
 - MACsec interface reports traffic **protected**
 - Inter-switch ping succeeds
+- With `test-macsec-dot1x-reauth`: port stays Authorized, peers still match on CKN, RADIUS `Login OK` count increases
 
 ## Manual reproduction
 
@@ -66,10 +79,8 @@ ping 10.255.0.2 repeat 3
 EOF
 ```
 
-## EAP-TLS PQC note
-
-The supplicant check asserts **`X25519MLKEM768`** in dot1x supplicant output — the RADIUS EAP-TLS tunnel uses PQC-hybrid key exchange. MACsec frame encryption uses MKA-derived keys (separate layer).
-
 Configuration reference: [MACsec service](../services/macsec.md) (802.1X section).
 
 Related: [RadSec tests](radsec.md) (EAP-TLS backend), [MACsec QuaDRA QKD tests](macsec-qkd.md) (static SAK on Ethernet2).
+
+<- [Test suite overview](index.md)

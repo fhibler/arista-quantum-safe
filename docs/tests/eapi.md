@@ -15,6 +15,12 @@ OpenSSL and curl probes run **inside `arista-quantum-safe-test-runner`** (defaul
 | HTTPS :443 handshake | `[live / test-runner]` | `openssl s_client` with PQC groups |
 | command-api JSON-RPC | `[live / test-runner]` | PQC `curl` `runCmds` |
 
+## Pass criteria
+
+- `EAPI` ssl profile **valid** with **`X25519MLKEM768`** only
+- TLS 1.3 handshake negotiates **`X25519MLKEM768`** on IPv4 and IPv6
+- `command-api` `runCmds` returns JSON on IPv4 and IPv6
+
 ## Manual reproduction
 
 **Live HTTPS** (test-runner by default):
@@ -42,3 +48,5 @@ Set `PROBE_CLIENT=host` to use host curl (devcontainer only) or `PROBE_CLIENT=ra
 Configuration reference: [eAPI service](../services/eapi.md).
 
 See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+
+<- [Test suite overview](index.md)

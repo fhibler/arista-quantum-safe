@@ -4,10 +4,10 @@
 
 ## What is checked
 
-| Check | Method |
-|-------|--------|
-| Host-to-host reachability | `ping` from each `host1` / `host2` / `host3` container to every other host's data-plane address |
-| Summary matrix | Combined IPv4/IPv6 ping matrix (each cell shows both families) |
+| Check | Type | Method |
+|-------|------|--------|
+| Host-to-host reachability | `[live]` | `ping` from each `host1` / `host2` / `host3` container to every other host's data-plane address |
+| Summary matrix | `[live]` | Combined IPv4/IPv6 ping matrix (each cell shows both families) |
 
 Six directed pairs per family (12 live checks total):
 
@@ -29,4 +29,4 @@ docker exec arista-quantum-safe-host1 ping -c3 10.0.2.1
 docker exec arista-quantum-safe-host1 ping -6 -c3 2001:db8:2::1
 ```
 
-Related: [Test suite overview](index.md).
+<- [Test suite overview](index.md)

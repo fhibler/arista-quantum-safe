@@ -55,7 +55,7 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 
 - [Setup](../setup.md) — deploy prerequisites and Makefile targets
 - [Certificates and TLS 1.3](../misc/certificates-and-tls13.md) — PKI requirements and OpenSSL examples
-- [Test suite overview](../tests/index.md) — per-service make targets (eAPI, SSH, RadSec, syslog, OpenConfig, KME, MACsec, hosts)
+- [Test suite overview](../tests/index.md) — per-service make targets (SSH, eAPI, RadSec, syslog, OpenConfig, KME, MACsec, hosts)
 - [OpenConfig tests](../tests/openconfig.md) — `make test-openconfig` (gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc)
 - [KME tests](../tests/kme.md) — `make test-kme` (ETSI QKD 014)
 - [Host routing tests](../tests/hosts.md) — `make test-hosts`

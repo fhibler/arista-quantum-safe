@@ -40,11 +40,11 @@ PUBLIC_MISC_DOCS = (
 
 PUBLIC_TEST_DOCS = (
     "tests/index.md",
-    "tests/eapi.md",
     "tests/ssh.md",
+    "tests/eapi.md",
     "tests/radsec.md",
-    "tests/openconfig.md",
     "tests/syslog.md",
+    "tests/openconfig.md",
     "tests/kme.md",
     "tests/macsec-dot1x.md",
     "tests/macsec-qkd.md",
@@ -125,6 +125,41 @@ def test_openconfig_result_summary_matches_classical_kex_contract() -> None:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         assert cells[2] == expected_used, service
         assert cells[3] == expected_pqc_safe, service
+
+
+TEST_PAGE_CHAPTERS = (
+    "## What is checked",
+    "## Pass criteria",
+    "## Manual reproduction",
+)
+
+TEST_PAGES = tuple(p for p in PUBLIC_TEST_DOCS if p != "tests/index.md")
+
+
+def test_tests_index_documents_chapter_order() -> None:
+    text = (PUBLIC_DOCS / "tests/index.md").read_text(encoding="utf-8")
+    assert "chapter order" in text
+    for heading in ("What is checked", "Pass criteria", "Manual reproduction"):
+        assert heading in text, heading
+    assert "## Test guides" in text
+    guides = text.split("## Test guides", 1)[1]
+    for rel_path in TEST_PAGES:
+        name = rel_path.removeprefix("tests/")
+        assert f"]({name})" in guides, name
+
+
+@pytest.mark.parametrize("rel_path", TEST_PAGES)
+def test_test_page_chapter_order(rel_path: str) -> None:
+    text = (PUBLIC_DOCS / rel_path).read_text(encoding="utf-8")
+    positions = [text.index(heading) for heading in TEST_PAGE_CHAPTERS]
+    assert positions == sorted(positions), rel_path
+    assert "<- [Test suite overview](index.md)" in text
+    skip_heading = "## Expected SKIP / WARN"
+    if skip_heading in text:
+        skip_at = text.index(skip_heading)
+        assert positions[1] < skip_at < positions[2], rel_path
+    checked = text.split("## What is checked", 1)[1].split("## Pass criteria", 1)[0]
+    assert "| Type |" in checked or "| `[config]` |" in checked, rel_path
 
 
 def test_public_docs_exclude_stale_test_module_refs() -> None:

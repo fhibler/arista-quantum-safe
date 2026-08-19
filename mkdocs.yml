@@ -61,11 +61,11 @@ nav:
       - QKD / ETSI 014: services/qkd-etsi014.md
   - Tests:
       - Overview: tests/index.md
-      - eAPI: tests/eapi.md
       - SSH: tests/ssh.md
+      - eAPI: tests/eapi.md
       - RadSec: tests/radsec.md
-      - OpenConfig connectivity: tests/openconfig.md
       - Syslog: tests/syslog.md
+      - OpenConfig connectivity: tests/openconfig.md
       - KME (ETSI QKD 014): tests/kme.md
       - MACsec (802.1X): tests/macsec-dot1x.md
       - MACsec (QuaDRA QKD): tests/macsec-qkd.md

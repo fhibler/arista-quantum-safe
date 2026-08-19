@@ -4,8 +4,6 @@
 
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** on strict ssl profiles. Probes run inside **`arista-quantum-safe-test-runner`** (default `PROBE_CLIENT`) using `gnoic`, `gribic`, `gnsic`, `gnmic`, and OpenSSL.
 
-Configuration reference: [OpenConfig & gRPC](../services/openconfig.md).
-
 ## What is checked
 
 Per switch, in order:
@@ -22,7 +20,7 @@ Per switch, in order:
 
 gNOI, gRIBI, gNSI, and gNPSI checks live in `lab.test_openconfig_grpc`; gNMI, RESTCONF, and eos-sdk-rpc in `lab.test_pqc_connections`.
 
-## Tools in the test-runner image
+### Tools in the test-runner image
 
 | Tool | Used for |
 |------|----------|
@@ -35,24 +33,14 @@ gNOI, gRIBI, gNSI, and gNPSI checks live in `lab.test_openconfig_grpc`; gNMI, RE
 
 Live checks use the PQC-capable clients above; see [Tool chain](../misc/toolchain.md) for build requirements.
 
-## gNSI Certz notes
+## Pass criteria
 
-EOS 4.36.2F requires:
+- `[config]` profiles and listeners present for each protocol that the image supports
+- Live KEX **PQC-safe** for gNMI, gNOI, gNSI Certz, and RESTCONF (`X25519MLKEM768`)
+- gRIBI, gNPSI, and eos-sdk-rpc IPv4 **WARN** (not fail) when the wire is classical — see below
+- eos-sdk-rpc IPv6 **SKIP** (IPv4-only bind)
 
-1. **`transport gnmi default`** under `management api gnsi` (not `transport grpc` — EOS rejects that stanza).
-2. **gRPC metadata username** on `gnsic` (`-u admin`; lab uses `username admin nopassword`).
-
-Example:
-
-```bash
-docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030 \
-  --tls-ca /etc/probe/certs/radsec-ca.pem \
-  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
-  --tls-key /etc/probe/certs/ceos1-both-client.key \
-  certz get-profile-list
-```
-
-## Expected SKIP / WARN (not failures)
+## Expected SKIP / WARN
 
 | Check | When |
 |-------|------|
@@ -63,17 +51,26 @@ docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030
 | eos-sdk-rpc IPv6 | **SKIP** — `local interface Management0` binds primary IPv4 only |
 | gNPSI (entire section) | **SKIP** when cEOS lacks `management api gnpsi` |
 
-## Run commands
+## Manual reproduction
 
 ```bash
 make test-openconfig
 make test-openconfig VERBOSE=1
-make test-lab          # management-plane checks first, then KME/MACsec/data-plane
+```
+
+EOS 4.36.2F gNSI Certz requires **`transport gnmi default`** under `management api gnsi` (not `transport grpc`) and a **gRPC metadata username** on `gnsic` (`-u admin`; lab uses `username admin nopassword`):
+
+```bash
+docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030 \
+  --tls-ca /etc/probe/certs/radsec-ca.pem \
+  --tls-cert /etc/probe/certs/ceos1-both-client.pem \
+  --tls-key /etc/probe/certs/ceos1-both-client.key \
+  certz get-profile-list
 ```
 
 ## Result summary (EOS 4.36.2F)
 
-Same columns as [Test suite overview — Result summary](index.md#result-summary) for OpenConfig services:
+Same PQC-safe values as [Test suite overview — Result summary](index.md#result-summary) for OpenConfig services:
 
 | Service | Port | KEX used (live) | PQC-safe | Notes |
 |---------|------|-----------------|----------|-------|
@@ -86,4 +83,8 @@ Same columns as [Test suite overview — Result summary](index.md#result-summary
 | RESTCONF | 6020 | `X25519MLKEM768` | Yes | HTTPS |
 | eos-sdk-rpc (IPv4) | 9543 | classical (`secp256r1`) | No | Suite **WARN**s; IPv4 only |
 
+Configuration reference: [OpenConfig & gRPC](../services/openconfig.md).
+
 See also [eAPI](eapi.md), [SSH](ssh.md), [RadSec](radsec.md), and [Syslog](syslog.md) for other management-plane checks.
+
+<- [Test suite overview](index.md)

@@ -18,6 +18,8 @@ Runs all sections in order (one pass per service, no duplication):
 | 8 | `make test-macsec-qkd` | `lab.test_macsec_qkd` (skips when QuaDRA extension absent — see [QKD service](../services/qkd-etsi014.md)) |
 | 9 | `make test-hosts` | `lab.test_hosts` — host routing matrix |
 
+Optional extended wait: **`make test-macsec-dot1x-reauth`** (~75 s) — see [MACsec 802.1X](macsec-dot1x.md).
+
 On a **bare Linux host** without PQC-capable curl/OpenSSL on the host OS, use **`make test-lab-runner`** instead. It runs the same checks from the `test-runner` container on the lab mgmt network (Docker + deployed lab only).
 
 PQC live probes (TLS handshakes, eAPI command-api, gNMI GET via gnmic, SSH) use the **`test-runner`** node (`arista-quantum-safe-test-runner`, mgmt `172.20.127.54`) by default. Override with `PROBE_CLIENT=radius` or `PROBE_CLIENT=host` when debugging.
@@ -25,10 +27,12 @@ PQC live probes (TLS handshakes, eAPI command-api, gNMI GET via gnmic, SSH) use 
 Use **`VERBOSE=1`** to echo every command and full output:
 
 ```bash
+make test-ssh VERBOSE=1
 make test-eapi VERBOSE=1
-make test-radsec VERBOSE=1
 make test-openconfig VERBOSE=1
 ```
+
+Each test page follows the same chapter order: **What is checked** (`Check | Type | Method`, using the labels below) → **Pass criteria** → **Expected SKIP / WARN** (when the suite can warn or skip) → **Manual reproduction** → footer (**Configuration reference** to the matching service page, then the [Result summary](#result-summary) link when the check records live KEX). Multi-protocol pages ([OpenConfig](openconfig.md)) keep a grouped check table and may add a recorded **Result summary**.
 
 ## Check labels
 
@@ -39,6 +43,10 @@ make test-openconfig VERBOSE=1
 | `[live / test-runner]` | Live probe executed from the test-runner container (default `PROBE_CLIENT`) |
 | `[live / radius]` | Live probe executed from the radius container (`PROBE_CLIENT=radius`) |
 | `[live / host]` | Live probe executed on the host (`PROBE_CLIENT=host`) |
+| `[kme]` | Check executed inside a KME container (`make test-kme` / `make test-macsec-qkd`) |
+| `[host]` | Check from a cEOS SAE client to a KME (`make test-kme`) |
+| `[log]` | Syslog or container-log assertion (`make test-macsec-qkd`) |
+| `[keys]` | Static SAK / key-mapping check (`make test-macsec-qkd`) |
 | `WARN` | **Not PQC-safe** (often still TLS 1.3 compliant); check passes (not a failure) |
 | `SKIP` | Known platform/config limitation — check not run (not a failure) |
 
@@ -122,17 +130,21 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 - **gNPSI Subscribe:** `grpcurl` `gnpsi.gNPSI/Subscribe` receives sFlow datagrams on **IPv4 and IPv6** when sampled interfaces carry traffic (typical on a deployed lab). **SKIP** only when no datagram arrives within the 8 s probe window — run `make test-hosts` and retry if needed.
 - **eos-sdk-rpc (IPv6):** **SKIP** in `make test-openconfig` (IPv4-only service binding on Management0).
 
-## Detailed test docs
+## Test guides
 
-- [eAPI](eapi.md) — HTTPS + JSON-RPC PQC (`make test-eapi`)
-- [SSH](ssh.md) — management SSH PQC KEX (`make test-ssh`)
-- [RadSec](radsec.md) — reachability, AAA, collector TLS (`make test-radsec`)
-- [OpenConfig connectivity](openconfig.md) — gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc (`make test-openconfig`)
-- [Syslog](syslog.md) — TLS delivery + collector PQC (`make test-syslog`)
-- [KME (ETSI QKD 014)](kme.md) — SAE status + enc/dec round-trip (`make test-kme`)
-- [MACsec 802.1X](macsec-dot1x.md)
-- [MACsec QuaDRA QKD](macsec-qkd.md)
-- [Host routing](hosts.md) — data-plane ping matrix (`make test-hosts`)
+Same order as `make test-lab`:
+
+| Guide | Target | Covers |
+|-------|--------|--------|
+| [SSH](ssh.md) | `make test-ssh` | Management SSH PQC KEX |
+| [eAPI](eapi.md) | `make test-eapi` | HTTPS + JSON-RPC PQC |
+| [RadSec](radsec.md) | `make test-radsec` | Reachability, AAA, collector TLS |
+| [Syslog](syslog.md) | `make test-syslog` | TLS delivery + collector PQC |
+| [OpenConfig connectivity](openconfig.md) | `make test-openconfig` | gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc |
+| [KME (ETSI QKD 014)](kme.md) | `make test-kme` | SAE status + enc/dec round-trip |
+| [MACsec 802.1X](macsec-dot1x.md) | `make test-macsec-dot1x` | Dynamic MACsec (EAP-TLS + MKA); optional `test-macsec-dot1x-reauth` |
+| [MACsec QuaDRA QKD](macsec-qkd.md) | `make test-macsec-qkd` | Static SAK / QKD rotation (skips when extension absent) |
+| [Host routing](hosts.md) | `make test-hosts` | Data-plane ping matrix |
 
 Configuration reference: [Services overview](../services/index.md).
 

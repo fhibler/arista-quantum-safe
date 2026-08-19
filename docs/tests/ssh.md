@@ -16,7 +16,9 @@ SSH probes run from **`arista-quantum-safe-test-runner`** by default. Override w
 
 ## Pass criteria
 
-Exit 0, output contains `kex: algorithm: mlkem768x25519-sha256` and hostname JSON.
+- `management ssh` lists **`mlkem768x25519-sha256`**; default VRF SSH disabled
+- Live SSH negotiates `kex: algorithm: mlkem768x25519-sha256` (IPv4 and IPv6)
+- `show hostname | json` succeeds
 
 ## Manual reproduction
 
@@ -33,3 +35,5 @@ docker exec arista-quantum-safe-test-runner sh -c \
 Configuration reference: [SSH service](../services/ssh.md).
 
 See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+
+<- [Test suite overview](index.md)

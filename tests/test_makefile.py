@@ -422,6 +422,9 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert "download/ and .env preserved" in clean
     assert "CLAB_MGMT_NETWORK" in clean
     assert "docker network rm" in clean
+    assert "Cleaning lab logs" in clean
+    assert "/logs/radius /logs/syslog" in clean
+    assert clean.index("Cleaning lab logs") < clean.index("Removing Docker images")
 
 
 def test_reset_recipe_resets_git_worktree() -> None:
@@ -430,6 +433,7 @@ def test_reset_recipe_resets_git_worktree() -> None:
     assert "clean" in reset
     assert "git reset --hard HEAD" in reset
     assert "git clean -fdx" in reset
+    assert "Cleaning lab logs" not in reset
 
 
 def test_root_makefile_has_no_export_targets() -> None:

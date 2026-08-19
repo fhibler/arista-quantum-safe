@@ -385,12 +385,16 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 			echo "Removing Docker network $(CLAB_MGMT_NETWORK)"; \
 			docker network rm "$(CLAB_MGMT_NETWORK)" 2>/dev/null || true; \
 		fi; \
+		echo "=== Cleaning lab logs ==="; \
+		if docker info >/dev/null 2>&1; then \
+			docker run --rm -v "$(CURDIR)/lab/logs:/logs:rw" alpine sh -c \
+				'find /logs/radius /logs/syslog -mindepth 1 ! -name .gitkeep -exec rm -rf {} + 2>/dev/null || true'; \
+		fi; \
+	else \
+		find lab/logs/radius lab/logs/syslog -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
 	fi; \
 	echo "=== Removing generated topology, PKI, and Containerlab state ==="; \
 	rm -rf lab/.gen lab/.gen.* lab/.ceos-monitor lab/clab-* clab-*; \
-	echo "=== Cleaning lab logs ==="; \
-	find lab/logs/radius -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
-	find lab/logs/syslog -mindepth 1 ! -name '.gitkeep' -print0 2>/dev/null | xargs -0 rm -rf 2>/dev/null || true; \
 	echo "=== Removing Python virtualenv and test caches ==="; \
 	rm -rf .venv .pytest_cache; \
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true; \

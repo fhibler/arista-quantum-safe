@@ -2,6 +2,13 @@
 
 This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the management network and, when the QuaDRA extension is installed, **static SAK MACsec key rotation** on **ceos1-both:Ethernet2 ↔ ceos3-qkd:Ethernet1** (`10.255.0.5/30` ↔ `10.255.0.6/30`).
 
+!!! danger "QuaDRA is not publicly available"
+    **QuaDRA** (Quantum keys Distribution and Rotation Agent) is an **Arista EOS SDK extension** that is **not distributed in this public repository** and is **not generally available for download**.
+
+    To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
+
+    The configuration sections below describe how the lab is set up when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
+
 | Item | Value |
 |------|-------|
 | KME ports | **8010** (kme-a), **8020** (kme-b) |
@@ -198,13 +205,6 @@ show daemon quadra
 | Startup default | `daemon quadra` **shutdown** in startup-config until extension is installed |
 | Dynamic vs static MACsec | Ethernet1 (ceos1 ↔ ceos2) uses 802.1X; Ethernet2/1 (ceos1 ↔ ceos3) uses QuaDRA static SAK |
 | Key rotation interval | Lab default **120 s** on master (`option key-rotation value 120s`) |
-
-!!! danger "QuaDRA is not publicly available"
-    **QuaDRA** (Quantum keys Distribution and Rotation Agent) is an **Arista EOS SDK extension** that is **not distributed in this public repository** and is **not generally available for download**.
-
-    To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
-
-    The configuration sections above describe how the lab is set up when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
 
 ## Verification
 

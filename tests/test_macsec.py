@@ -194,7 +194,7 @@ def test_check_mka_participants_retries_until_peers_appear() -> None:
     assert sleep.call_count == 2
 
 
-def test_check_dot1x_reauth_cycle_happy_path() -> None:
+def test_check_dot1x_reauth_cycle_happy_path(capsys) -> None:
     state_json = _macsec_state_json(ckn="abcdef0123456789")
     login_ok_counts = iter([2, 3])
 
@@ -227,6 +227,89 @@ def test_check_dot1x_reauth_cycle_happy_path() -> None:
             "abcdef0123456789",
         )
         sleep.assert_called_once_with(DOT1X_REAUTH_PERIOD_SEC + 15)
+
+    output = capsys.readouterr().out
+    assert "CKN unchanged (abcdef0123456789)" in output
+
+
+def test_check_dot1x_reauth_cycle_allows_ckn_rotation(capsys) -> None:
+    """EAP-TLS reauth derives a new MSK, so CKN may change; peers must still match."""
+    state_json = _macsec_state_json(ckn="2de6708f95996d6d1357f08347db26df")
+    login_ok_counts = iter([2, 3])
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "show dot1x hosts" in commands:
+            return json.dumps(state_json["dot1xHosts"])
+        if "show dot1x interface" in commands:
+            return json.dumps(state_json["dot1xInterfaceDetail"])
+        if "show dot1x supplicant" in commands:
+            return json.dumps(state_json["dot1xSupplicant"])
+        if "show mac security participants" in commands:
+            return json.dumps(state_json["macSecurityParticipants"])
+        raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
+
+    def fake_docker_exec(container: str, command: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert "Login OK" in command
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=str(next(login_ok_counts)), stderr="")
+
+    targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
+
+    with (
+        patch("lab.test_macsec_dot1x.time.sleep"),
+        patch("lab.test_macsec_dot1x.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+    ):
+        check_dot1x_reauth_cycle(
+            targets,
+            "clab-test-ceos1-both",
+            "clab-test-ceos2-pqc",
+            "117e6818b717ef6d25f1cde018b39555",
+        )
+
+    output = capsys.readouterr().out
+    assert "CKN rotated" in output
+    assert "117e6818b717ef6d25f1cde018b39555" in output
+    assert "2de6708f95996d6d1357f08347db26df" in output
+
+
+def test_check_dot1x_reauth_cycle_raises_on_peer_ckn_mismatch() -> None:
+    state_json = _macsec_state_json(ckn="aaa")
+    login_ok_counts = iter([2, 3])
+    call_count = {"n": 0}
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "show mac security participants" in commands:
+            call_count["n"] += 1
+            ckn = "aaa" if call_count["n"] == 1 else "bbb"
+            payload = {"participants": [{"ckn": ckn, "success": True, "livePeerList": ["peer"]}]}
+            return json.dumps(payload)
+        if "show dot1x hosts" in commands:
+            return json.dumps(state_json["dot1xHosts"])
+        if "show dot1x interface" in commands:
+            return json.dumps(state_json["dot1xInterfaceDetail"])
+        if "show dot1x supplicant" in commands:
+            return json.dumps(state_json["dot1xSupplicant"])
+        raise AssertionError(commands)
+
+    def fake_docker_exec(_container: str, _command: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=str(next(login_ok_counts)), stderr=""
+        )
+
+    targets = type("Targets", (), {"radius_container": "clab-test-radius"})()
+
+    with (
+        patch("lab.test_macsec_dot1x.time.sleep"),
+        patch("lab.test_macsec_dot1x.docker_exec", side_effect=fake_docker_exec),
+        patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+    ):
+        with pytest.raises(MacsecCheckError, match="CKN mismatch after reauth"):
+            check_dot1x_reauth_cycle(
+                targets,
+                "clab-test-ceos1-both",
+                "clab-test-ceos2-pqc",
+                "aaa",
+            )
 
 
 def test_check_dot1x_reauth_cycle_raises_when_login_ok_unchanged() -> None:

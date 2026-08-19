@@ -243,10 +243,12 @@ def check_dot1x_reauth_cycle(
 
     auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR, verbose=verbose)
     supp_ckn = check_mka_participants(supp_container, SUPPLICANT, verbose=verbose)
-    if auth_ckn != baseline_ckn or supp_ckn != baseline_ckn:
+    # Each EAP-TLS reauth derives a new MSK / EAP-Session-Id, so CKN often
+    # rotates. That is expected; peers must still agree on the live CA.
+    if auth_ckn != supp_ckn:
         raise MacsecCheckError(
-            f"CKN changed after reauth: baseline={baseline_ckn!r}, "
-            f"{AUTHENTICATOR}={auth_ckn!r}, {SUPPLICANT}={supp_ckn!r}"
+            f"CKN mismatch after reauth: {AUTHENTICATOR}={auth_ckn!r} vs "
+            f"{SUPPLICANT}={supp_ckn!r} (baseline {baseline_ckn!r})"
         )
 
     after_ok = count_radius_login_ok(targets.radius_container, verbose=verbose)
@@ -255,8 +257,12 @@ def check_dot1x_reauth_cycle(
             f"expected additional RADIUS Login OK after {wait_sec}s reauth wait "
             f"(baseline {baseline_ok}, after {after_ok})"
         )
+    if auth_ckn == baseline_ckn:
+        ckn_note = f"CKN unchanged ({auth_ckn})"
+    else:
+        ckn_note = f"CKN rotated {baseline_ckn} → {auth_ckn} (peers match)"
     report_live(
-        f"802.1X reauth cycle OK — port Authorized, CKN stable ({baseline_ckn}), "
+        f"802.1X reauth cycle OK — port Authorized, {ckn_note}, "
         f"RADIUS Login OK count {baseline_ok} → {after_ok}"
     )
 
@@ -503,7 +509,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "After baseline checks, wait for periodic 802.1X reauth and verify "
-            "Authorized state, stable CKN, and RADIUS Login OK (also VERIFY_REAUTH=1)"
+            "Authorized state, matching CKN (rotation allowed), and RADIUS Login OK "
+            "(also VERIFY_REAUTH=1)"
         ),
     )
     parser.add_argument(

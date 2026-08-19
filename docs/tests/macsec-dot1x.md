@@ -2,7 +2,7 @@
 
 `make test-macsec-dot1x` runs `python -m lab.test_macsec_dot1x` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link (dynamic MACsec via 802.1X EAP-TLS + MKA).
 
-Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s).
+Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s). After the wait the port must stay **Authorized**, both peers must still **match on CKN**, and RADIUS must show an extra `Login OK`. CKN may rotate — each EAP-TLS reauth derives a new MSK / `EAP-Session-Id`.
 
 ## What is checked
 

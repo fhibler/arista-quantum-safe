@@ -10,7 +10,7 @@ PQC in Arista EOS 4.35+ applies primarily to **key establishment** — how two p
 |------|---------|---------------------|
 | **Non-PQC (classical)** | Key exchange uses pre-quantum algorithms only | TLS groups `x25519`, `secp256r1`; SSH KEX without ML-KEM |
 | **PQC-safe (live)** | A completed handshake negotiates a **hybrid** post-quantum key-establishment algorithm on the wire | TLS 1.3 group `X25519MLKEM768`; SSH `mlkem768x25519-sha256` |
-| **Configurable for PQC** | EOS config or ssl profile **lists** a hybrid group, but the live client/server may still negotiate classical KEX | Syslog-over-TLS on EOS (see [Syslog service](services/syslog.md)) |
+| **Configurable for PQC** | EOS config or ssl profile **lists** a hybrid group, but the live client/server may still negotiate classical KEX | Syslog-over-TLS, gRIBI, gNPSI, and eos-sdk-rpc on EOS 4.36.2F — each marked with a **`Known EOS gap`** warning in [Services](services/index.md) |
 | **Pure PQC** | Key exchange uses **only** a post-quantum algorithm, with **no** paired classical component | Standalone `MLKEM768` in OpenSSL group lists |
 
 ### Non-PQC vs PQC-safe

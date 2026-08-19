@@ -35,6 +35,8 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 
 **Exceptions:** The SYSLOG profile and syslog-ng collector allow classical fallback so remote logging works while the EOS syslog TLS client may lack PQC-hybrid support on the wire. See [Syslog caveats](syslog.md#caveats).
 
+**Known EOS wire gaps (4.36.2F):** [Syslog](syslog.md#caveats), [gRIBI](openconfig.md#gribi-grpc), [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy), and [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) advertise PQC-hybrid in configuration but may negotiate classical key exchange on the wire. Each page marks the gap with a **`Known EOS gap`** warning in its Caveats section.
+
 ## Service guides
 
 | Guide | Covers |

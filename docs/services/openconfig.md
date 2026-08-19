@@ -236,7 +236,7 @@ gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when c
 !!! note "IPv6 limitation (binding model)"
     **Not an ACL issue.** Control-plane ACLs permit TCP **9543** on both IPv4 and IPv6. Management0 has an IPv6 address, but eos-sdk-rpc does not listen on it because the transport is bound via **`local interface Management0`**, which resolves to the primary IPv4. There is no equivalent of gNMI's **`vrf MGMT`** dual-stack listener for eos-sdk-rpc in this lab config.
 
-!!! warning "Known EOS gap (TLS / PQC)"
+!!! warning "Known EOS gap — eos-sdk-rpc"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9543** often **fail PQC negotiation** on IPv4:
 
     - PQC-only OpenSSL client → EOF / no handshake
@@ -309,6 +309,19 @@ management api gribi
       ssl profile GRIBI
 ```
 
+### Caveats
+
+| Topic | Status on EOS 4.36.2F |
+|-------|------------------------|
+| Config | Profile valid; PQC-hybrid only (`X25519MLKEM768`) |
+| Live TLS | **Not PQC-safe** — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
+| Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
+
+!!! warning "Known EOS gap — gRIBI"
+    Configuration lists `X25519MLKEM768`, but live handshakes on port **9340** negotiate classical KEX (`secp256r1`) on EOS 4.36.2F. PQC-only clients get `handshake failure`.
+
+    `make test-openconfig` validates `[config]` and runs OpenSSL probes that try PQC-hybrid mTLS first, then fall back to an explicit **`secp256r1`** diagnostic. The live probe **WARN**s instead of failing the suite (same class of issue as [eos-sdk-rpc](#eos-sdk-rpc-grpc-mtls)).
+
 ### Verification
 
 ```bash
@@ -324,16 +337,6 @@ docker exec arista-quantum-safe-test-runner gribic -a 172.20.127.11:9340 \
   --tls-key /etc/probe/certs/ceos1-both-client.key \
   get --aft IPv4
 ```
-
-### Caveats
-
-| Topic | Status on EOS 4.36.2F |
-|-------|------------------------|
-| Config | Profile valid; PQC-hybrid only (`X25519MLKEM768`) |
-| Live TLS | **Not PQC-safe** — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
-| Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
-
-`make test-openconfig` validates the **`GRIBI`** ssl profile in **`[config]`** and runs OpenSSL probes that try PQC-hybrid mTLS first, then fall back to an explicit **`secp256r1`** diagnostic (eos-sdk-rpc pattern). On 4.36.2F the live probe **WARN**s: wire accepts classical KEX while PQC-only clients get `handshake failure` (same class of issue as [eos-sdk-rpc](#eos-sdk-rpc-grpc-mtls)).
 
 ---
 
@@ -428,6 +431,11 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the
 | Config | Dedicated `GNPSI` profile; PQC-hybrid only |
 | Live TLS / mTLS | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get EOF / handshake failure (same class as [gRIBI](#gribi-grpc)) |
 | Subscribe live | **`grpcurl` Subscribe** receives sFlow datagrams on IPv4 and IPv6 when host traffic is present; `make test-openconfig` reports **WARN** (classical wire KEX on 4.36.2F) or **SKIP** only when no sample within the 8 s probe window |
+
+!!! warning "Known EOS gap — gNPSI"
+    Configuration lists `X25519MLKEM768`, but live handshakes on port **6031** negotiate classical KEX (`secp256r1`) on EOS 4.36.2F. PQC-only clients get EOF / handshake failure.
+
+    `make test-openconfig` validates `[config]` and reports **`WARN`** on the live wire probe instead of failing the suite. Subscribe RPC tests are independent of KEX and still **PASS** when sFlow samples are present.
 
 ### Verification
 

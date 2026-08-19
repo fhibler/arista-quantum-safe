@@ -94,12 +94,12 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 | gNOI (transport + RPC) | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gRIBI | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
 | gNSI Certz | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| gNPSI (TLS) | `test-openconfig` | Yes | `X25519MLKEM768` | classical on 4.36.2F (`secp256r1`) | **WARN** |
-| gNPSI (Subscribe) | `test-openconfig` | Yes | `X25519MLKEM768` | classical on 4.36.2F (`secp256r1`) | **WARN** |
+| gNPSI (TLS) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
+| gNPSI (Subscribe) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
 | RESTCONF | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | RadSec | `test-radsec` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| Syslog (EOS to collector) | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | `x25519` | No |
-| eos-sdk-rpc (IPv4) | `test-openconfig` | Yes | `X25519MLKEM768` | `secp256r1` | No |
+| Syslog (EOS to collector) | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | classical (`x25519`) | No |
+| eos-sdk-rpc (IPv4) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
 | eos-sdk-rpc (IPv6) | `test-openconfig` | SKIP | `X25519MLKEM768` | — (no listener) | — |
 | Syslog collector probe | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | `X25519MLKEM768` | Yes |
 
@@ -110,7 +110,7 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 | **TLS 1.3 compliant** | Live session uses TLS 1.3 (or SSH for port 22). **Yes** = encrypted with the expected protocol version; **No** = handshake fails or falls back. |
 | **KEX configured** | Key-establishment group(s) in EOS `ssl profile` or `management ssh` config (what the switch is configured to offer). |
 | **KEX used (live)** | Group negotiated on the wire during the listed make target. |
-| **PQC-safe** | **Yes** when the live KEX is the lab hybrid (`X25519MLKEM768` or `mlkem768x25519-sha256`); **No** when classical KEX is used or PQC negotiation fails. |
+| **PQC-safe** | **Yes** when the live KEX is the lab hybrid (`X25519MLKEM768` or `mlkem768x25519-sha256`); **No** when classical KEX is used or PQC negotiation fails. **`WARN`** in suite output means the check still passes — it is not a PQC-safe value. |
 | **SKIP** | Check not run — known platform/config limitation (not a failure). |
 
 **Notes**

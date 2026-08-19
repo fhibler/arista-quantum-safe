@@ -546,11 +546,11 @@ Automated: **`make test-openconfig`** — mTLS wire probe, reflection, Subscribe
 |---------|------|---------|----------|------------------------|
 | gNMI | 6030 | `GNMI` | Yes | TLS, mTLS, GET |
 | gNOI | 6030 (shared) | `GNMI` | Yes | Ping RPC, reflection |
-| gRIBI | 9340 | `GRIBI` | **No** (WARN on 4.36.2F) | mTLS + Get |
+| gRIBI | 9340 | `GRIBI` | **No** (wire) | mTLS + Get (**WARN** on 4.36.2F) |
 | gNSI | 6030 (via `transport gnmi default`) | `GNSI` profile; wire TLS on `GNMI` | Yes | Certz.GetProfileList (`-u admin`) |
-| gNPSI | 6031 | `GNPSI` | **No** (WARN on 4.36.2F) | mTLS wire probe, reflection, Subscribe (IPv4 + IPv6) |
+| gNPSI | 6031 | `GNPSI` | **No** (wire) | mTLS wire probe, reflection, Subscribe (**WARN** on 4.36.2F) |
 | RESTCONF | 6020 | `RESTCONF` | Yes | HTTPS handshake |
-| eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (WARN on IPv4) | mTLS; SKIP IPv6 |
+| eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (wire) | mTLS (**WARN** on IPv4); SKIP IPv6 |
 
 Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). Related: [eAPI](../tests/eapi.md), [SSH](../tests/ssh.md), [RadSec](../tests/radsec.md).
 

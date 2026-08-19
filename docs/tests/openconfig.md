@@ -73,15 +73,17 @@ make test-lab          # management-plane checks first, then KME/MACsec/data-pla
 
 ## Result summary (EOS 4.36.2F)
 
-| Service | Port | Live PQC (expected) | Notes |
-|---------|------|---------------------|-------|
-| gNMI | 6030 | Yes | mTLS + GET |
-| gNOI | 6030 | Yes | Shared gNMI transport |
-| gRIBI | 9340 | **WARN** (wire classical on 4.36.2F) | Dedicated listener; OpenSSL PQC + classical diagnostic probes |
-| gNSI Certz | 6030 | Yes | Shared gNMI transport; `-u admin` |
-| gNPSI | 6031 | **WARN** (wire classical on 4.36.2F) | Dedicated listener; OpenSSL wire probe + reflection/subscribe |
-| gNPSI Subscribe | 6031 | **WARN** (wire classical on 4.36.2F) | `grpcurl` Subscribe; datagrams on IPv4 + IPv6 when sFlow active |
-| RESTCONF | 6020 | Yes | HTTPS |
-| eos-sdk-rpc | 9543 | No (WARN) | IPv4 only |
+Same columns as [Test suite overview — Result summary](index.md#result-summary) for OpenConfig services:
+
+| Service | Port | KEX used (live) | PQC-safe | Notes |
+|---------|------|-----------------|----------|-------|
+| gNMI | 6030 | `X25519MLKEM768` | Yes | mTLS + GET |
+| gNOI | 6030 | `X25519MLKEM768` | Yes | Shared gNMI transport |
+| gRIBI | 9340 | classical (`secp256r1`) | No | Suite **WARN**s; OpenSSL PQC + classical diagnostic probes |
+| gNSI Certz | 6030 | `X25519MLKEM768` | Yes | Shared gNMI transport; `-u admin` |
+| gNPSI (TLS) | 6031 | classical (`secp256r1`) | No | Suite **WARN**s; OpenSSL wire probe + reflection |
+| gNPSI (Subscribe) | 6031 | classical (`secp256r1`) | No | Suite **WARN**s; `grpcurl` Subscribe when sFlow active |
+| RESTCONF | 6020 | `X25519MLKEM768` | Yes | HTTPS |
+| eos-sdk-rpc (IPv4) | 9543 | classical (`secp256r1`) | No | Suite **WARN**s; IPv4 only |
 
 See also [eAPI](eapi.md), [SSH](ssh.md), [RadSec](radsec.md), and [Syslog](syslog.md) for other management-plane checks.

@@ -14,11 +14,11 @@ Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-
 | [gNOI](openconfig.md#gnmi-gnoi-grpc) | 6030 | `GNMI` (shared) | Yes | **Yes** | [openconfig.md](openconfig.md) |
 | [gRIBI](openconfig.md#gribi-grpc) | 9340 | `GRIBI` | Yes | **No** (wire) | [openconfig.md](openconfig.md) |
 | [gNSI](openconfig.md#gnsi-grpc) | 6030 (`transport gnmi default`) | `GNSI` (+ wire `GNMI`) | Yes | **Yes** (Certz; `-u admin`) | [openconfig.md](openconfig.md) |
-| [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy) | 6031 | `GNPSI` | Yes | **No** (wire); Subscribe live (WARN) | [openconfig.md](openconfig.md) |
+| [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy) | 6031 | `GNPSI` | Yes | **No** (wire) | [openconfig.md](openconfig.md) |
 | [RESTCONF](openconfig.md#restconf-https) | 6020 | `RESTCONF` | Yes | **Yes** | [openconfig.md](openconfig.md) |
-| [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) | 9543 | `GNMI` (reused) | Yes | **No** (WARN) | [openconfig.md](openconfig.md) |
+| [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) | 9543 | `GNMI` (reused) | Yes | **No** (wire) | [openconfig.md](openconfig.md) |
 | [RadSec](radius-radsec.md) | 2083 | `RADSEC` | Yes | **Yes** | [radius-radsec.md](radius-radsec.md) |
-| [Syslog-over-TLS](syslog.md) | 6514 | `SYSLOG` | Yes | **No** (WARN) | [syslog.md](syslog.md) |
+| [Syslog-over-TLS](syslog.md) | 6514 | `SYSLOG` | Yes | **No** (wire) | [syslog.md](syslog.md) |
 | [MACsec (802.1X)](macsec.md) | — | EAP-TLS via `DOT1X` | Yes | **Yes** (EAP-TLS) | [macsec.md](macsec.md) |
 | [QKD / QuaDRA](qkd-etsi014.md) | 8010/8020 | ETSI 014 mTLS | Yes | **With extension** | [qkd-etsi014.md](qkd-etsi014.md) |
 

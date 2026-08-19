@@ -67,6 +67,66 @@ STALE_TEST_MODULE_PATTERNS = (
 )
 
 
+CLASSICAL_WIRE_KEX_ROWS = (
+    ("gRIBI", "classical (`secp256r1`)", "No"),
+    ("gNPSI (TLS)", "classical (`secp256r1`)", "No"),
+    ("gNPSI (Subscribe)", "classical (`secp256r1`)", "No"),
+    ("Syslog (EOS to collector)", "classical (`x25519`)", "No"),
+    ("eos-sdk-rpc (IPv4)", "classical (`secp256r1`)", "No"),
+)
+
+
+def _parse_result_summary_table(text: str) -> dict[str, dict[str, str]]:
+    start = text.index("## Result summary")
+    end = text.index("**Columns**", start)
+    section = text[start:end]
+    rows: dict[str, dict[str, str]] = {}
+    for line in section.splitlines():
+        if not line.startswith("|") or line.startswith("| Service") or line.startswith("|-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 6:
+            continue
+        service, _target, tls13, configured, used, pqc_safe = cells[:6]
+        rows[service] = {
+            "tls13": tls13,
+            "configured": configured,
+            "used": used,
+            "pqc_safe": pqc_safe,
+        }
+    return rows
+
+
+def test_result_summary_classical_kex_rows_are_consistent() -> None:
+    text = (PUBLIC_DOCS / "tests/index.md").read_text(encoding="utf-8")
+    rows = _parse_result_summary_table(text)
+    for service, expected_used, expected_pqc_safe in CLASSICAL_WIRE_KEX_ROWS:
+        assert service in rows, f"missing result-summary row for {service!r}"
+        row = rows[service]
+        assert row["used"] == expected_used, service
+        assert row["pqc_safe"] == expected_pqc_safe, service
+        assert "WARN" not in row["pqc_safe"], f"{service} must not use WARN in PQC-safe column"
+
+
+def test_openconfig_result_summary_matches_classical_kex_contract() -> None:
+    text = (PUBLIC_DOCS / "tests/openconfig.md").read_text(encoding="utf-8")
+    start = text.index("## Result summary (EOS 4.36.2F)")
+    end = text.index("See also", start)
+    section = text[start:end]
+    for service, expected_used, expected_pqc_safe in (
+        ("gRIBI", "classical (`secp256r1`)", "No"),
+        ("gNPSI (TLS)", "classical (`secp256r1`)", "No"),
+        ("gNPSI (Subscribe)", "classical (`secp256r1`)", "No"),
+        ("eos-sdk-rpc (IPv4)", "classical (`secp256r1`)", "No"),
+    ):
+        line = next(
+            ln for ln in section.splitlines() if ln.startswith(f"| {service} |")
+        )
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert cells[2] == expected_used, service
+        assert cells[3] == expected_pqc_safe, service
+
+
 def test_public_docs_exclude_stale_test_module_refs() -> None:
     for path in sorted(PUBLIC_DOCS.rglob("*.md")):
         text = path.read_text(encoding="utf-8")

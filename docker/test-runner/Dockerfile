@@ -140,7 +140,9 @@ RUN apk add --no-cache wget tar ca-certificates \
  && cd "/tmp/grpcurl-${GRPCURL_VERSION}" \
  && GO_MOD="$(echo "${GO_VERSION}" | sed 's/\.[0-9]*$//')" \
  && go mod edit -go="${GO_MOD}" \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/grpcurl ./cmd/grpcurl \
+ && CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-s -w -X main.version=v${GRPCURL_VERSION}" \
+      -o /usr/local/bin/grpcurl ./cmd/grpcurl \
  && go version -m /usr/local/bin/grpcurl | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
  && /usr/local/bin/grpcurl --version
 
@@ -173,7 +175,9 @@ RUN apk add --no-cache wget tar ca-certificates \
  && cd "/tmp/gribic-${GRIBIC_VERSION}" \
  && GO_MOD="$(echo "${GO_VERSION}" | sed 's/\.[0-9]*$//')" \
  && go mod edit -go="${GO_MOD}" \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/gribic . \
+ && CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-s -w -X github.com/karimra/gribic/app.version=${GRIBIC_VERSION}" \
+      -o /usr/local/bin/gribic . \
  && go version -m /usr/local/bin/gribic | grep -qE 'go1\.(2[4-9]|[3-9][0-9])' \
  && gribic version
 

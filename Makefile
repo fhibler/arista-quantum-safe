@@ -343,11 +343,11 @@ verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5
 	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
 	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
 	echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'strings /usr/local/bin/grpcurl | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'grpcurl --version 2>&1 | grep -qE "^grpcurl v[0-9]" && strings /usr/local/bin/grpcurl | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
 	echo "Probe:      grpcurl built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
 	echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
+	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'gribic version 2>&1 | grep -qE "[0-9]+\\.[0-9]+" && (go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -qE "go1\\.(2[4-9]|[3-9][0-9])")'; \
 	echo "Probe:      gribic built with Go 1.24+ (PQC-hybrid TLS client)"; \
 	echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
 	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"

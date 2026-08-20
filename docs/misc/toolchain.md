@@ -71,7 +71,7 @@ Upstream **grpcurl** and **gribic** tarballs still declare **`go 1.21`** in `go.
 
 [grpcurl](https://github.com/fullstorydev/grpcurl) release **v1.9.3** GitHub binaries are built from that upstream **`go 1.21`** module — against strict EOS profiles they offer classical KEX only and cannot complete a PQC-only handshake.
 
-The test-runner image **source-builds grpcurl v1.9.3** with Go **1.25.1** and **`go mod edit -go=1.25`** before compile. grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go **1.25** defaults apply.
+The test-runner image **source-builds grpcurl v1.9.3** with Go **1.25.1** and **`go mod edit -go=1.25`** before compile, and stamps **`main.version=v1.9.3`** via ldflags (same as upstream goreleaser) so `grpcurl --version` reports the tag. grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go **1.25** defaults apply.
 
 **Verified against deployed EOS (4.36.2F):** the source-built client completes mTLS and gNPSI RPCs on **:6031** (reflection `list` and `gnpsi.gNPSI/Subscribe` as exercised by `make test-openconfig`). The EOS listener often negotiates **classical wire KEX** (`secp256r1`) despite the strict **`GNPSI`** profile — the suite **WARN**s (same class as gRIBI).
 
@@ -93,7 +93,7 @@ Expect `gnpsi.gNPSI` and `grpc.reflection.v1.ServerReflection`. Transport PQC on
 
 **gnoic** (**0.2.1**) and **gnsic** (**0.0.4**) ship as **prebuilt** Linux tarballs from [karimra](https://github.com/karimra) releases (Go **1.25+**). They are **primary** live gRPC probes in `make test-openconfig`.
 
-**gribic** **0.0.14** uses the same **source-build** pattern as grpcurl: compile with Go **1.25.1** and **`go mod edit -go=1.25`** before **`go build`**. `make test-openconfig` probes PQC-hybrid mTLS on `:9340` with OpenSSL first, then runs **`gribic get`**. On EOS 4.36.2F the wire still accepts classical KEX — the suite **WARN**s (same pattern as eos-sdk-rpc) before the gRIBI Get RPC check.
+**gribic** **0.0.14** uses the same **source-build** pattern as grpcurl: compile with Go **1.25.1** and **`go mod edit -go=1.25`** before **`go build`**, and stamps **`github.com/karimra/gribic/app.version=0.0.14`** via ldflags (same as upstream goreleaser) so `gribic version` reports the tag. `make test-openconfig` probes PQC-hybrid mTLS on `:9340` with OpenSSL first, then runs **`gribic get`**. On EOS 4.36.2F the wire still accepts classical KEX — the suite **WARN**s (same pattern as eos-sdk-rpc) before the gRIBI Get RPC check.
 
 ### gnmic
 

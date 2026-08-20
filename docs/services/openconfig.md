@@ -549,14 +549,13 @@ Automated: **`make test-openconfig`** — mTLS wire probe, reflection, Subscribe
 
 ### Security Advisory 0146
 
-Arista [Security Advisory 0146](https://www.arista.com/en/support/advisories-notices/security-advisory/24500-security-advisory-0146) (19 August 2026) is an HTTP/2 Rapid Reset DoS in gRPC-go. Exploitation requires a **non-default gRPC server**: gNMI, gRIBI, or TerminAttr (`-grpcaddr`).
+Arista [Security Advisory 0146](https://www.arista.com/en/support/advisories-notices/security-advisory/24500-security-advisory-0146) (19 August 2026) is an HTTP/2 Rapid Reset DoS in gRPC-go. Exploitation requires a **non-default gRPC server** such as gNMI or gRIBI.
 
 This lab **already contained** Arista's published **mTLS** mitigation (`trust certificate` on the gRPC ssl profiles). No extra ssl-profile or transport knobs are required beyond `configs/ceos/ceos*.cfg.in`. The configuration is **considered safe** against SA-0146.
 
 | Item | Lab status |
 |------|------------|
 | gNMI (`:6030`) / gRIBI (`:9340`) | Enabled, with ssl profiles `GNMI` / `GRIBI` using `trust certificate radsec-ca.pem` |
-| TerminAttr | **Not enabled** |
 | Other gRPC listeners | gNPSI and eos-sdk-rpc use the same `trust certificate` pattern |
 
 ---

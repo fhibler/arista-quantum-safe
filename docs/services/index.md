@@ -29,7 +29,7 @@ Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-
     - **Config PQC** — hybrid group appears in EOS config / passes `[config]` checks.
     - Certificates stay classical (RSA/ECDSA); PQC applies to **key establishment** only.
 
-Each service page follows the same chapter order: **Configuration** (ssl profile + service binding, plus peer/collector config where applicable) → **Caveats** (`| Topic | Status on EOS |` table and admonitions) → **Verification** (CLI/probe commands, then **`make test-*`**). Multi-service pages ([OpenConfig & gRPC](openconfig.md)) repeat that pattern per protocol section.
+Each service page follows the same chapter order: **Configuration** (ssl profile + service binding, plus peer/collector config where applicable) → **Caveats** (`| Topic | Status on EOS |` table and admonitions) → **Verification** (CLI/probe commands, then **`make test-*`**) → **Other remarks**. Multi-service pages ([OpenConfig & gRPC](openconfig.md)) repeat Configuration → Caveats → Verification per protocol section, then **Other remarks** and **Summary** at the page level.
 
 ## Lab policy
 
@@ -38,6 +38,8 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `RESTCONF`, `DOT1X`) list **only** `X
 **Exceptions:** The SYSLOG profile and syslog-ng collector allow classical fallback so remote logging works while the EOS syslog TLS client may lack PQC-hybrid support on the wire. See [Syslog caveats](syslog.md#caveats).
 
 **Known EOS wire gaps (4.36.2F):** [Syslog](syslog.md#caveats), [gRIBI](openconfig.md#gribi-grpc), [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy), and [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) advertise PQC-hybrid in configuration but may negotiate classical key exchange on the wire. Each page marks the gap with a **`Known EOS gap`** warning in its Caveats section.
+
+**Security Advisory 0146:** OpenConfig gRPC listeners **already contained** Arista's published **mTLS** mitigation (`trust certificate` on ssl profiles `GNMI`, `GRIBI`, and `GNPSI`; eos-sdk-rpc reuses `GNMI`). The configuration is **considered safe** — see [OpenConfig & gRPC — SA-0146](openconfig.md#security-advisory-0146).
 
 ## Service guides
 

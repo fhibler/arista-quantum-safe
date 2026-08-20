@@ -156,4 +156,8 @@ Automated: `make test-macsec-dot1x` (and `VERIFY_REAUTH=1 make test-macsec-dot1x
 
 See [MACsec 802.1X tests](../tests/macsec-dot1x.md). QuaDRA static SAK: [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

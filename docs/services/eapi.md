@@ -97,4 +97,8 @@ Automated: `make test-eapi` → eAPI HTTPS + JSON-RPC checks per node (IPv4 and 
 
 See [eAPI tests](../tests/eapi.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

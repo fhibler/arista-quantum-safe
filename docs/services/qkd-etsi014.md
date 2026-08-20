@@ -248,4 +248,8 @@ Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static
 
 See [KME tests](../tests/kme.md) and [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

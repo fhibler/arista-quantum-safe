@@ -232,6 +232,53 @@ def test_public_service_doc_exists(rel_path: str) -> None:
     assert (PUBLIC_DOCS / rel_path).is_file()
 
 
+SERVICE_GUIDES = tuple(p for p in PUBLIC_SERVICE_DOCS if p != "services/index.md")
+
+
+def test_services_index_documents_chapter_order() -> None:
+    text = (PUBLIC_DOCS / "services/index.md").read_text(encoding="utf-8")
+    assert "chapter order" in text
+    for heading in ("Configuration", "Caveats", "Verification", "Other remarks"):
+        assert heading in text, heading
+    guides = text.split("## Service guides", 1)[1]
+    for rel_path in SERVICE_GUIDES:
+        name = rel_path.removeprefix("services/")
+        assert f"]({name})" in guides, name
+
+
+@pytest.mark.parametrize("rel_path", SERVICE_GUIDES)
+def test_service_page_chapter_order(rel_path: str) -> None:
+    text = (PUBLIC_DOCS / rel_path).read_text(encoding="utf-8")
+    assert "## Other remarks" in text, rel_path
+    remarks = text.split("## Other remarks", 1)[1]
+    if "## Verification" in text:
+        assert text.index("## Verification") < text.index("## Other remarks"), rel_path
+    if "## Summary" in text:
+        assert text.index("## Other remarks") < text.index("## Summary"), rel_path
+        remarks = remarks.split("## Summary", 1)[0]
+    if rel_path.endswith("openconfig.md"):
+        assert "### Security Advisory 0146" in remarks
+        assert "There are no other remarks" not in remarks
+    else:
+        assert "There are no other remarks" in remarks
+    assert "<- [Services overview](index.md)" in text
+
+
+def test_openconfig_documents_sa0146_as_safe() -> None:
+    openconfig = (PUBLIC_DOCS / "services/openconfig.md").read_text(encoding="utf-8")
+    assert "## Other remarks" in openconfig
+    assert "### Security Advisory 0146" in openconfig
+    assert re.search(r"^## Security Advisory 0146$", openconfig, re.M) is None
+    assert "already contained" in openconfig.lower()
+    assert "considered safe" in openconfig.lower()
+    assert "trust certificate" in openconfig
+    assert "24500-security-advisory-0146" in openconfig
+    index = (PUBLIC_DOCS / "services/index.md").read_text(encoding="utf-8")
+    assert "openconfig.md#security-advisory-0146" in index
+    assert "already contained" in index.lower()
+    assert "considered safe" in index.lower()
+
+
 @pytest.mark.parametrize("rel_path", PUBLIC_TEST_DOCS)
 def test_public_test_doc_exists(rel_path: str) -> None:
     assert (PUBLIC_DOCS / rel_path).is_file()

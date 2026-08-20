@@ -59,6 +59,7 @@ gNOI shares the same gRPC endpoint and **`GNMI`** ssl profile as gNMI.
 | Live wire | **PQC-safe** — TLS 1.3 + `X25519MLKEM768` |
 | Live mTLS | **PQC-safe** with lab client cert |
 | gNOI | Same transport and PQC policy as gNMI; separate **`make test-openconfig`** check lines |
+| SA-0146 | **Safe** — lab already had mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
 
 ### Verification
 
@@ -235,6 +236,7 @@ gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when c
 | Config | Profile lists `X25519MLKEM768` |
 | Live wire (IPv4) | **Not PQC-safe** — PQC-only probe EOF; explicit `secp256r1` client completes TLS 1.3 |
 | Live wire (IPv6) | **No listener** — `local interface Management0` binds IPv4 only; `make test-openconfig` **SKIP**s IPv6 |
+| SA-0146 | **Safe** — already reused `GNMI` mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
 
 !!! note "IPv6 limitation (binding model)"
     **Not an ACL issue.** Control-plane ACLs permit TCP **9543** on both IPv4 and IPv6. Management0 has an IPv6 address, but eos-sdk-rpc does not listen on it because the transport is bound via **`local interface Management0`**, which resolves to the primary IPv4. There is no equivalent of gNMI's **`vrf MGMT`** dual-stack listener for eos-sdk-rpc in this lab config.
@@ -329,6 +331,7 @@ management api gribi
 | Config | Profile valid; PQC-hybrid only (`X25519MLKEM768`) |
 | Live wire | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
 | Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
+| SA-0146 | **Safe** — lab already had mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
 
 !!! warning "Known EOS gap — gRIBI"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9340** negotiate classical KEX (`secp256r1`) on EOS 4.36.2F. PQC-only clients get `handshake failure`.
@@ -407,6 +410,7 @@ Certz/Authz RPCs register on the shared gNMI listener (**:6030**). Wire TLS on t
 | Live wire | **PQC-safe** on shared gNMI listener (`GNMI` profile on :6030) |
 | Transport | Use **`transport gnmi default`** — `transport grpc default` is dropped on 4.36.2F |
 | RPC access | Certz not in gRPC reflection; use **`gnsic -u admin`** |
+| SA-0146 | **Safe** — already shared gNMI `:6030` mTLS ([details](#security-advisory-0146)) |
 
 !!! note "Transport binding"
     EOS 4.36.2F **rejects** `transport grpc default` under `management api gnsi` (the stanza is dropped from startup-config). Use **`transport gnmi default`** instead.
@@ -496,6 +500,7 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`) — the
 | Config | Dedicated `GNPSI` profile; PQC-hybrid only |
 | Live wire | **Not PQC-safe** on 4.36.2F — wire accepts classical KEX (`secp256r1`); PQC-only clients get EOF / handshake failure (same class as [gRIBI](#gribi-grpc)) |
 | Subscribe live | **`grpcurl` Subscribe** receives sFlow datagrams on IPv4 and IPv6 when host traffic is present; **WARN** (classical wire KEX on 4.36.2F) or **SKIP** only when no sample within the 8 s probe window |
+| SA-0146 | **Safe** — lab already had mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
 
 !!! warning "Known EOS gap — gNPSI"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **6031** negotiate classical KEX (`secp256r1`) on EOS 4.36.2F. PQC-only clients get EOF / handshake failure.
@@ -540,6 +545,22 @@ Automated: **`make test-openconfig`** — mTLS wire probe, reflection, Subscribe
 
 ---
 
+## Other remarks
+
+### Security Advisory 0146
+
+Arista [Security Advisory 0146](https://www.arista.com/en/support/advisories-notices/security-advisory/24500-security-advisory-0146) (19 August 2026) is an HTTP/2 Rapid Reset DoS in gRPC-go. Exploitation requires a **non-default gRPC server**: gNMI, gRIBI, or TerminAttr (`-grpcaddr`).
+
+This lab **already contained** Arista's published **mTLS** mitigation (`trust certificate` on the gRPC ssl profiles). No extra ssl-profile or transport knobs are required beyond `configs/ceos/ceos*.cfg.in`. The configuration is **considered safe** against SA-0146.
+
+| Item | Lab status |
+|------|------------|
+| gNMI (`:6030`) / gRIBI (`:9340`) | Enabled, with ssl profiles `GNMI` / `GRIBI` using `trust certificate radsec-ca.pem` |
+| TerminAttr | **Not enabled** |
+| Other gRPC listeners | gNPSI and eos-sdk-rpc use the same `trust certificate` pattern |
+
+---
+
 ## Summary
 
 | Service | Port | Profile | Live PQC | `make test-openconfig` |
@@ -552,6 +573,6 @@ Automated: **`make test-openconfig`** — mTLS wire probe, reflection, Subscribe
 | RESTCONF | 6020 | `RESTCONF` | Yes | HTTPS handshake |
 | eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (wire) | mTLS (**WARN** on IPv4); SKIP IPv6 |
 
-Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). Related: [eAPI](../tests/eapi.md), [SSH](../tests/ssh.md), [RadSec](../tests/radsec.md).
+SA-0146: [Security Advisory 0146](#security-advisory-0146). Automated checks: **`make test-openconfig`**. Test matrix: [OpenConfig tests](../tests/openconfig.md). Related: [eAPI](../tests/eapi.md), [SSH](../tests/ssh.md), [RadSec](../tests/radsec.md).
 
 <- [Services overview](index.md)

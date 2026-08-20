@@ -148,4 +148,8 @@ Automated: `make test-radsec` (reachability, AAA, collector TLS PQC).
 
 See [RadSec tests](../tests/radsec.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

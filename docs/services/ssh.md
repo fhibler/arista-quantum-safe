@@ -86,4 +86,8 @@ Automated: `make test-ssh` → `[live] SSH (IPv4|IPv6, mlkem768x25519-sha256)`.
 
 See [SSH tests](../tests/ssh.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

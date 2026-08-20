@@ -154,4 +154,8 @@ Automated: `make test-syslog` (delivery + optional wire KEX capture with **WARN*
 
 See [Syslog tests](../tests/syslog.md).
 
+## Other remarks
+
+There are no other remarks.
+
 <- [Services overview](index.md)

@@ -6,7 +6,6 @@ SHELL := /bin/bash
 # Optional local overrides (gitignored). Loaded before ?= defaults below.
 -include .env
 
-CLAB_VERSION  ?= 0.78.2
 CLAB_MIN_VERSION ?= 0.78.0
 CEOS_IMAGE ?= ceos:4.36.2F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
@@ -52,7 +51,7 @@ KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID;
 # Image builds share one builder and tag the same OpenSSL bases — do not run under make -j.
 .NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared build-lab-images build-radius build-syslog build-kme build-test-runner
 
-.PHONY: help gen-topo validate-topo sync-devcontainer sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
+.PHONY: help gen-topo validate-topo sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
         clean reset inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
 
@@ -68,10 +67,6 @@ gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides (VER
 	env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
 		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
 	@$(MAKE) --no-print-directory validate-topo $(MAKE_VERBOSE)
-	@$(MAKE) --no-print-directory sync-devcontainer $(MAKE_VERBOSE)
-
-sync-devcontainer: ## Sync CLAB_VERSION from Makefile into .devcontainer/devcontainer.json
-	@$(PYTHON) -m lab.sync_devcontainer --clab-version '$(CLAB_VERSION)'
 
 sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
 	@$(PYTHON) scripts/site_config.py --sync-readme
@@ -116,7 +111,7 @@ check-containerlab: ## Fail if containerlab is not installed or older than CLAB_
 	clab=$$(command -v containerlab 2>/dev/null || true); \
 	if [ -z "$$clab" ]; then \
 		echo "Containerlab is not installed (containerlab not found in PATH)."; \
-		echo "Install Containerlab $(CLAB_MIN_VERSION)+ (see docs/setup.md or make sync-devcontainer)."; \
+		echo "Install Containerlab $(CLAB_MIN_VERSION)+ (see docs/setup.md)."; \
 		exit 1; \
 	fi; \
 	if [ ! -x "$$clab" ]; then \
@@ -136,7 +131,7 @@ check-containerlab: ## Fail if containerlab is not installed or older than CLAB_
 	fi; \
 	if [ "$$(printf '%s\n' "$(CLAB_MIN_VERSION)" "$$installed" | sort -V | head -1)" != "$(CLAB_MIN_VERSION)" ]; then \
 		echo "Containerlab $$installed is too old (need >= $(CLAB_MIN_VERSION))."; \
-		echo "Pinned devcontainer version: $(CLAB_VERSION) — run make sync-devcontainer and rebuild, or upgrade manually."; \
+		echo "Rebuild the devcontainer (installs latest) or run: containerlab version upgrade"; \
 		exit 1; \
 	fi; \
 	echo "Containerlab $$installed installed ($$clab, >= $(CLAB_MIN_VERSION))"

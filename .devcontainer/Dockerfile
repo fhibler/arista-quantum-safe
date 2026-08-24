@@ -1,8 +1,7 @@
 # Fork of srl-labs/containerlab .devcontainer/slim.Dockerfile on Debian trixie.
 # Omits dclab and vscode/zsh customization; this lab runs as root.
-FROM mcr.microsoft.com/devcontainers/python:3.11-trixie
+FROM mcr.microsoft.com/devcontainers/python:3-trixie
 
-ARG CLAB_VERSION
 ARG GNMIC_VERSION=0.47.0
 
 RUN echo "deb [trusted=yes] https://netdevops.fury.site/apt/ /" | \
@@ -20,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN bash -c "$(curl -sL https://get.containerlab.dev)" -- -v ${CLAB_VERSION}
+# Current GitHub latest. Docker layer cache can freeze this until a no-cache rebuild.
+RUN bash -c "$(curl -sL https://get.containerlab.dev)"
 
 RUN bash -c 'ARCH=$(uname -m | sed "s/x86_64/amd64/" | sed "s/aarch64/arm64/") && \
     VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | \

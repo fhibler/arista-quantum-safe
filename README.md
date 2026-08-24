@@ -26,7 +26,7 @@ Automated checks (`make test-lab`) validate configuration and live handshakes on
 | Requirement | Notes |
 |-------------|-------|
 | **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three EOS nodes |
-| **Containerlab** 0.78.0+ | `make check-containerlab`; devcontainer pins **0.78.2** |
+| **Containerlab** 0.78.0+ | `make check-containerlab`; devcontainer installs latest at image build |
 | **cEOS-lab image** | Tagged `ceos:4.36.2F` matching your host architecture — **required before deploy** |
 | **Arista portal token** | **Optional** — only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
 | **Python 3.11+** | For offline tests (`make test`) and lab check scripts |

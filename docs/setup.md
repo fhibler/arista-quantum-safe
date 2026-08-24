@@ -4,7 +4,7 @@
 
 | Item | Required | Notes |
 |------|----------|-------|
-| Docker + Containerlab 0.78.0+ | Yes | `make check-containerlab` (devcontainer pins **0.78.2**) |
+| Docker + Containerlab 0.78.0+ | Yes | `make check-containerlab` (devcontainer installs latest at image build) |
 | cEOS-lab `ceos:4.36.2F` | Yes | Match host arch (amd64 / arm64) |
 | ~10 GB RAM | Yes | |
 | Arista portal token | No | For `make download-ceos` only |
@@ -70,7 +70,6 @@ Run `make help` for the authoritative target list in your clone.
 | `make help` | List available targets |
 | `make gen-topo` | Render `lab/.gen/`, PKI, and topology YAML; validate contract |
 | `make validate-topo` | Contract-check generated topology |
-| `make sync-devcontainer` | Sync `CLAB_VERSION` into `.devcontainer/devcontainer.json` |
 | `make test` | Offline pytest (no deployed lab) |
 
 ### cEOS-lab and preflight
@@ -130,7 +129,6 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 | `CLAB_PREFIX` | `arista` | Container name prefix |
 | `CLAB_NAME` | `quantum-safe` | Containerlab lab name |
 | `MGMT_SUBNET` | `172.20.127.0/24` | Management network CIDR |
-| `CLAB_VERSION` | `0.78.2` | Containerlab version pinned for devcontainer build |
 | `CLAB_MIN_VERSION` | `0.78.0` | Minimum Containerlab version enforced by `make check-containerlab` |
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
 | `VERBOSE` | (unset) | `VERBOSE=1 make deploy` — plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
@@ -148,8 +146,8 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 | Deploy fails after manual `deploy-kme` | Run `make deploy` or `make redeploy` instead of `deploy-kme` followed by `deploy` |
 | `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
 | `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.2F` |
-| `check-containerlab` fails (not installed) | Install Containerlab 0.78.0+ or rebuild the devcontainer (`make sync-devcontainer` then rebuild) |
-| `check-containerlab` fails (too old) | Upgrade to >= 0.78.0 (devcontainer pins 0.78.2) |
+| `check-containerlab` fails (not installed) | Install Containerlab 0.78.0+ or rebuild the devcontainer |
+| `check-containerlab` fails (too old) | Upgrade to >= 0.78.0 (`containerlab version upgrade`, or rebuild the devcontainer) |
 | Deploy stuck at EOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |
 | RadSec / PQC test failures | Confirm radius container healthy; run `make test-radsec VERBOSE=1`; on hosts without PQC curl use `make test-lab-runner` |
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |

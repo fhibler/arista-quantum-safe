@@ -43,7 +43,6 @@ def test_makefile_exists() -> None:
     [
         "help",
         "gen-topo",
-        "sync-devcontainer",
         "validate-topo",
         "test",
         "check-ceos-image",
@@ -267,6 +266,7 @@ def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> N
 def test_makefile_defines_check_containerlab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "CLAB_MIN_VERSION ?=" in content
+    assert "CLAB_VERSION" not in content
     assert "check-containerlab:" in content
     assert "not installed" in content
     assert "deploy-kme: check-containerlab" in content
@@ -304,7 +304,7 @@ def test_check_containerlab_fails_when_version_too_old(tmp_path: Path) -> None:
     fake_clab.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = version ]; then\n'
-        '  printf "%s\\n" "    version: 0.78.2"\n'
+        '  printf "%s\\n" "    version: 0.79.0"\n'
         "  exit 0\n"
         "fi\n"
         "exit 1\n",

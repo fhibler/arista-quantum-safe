@@ -198,7 +198,8 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnsic /usr/local/bin/gnsic \
  && gnsic version
 
-FROM alpine:${ALPINE_VERSION}
+# Current Python 3 on latest Alpine. Build stages above stay on ALPINE_VERSION for apk/tool rebuilds.
+FROM python:3-alpine
 
 RUN apk add --no-cache \
     ca-certificates \
@@ -208,11 +209,12 @@ RUN apk add --no-cache \
     bind-tools \
     tcpdump \
     tshark \
-    python3 \
-    py3-pip \
-    py3-yaml \
     make \
     bash
+
+COPY requirements-lab.txt /tmp/requirements-lab.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-lab.txt \
+ && rm -f /tmp/requirements-lab.txt
 
 COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=curl-build /usr/local/bin/curl /usr/local/bin/curl

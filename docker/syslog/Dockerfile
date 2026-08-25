@@ -5,7 +5,7 @@
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
 
-ARG ALPINE_VERSION=3.20
+ARG ALPINE_VERSION=3.24
 ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-static
 ARG SYSLOG_NG_VERSION=4.8.1
 

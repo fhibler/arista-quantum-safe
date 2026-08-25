@@ -3,7 +3,7 @@
 # Used by the test-runner Containerlab node and the optional test-lab-runner harness.
 # OpenSSL is supplied by quantum-safe-openssl:3.5.7-shared (make build-openssl-shared).
 
-ARG ALPINE_VERSION=3.20
+ARG ALPINE_VERSION=3.24
 ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-shared
 ARG CURL_VERSION=8.12.1
 ARG OPENSSH_VERSION=10.0p1

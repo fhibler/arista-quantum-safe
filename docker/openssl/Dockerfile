@@ -4,7 +4,7 @@
 #   OPENSSL_SHARED=1  -> quantum-safe-openssl:3.5.7-shared  (test-runner: curl, OpenSSH)
 #   OPENSSL_SHARED=0  -> quantum-safe-openssl:3.5.7-static  (radius, syslog-ng)
 
-ARG ALPINE_VERSION=3.20
+ARG ALPINE_VERSION=3.24
 ARG OPENSSL_VERSION=openssl-3.5.7
 ARG OPENSSL_SHARED=1
 

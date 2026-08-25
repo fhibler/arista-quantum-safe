@@ -9,7 +9,7 @@ Post-quantum cryptography (PQC) demonstration lab for **Arista EOS** using Conta
 - **802.1X EAP-TLS + dynamic MACsec** on an inter-switch link, with EAP-TLS negotiated over PQC-hybrid groups via FreeRADIUS
 - Automated **live verification** (`make test-lab`) with OpenSSL and EOS CLI probes
 
-PQC applies to **key establishment only**. Server and client certificates remain classical (RSA/ECDSA) in this lab. See [PQC overview](pqc-overview.md) for terminology (non-PQC / PQC-safe / pure PQC) and OpenSSL build requirements.
+PQC applies to **key establishment only**. Server and client certificates remain classical (RSA/ECDSA) in this lab. See [PQC overview](pqc-overview.md) for terminology (non-PQC / PQC-safe / pure PQC) and Alpine OpenSSL policy.
 
 ## Lab policy
 

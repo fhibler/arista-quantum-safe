@@ -85,15 +85,15 @@ Run `make help` for the authoritative target list in your clone.
 
 | Target | Description |
 |--------|-------------|
-| `make build-openssl` | Build both OpenSSL 3.5.7 base images (`-static` and `-shared`) |
-| `make build-openssl-static` / `make build-openssl-shared` | Build one base image (see [PQC overview — OpenSSL build requirement](pqc-overview.md#openssl-build-requirement-lab-containers)) |
-| `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build lab Docker images (service builds pull in the matching OpenSSL base; includes image smoke tests) |
+| `make build-lab-images` | Build radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL by default) |
+| `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build one lab image (includes image smoke tests) |
+| `make build-openssl` | No-op on the default path. Historic source OpenSSL 3.5.7: `make build-openssl USE_SOURCE_OPENSSL=1` (see [PQC overview](pqc-overview.md#alpine-324-openssl-357-lab-containers)) |
 | `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
 | `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
 | `make destroy` | Tear down Containerlab lab |
 | `make redeploy` | `gen-topo`, then `destroy`, then `deploy` |
-| `make clean` | Tear down lab, remove build artifacts and Docker images (keeps `download/` and `.env`) |
-| `make reset` | `clean`, then `git reset --hard HEAD` and `git clean -fdx` (discards local edits and all gitignored files) |
+| `make clean` | Tear down lab, remove build artifacts and Docker images; **keeps** `download/`, `.env`, and the Docker BuildKit cache |
+| `make reset` | `clean`, then `git reset --hard HEAD`, `git clean -fdx`, and `docker buildx prune` (discards local edits, gitignored files, and build cache) |
 | `make inspect` | Node status |
 
 ### Live tests and shells

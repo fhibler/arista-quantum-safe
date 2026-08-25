@@ -180,7 +180,7 @@ def generate_kme_pki(
     ca_crt = work / "ca.crt.pem"
     # Python 3.13+ ssl.create_default_context() sets VERIFY_X509_STRICT, which
     # rejects a CA that has no keyUsage. The simulator uses that default, so
-    # python:3-alpine (3.14) fails mTLS (and wait-kme-pool) without keyCertSign.
+    # Alpine apk python3 (3.14) fails mTLS (and wait-kme-pool) without keyCertSign.
     if not _ca_has_cert_sign(ca_crt):
         shutil.rmtree(work)
         work.mkdir(parents=True, exist_ok=True)

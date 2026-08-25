@@ -61,7 +61,7 @@ IANA/OpenSSL code point for the hybrid group used in tests: **4588 (0x11ec)** fo
 | **`mlkem768x25519-sha256`** | Hybrid | **Yes** — `management ssh` on all EOS nodes |
 | Classical SSH KEX (`curve25519-sha256`, …) | Non-PQC | Disabled for management SSH in lab templates |
 
-NETCONF inherits SSH KEX from `management ssh`.
+NETCONF inherits SSH KEX from `management ssh`. SSH ciphers are restricted to **`aes256-gcm@openssh.com`** (AES-256-GCM only).
 
 ### TLS 1.3 record ciphers (AEAD)
 

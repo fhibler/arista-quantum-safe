@@ -16,8 +16,8 @@ SSH probes run from **`arista-quantum-safe-test-runner`** by default. Override w
 
 ## Pass criteria
 
-- `management ssh` lists **`mlkem768x25519-sha256`**; default VRF SSH disabled
-- Live SSH negotiates `kex: algorithm: mlkem768x25519-sha256` (IPv4 and IPv6)
+- `management ssh` lists **`mlkem768x25519-sha256`** and **`aes256-gcm@openssh.com`** only; default VRF SSH disabled
+- Live SSH negotiates `kex: algorithm: mlkem768x25519-sha256` and `cipher: aes256-gcm@openssh.com` (IPv4 and IPv6)
 - `show hostname | json` succeeds
 
 ## Manual reproduction

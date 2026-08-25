@@ -356,9 +356,9 @@ SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
 # 3 cEOS × dual-stack TLS logging hosts hold long-lived sessions; default max-connections(10) is too low.
 SYSLOG_MAX_CONNECTIONS = 32
 SSH_PQC_KEX = "mlkem768x25519-sha256"
-SSH_PQC_CIPHERS = (
-    "aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com"
-)
+# AES-256-GCM only: AES-128-GCM is not Grover-resistant (~64-bit PQ);
+# ChaCha20-Poly1305 is Terrapin-affected (CVE-2023-48795) and not CNSA 2.0.
+SSH_PQC_CIPHERS = "aes256-gcm@openssh.com"
 SSH_PQC_MACS = "hmac-sha2-256 hmac-sha2-512"
 RADIUS_SERVER_IPV4 = MGMT_IPS["radius"]
 SYSLOG_SERVER_IPV4 = MGMT_IPS["syslog"]
@@ -1115,8 +1115,14 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg must configure management ssh")
         if f"key-exchange {SSH_PQC_KEX}" not in text:
             errors.append(f"{ceos}.cfg must configure SSH PQC key exchange ({SSH_PQC_KEX})")
-        if f"cipher {SSH_PQC_CIPHERS}" not in text:
-            errors.append(f"{ceos}.cfg must configure SSH PQC ciphers")
+        if not re.search(
+            rf"^\s+cipher {re.escape(SSH_PQC_CIPHERS)}\s*$",
+            text,
+            flags=re.MULTILINE,
+        ):
+            errors.append(
+                f"{ceos}.cfg must configure SSH PQC ciphers ({SSH_PQC_CIPHERS} only)"
+            )
         if f"mac {SSH_PQC_MACS}" not in text:
             errors.append(f"{ceos}.cfg must configure SSH PQC MAC algorithms")
         ssh_vrf_enabled = re.search(

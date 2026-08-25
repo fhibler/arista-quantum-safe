@@ -21,7 +21,7 @@ Templates: `configs/ceos/ceos*.cfg.in` → `management ssh`
 ```text
 management ssh
    key-exchange mlkem768x25519-sha256
-   cipher aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com
+   cipher aes256-gcm@openssh.com
    mac hmac-sha2-256 hmac-sha2-512
    shutdown
    !
@@ -32,7 +32,7 @@ management ssh
 | Setting | Value | Notes |
 |---------|-------|-------|
 | KEX | `mlkem768x25519-sha256` | ML-KEM-768 + X25519 hybrid |
-| Ciphers | AEAD only | GCM / ChaCha20-Poly1305 |
+| Ciphers | `aes256-gcm@openssh.com` | AES-256-GCM only (AEAD). AES-128-GCM is not Grover-resistant; ChaCha20-Poly1305 is Terrapin-affected |
 | Default VRF | `shutdown` | SSH disabled outside MGMT |
 | VRF MGMT | `no shutdown` | SSH listens on Management0 |
 

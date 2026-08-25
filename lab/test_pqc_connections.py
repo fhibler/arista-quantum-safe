@@ -37,6 +37,8 @@ from lab.topology_contract import (
     RADSEC_PORT,
     RESTCONF_PORT,
     RESTCONF_SSL_PROFILE,
+    SSH_PQC_CIPHERS,
+    SSH_PQC_KEX,
     SYSLOG_PORT,
     SYSLOG_SSL_PROFILE,
     TLS_PQC_GROUP,
@@ -91,7 +93,6 @@ from lab.tls_wire import (
 )
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
-SSH_PQC_KEX = "mlkem768x25519-sha256"
 SSH_PQC_USER = "admin"
 CEOS_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
 EOSSDKRPC_CLASSICAL_PROBE_GROUP = CLASSICAL_PROBE_GROUP
@@ -231,6 +232,14 @@ def ceos_show_json(container: str, show_command: str, *, verbose: bool | None = 
 def assert_contains(text: str, needle: str, *, label: str) -> None:
     if needle not in text:
         raise PqcConnectionError(f"{label}: expected {needle!r} in output")
+
+
+def _ssh_cipher_line(ssh_cfg: str) -> str | None:
+    for line in ssh_cfg.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("cipher "):
+            return stripped.removeprefix("cipher ").strip()
+    return None
 
 
 def _assert_json_contains(obj, needle: str, *, label: str) -> None:
@@ -517,13 +526,17 @@ def check_ssh_pqc_config(targets: LabTargets, node: str, *, verbose: bool | None
     container = targets.ceos_container(node)
     ssh_cfg = ceos_cli(container, "enable\nshow running-config section management ssh\n", verbose=verbose)
     assert_contains(ssh_cfg, SSH_PQC_KEX, label=f"{node} SSH PQC KEX")
-    assert_contains(ssh_cfg, "aes256-gcm@openssh.com", label=f"{node} SSH PQC cipher")
+    cipher_line = _ssh_cipher_line(ssh_cfg)
+    if cipher_line != SSH_PQC_CIPHERS:
+        raise PqcConnectionError(
+            f"{node} SSH PQC cipher: expected {SSH_PQC_CIPHERS!r} only, got {cipher_line!r}"
+        )
     assert_contains(ssh_cfg, "vrf MGMT", label=f"{node} SSH vrf MGMT")
     mgmt_status = ceos_cli(container, "enable\nshow management ssh vrf MGMT\n", verbose=verbose)
     assert_contains(mgmt_status, "SSHD status for VRF MGMT: enabled", label=f"{node} SSH server in vrf MGMT")
     default_status = ceos_cli(container, "enable\nshow management ssh\n", verbose=verbose)
     assert_contains(default_status, "SSHD status for Default VRF: disabled", label=f"{node} SSH server on default VRF")
-    report_config(f"SSH {SSH_PQC_KEX}, AEAD ciphers, vrf MGMT only (default VRF disabled)")
+    report_config(f"SSH {SSH_PQC_KEX}, cipher {SSH_PQC_CIPHERS}, vrf MGMT only (default VRF disabled)")
 
 
 def check_radsec_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
@@ -630,6 +643,11 @@ def probe_ssh_pqc(
         raise PqcConnectionError(
             f"{node} SSH ({mgmt_ip}): expected kex {SSH_PQC_KEX!r}, "
             f"negotiated {kex!r}, cipher {cipher!r}"
+        )
+    if cipher != SSH_PQC_CIPHERS:
+        raise PqcConnectionError(
+            f"{node} SSH ({mgmt_ip}): expected cipher {SSH_PQC_CIPHERS!r}, "
+            f"negotiated {cipher!r}"
         )
     assert_contains(output, node, label=f"{node} SSH hostname")
     summary = format_ssh_wire_summary(kex, cipher, expected_kex=SSH_PQC_KEX)

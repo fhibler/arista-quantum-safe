@@ -11,10 +11,12 @@ import pytest
 from lab.topology_contract import GNMI_SSL_PROFILE, MGMT_IPV6_IPS, MGMT_IPS, RESTCONF_SSL_PROFILE, SYSLOG_SSL_PROFILE
 from lab.test_pqc_connections import (
     PQC_GROUP,
+    SSH_PQC_CIPHERS,
     SSH_PQC_KEX,
     LabTargets,
     assert_contains,
     assert_pqc_hybrid_tls,
+    check_ssh_pqc_config,
     negotiated_pqc_group,
     negotiated_ssh_pqc_kex,
     probe_eapi_https,
@@ -200,6 +202,7 @@ def test_run_eapi_and_ssh_checks_happy_path(capsys) -> None:
             returncode=0,
             stdout=(
                 f"debug1: kex: algorithm: {SSH_PQC_KEX}\n"
+                f"debug1: kex: server->client cipher: {SSH_PQC_CIPHERS} MAC: <implicit> compression: none\n"
                 f'{{"hostname":"{node}"}}\n'
             ),
             stderr="",
@@ -294,6 +297,48 @@ def test_probe_ssh_pqc_requires_pqc_kex(ip_family: str) -> None:
     ):
         with pytest.raises(Exception, match="expected kex"):
             probe_ssh_pqc(targets, "ceos1-both", family=ip_family)
+
+
+def test_probe_ssh_pqc_requires_aes256_gcm(ip_family: str) -> None:
+    targets = _lab_targets()
+    with patch(
+        "lab.test_pqc_connections.run_ssh_pqc_probe",
+        return_value=subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f"debug1: kex: algorithm: {SSH_PQC_KEX}\n"
+                "debug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit>\n"
+                '{"hostname":"ceos1-both"}\n'
+            ),
+            stderr="",
+        ),
+    ):
+        with pytest.raises(Exception, match="expected cipher"):
+            probe_ssh_pqc(targets, "ceos1-both", family=ip_family)
+
+
+def test_check_ssh_pqc_config_rejects_extra_ciphers() -> None:
+    targets = _lab_targets()
+
+    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        if "show running-config section management ssh" in commands:
+            return (
+                "management ssh\n"
+                f"   key-exchange {SSH_PQC_KEX}\n"
+                "   cipher aes256-gcm@openssh.com aes128-gcm@openssh.com "
+                "chacha20-poly1305@openssh.com\n"
+                "   vrf MGMT\n"
+            )
+        if "show management ssh vrf MGMT" in commands:
+            return "SSHD status for VRF MGMT: enabled\n"
+        if "show management ssh" in commands:
+            return "SSHD status for Default VRF: disabled\n"
+        raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
+
+    with patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli):
+        with pytest.raises(Exception, match="expected 'aes256-gcm@openssh.com' only"):
+            check_ssh_pqc_config(targets, "ceos1-both")
 
 
 def test_probe_radsec_from_switch_requires_auth_success(ip_family: str) -> None:

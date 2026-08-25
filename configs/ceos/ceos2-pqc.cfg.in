@@ -95,7 +95,7 @@ management api http-commands
 !
 management ssh
    key-exchange mlkem768x25519-sha256
-   cipher aes256-gcm@openssh.com aes128-gcm@openssh.com chacha20-poly1305@openssh.com
+   cipher aes256-gcm@openssh.com
    mac hmac-sha2-256 hmac-sha2-512
    shutdown
    !

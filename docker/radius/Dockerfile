@@ -15,7 +15,7 @@ ARG FREERADIUS_VERSION
 RUN apk add --no-cache \
     git gcc g++ make musl-dev linux-headers \
     talloc-dev pcre-dev curl-dev json-c-dev perl \
-    openssl-dev
+    openssl openssl-dev
 
 RUN git clone --depth 1 --branch "${FREERADIUS_VERSION}" \
     https://github.com/FreeRADIUS/freeradius-server.git /src

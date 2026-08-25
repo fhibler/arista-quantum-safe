@@ -25,7 +25,7 @@ RUN apk add --no-cache bash curl git iptables libffi python3 py3-pip \
 
 WORKDIR /opt/next-door-key-simulator
 # Alpine apk python3 (3.14) has no musllinux wheels for cffi; compile it, then drop gcc.
-RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev \
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev python3-dev \
  && git clone --depth 1 --branch "${KME_SIMULATOR_REF}" "${KME_SIMULATOR_REPO}" . \
  && pip3 install --break-system-packages --no-cache-dir -r requirements.txt \
  && apk del .build-deps

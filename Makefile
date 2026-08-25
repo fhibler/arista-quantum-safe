@@ -33,6 +33,7 @@ OPENSSL_VERSION_TAG := 3.5.7
 OPENSSL_SHARED_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-shared
 OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
 OPENSSL_DOCKERFILE := docker/openssl/Dockerfile
+GO_VERSION    ?= 1.27.0
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 STAMP_DIR := .stamp
 OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
@@ -323,7 +324,7 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 build-test-runner: build-openssl-shared ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
 		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
-		--build-arg GO_VERSION=1.25.1 \
+		--build-arg GO_VERSION=$(GO_VERSION) \
 		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
 	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
 

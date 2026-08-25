@@ -128,16 +128,19 @@ def test_test_runner_harness_uses_container_python() -> None:
     assert 'make PYTHON="$PYTHON"' in harness
     assert "requirements-dev.txt" not in harness
     assert "PyYAML>=" in requirements_lab
-    assert "FROM python:3-alpine" in test_runner
+    assert "ALPINE_VERSION=3.24" in test_runner
+    assert "python3" in test_runner
+    assert "FROM python:3-alpine" not in test_runner
     assert "py3-yaml" not in test_runner
     assert "requirements-lab.txt" in test_runner
 
 
-def test_kme_uses_python_3_alpine() -> None:
+def test_kme_uses_apk_python3() -> None:
     kme = (REPO_ROOT / "docker" / "kme" / "Dockerfile").read_text(encoding="utf-8")
-    assert "FROM python:3-alpine" in kme
+    assert "ALPINE_VERSION=3.24" in kme
+    assert "python3" in kme
+    assert "FROM python:3-alpine" not in kme
     assert "PYTHON_VERSION" not in kme
-    assert "alpine3.20" not in kme
     assert "gcc" in kme
     assert "libffi-dev" in kme
     assert "apk del .build-deps" in kme

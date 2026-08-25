@@ -9,7 +9,7 @@ ARG CURL_VERSION=8.12.1
 ARG OPENSSH_VERSION=10.0p1
 ARG GNMIC_VERSION=0.47.0
 ARG GRPCURL_VERSION=1.9.3
-ARG GO_VERSION=1.25.1
+ARG GO_VERSION=1.27.0
 ARG GNOIC_VERSION=0.2.1
 ARG GRIBIC_VERSION=0.0.14
 ARG GNSIC_VERSION=0.0.4
@@ -128,9 +128,9 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnmic /usr/local/bin/gnmic \
  && gnmic version
 
-FROM golang:${GO_VERSION}-alpine AS grpcurl-build
+FROM golang:${GO_VERSION}-alpine3.24 AS grpcurl-build
 ARG GRPCURL_VERSION
-ARG GO_VERSION=1.25.1
+ARG GO_VERSION=1.27.0
 
 RUN apk add --no-cache wget tar ca-certificates \
  && wget -q --tries=5 --timeout=120 \
@@ -163,9 +163,9 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnoic /usr/local/bin/gnoic \
  && gnoic version
 
-FROM golang:${GO_VERSION}-alpine AS gribic-build
+FROM golang:${GO_VERSION}-alpine3.24 AS gribic-build
 ARG GRIBIC_VERSION
-ARG GO_VERSION=1.25.1
+ARG GO_VERSION=1.27.0
 
 RUN apk add --no-cache wget tar ca-certificates \
  && wget -q --tries=5 --timeout=120 \
@@ -198,10 +198,11 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnsic /usr/local/bin/gnsic \
  && gnsic version
 
-# Current Python 3 on latest Alpine. Build stages above stay on ALPINE_VERSION for apk/tool rebuilds.
-FROM python:3-alpine
+FROM alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache \
+    python3 \
+    py3-pip \
     ca-certificates \
     docker-cli \
     iputils \
@@ -213,7 +214,7 @@ RUN apk add --no-cache \
     bash
 
 COPY requirements-lab.txt /tmp/requirements-lab.txt
-RUN pip install --no-cache-dir -r /tmp/requirements-lab.txt \
+RUN pip install --break-system-packages --no-cache-dir -r /tmp/requirements-lab.txt \
  && rm -f /tmp/requirements-lab.txt
 
 COPY --from=openssl-base /opt/openssl /opt/openssl

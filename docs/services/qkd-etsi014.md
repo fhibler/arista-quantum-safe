@@ -49,7 +49,7 @@ Built from `docker/kme/Dockerfile` as `quantum-safe-kme:latest`. Deploy stages K
 
 | File under `lab/.gen/kme-pki/` | Purpose |
 |----------------------------------|---------|
-| `ca.crt.pem` | Lab KME CA |
+| `ca.crt.pem` | Lab KME CA (`keyUsage` Certificate Sign + CRL Sign; required for Python 3.13+ `VERIFY_X509_STRICT`) |
 | `kme-a.crt.pem`, `kme-a.key.pem` | `kme-a` server certificate |
 | `kme-b.crt.pem`, `kme-b.key.pem` | `kme-b` server certificate |
 | `sae.crt.pem`, `sae.key.pem` | Master SAE client (CN = locked SAE ID) |

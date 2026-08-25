@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,6 +20,19 @@ def _run(cmd: list[str]) -> None:
 
 def _write_ext(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _ca_has_cert_sign(ca_crt: Path) -> bool:
+    """True when the CA keyUsage includes Certificate Sign (X509_STRICT)."""
+    if not ca_crt.is_file():
+        return False
+    result = subprocess.run(
+        ["openssl", "x509", "-in", str(ca_crt), "-noout", "-ext", "keyUsage"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return "certificate sign" in result.stdout.lower()
 
 
 def _issue_kme_cert(
@@ -164,7 +178,12 @@ def generate_kme_pki(
 
     ca_key = work / "ca.key.pem"
     ca_crt = work / "ca.crt.pem"
-    if not ca_crt.is_file():
+    # Python 3.13+ ssl.create_default_context() sets VERIFY_X509_STRICT, which
+    # rejects a CA that has no keyUsage. The simulator uses that default, so
+    # python:3-alpine (3.14) fails mTLS (and wait-kme-pool) without keyCertSign.
+    if not _ca_has_cert_sign(ca_crt):
+        shutil.rmtree(work)
+        work.mkdir(parents=True, exist_ok=True)
         _run(
             [
                 "openssl",
@@ -181,6 +200,8 @@ def generate_kme_pki(
                 str(CERT_DAYS),
                 "-subj",
                 CA_SUBJECT,
+                "-addext",
+                "keyUsage=critical,keyCertSign,cRLSign",
             ]
         )
 

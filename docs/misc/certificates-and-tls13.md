@@ -12,7 +12,7 @@ This page describes **what certificates must contain** for TLS 1.3 services in t
 | Lab CA subject | `/CN=quantum-safe-radsec-ca/O=Lab/C=US` | Also written as `radsec-ca.pem` |
 | Validity | 825 days | Lab default in `gen_pki.py` |
 
-KME mTLS material for QKD is generated separately by `lab/gen_kme_pki.py` into `lab/.gen/kme-pki/`. See [QKD / ETSI 014](../services/qkd-etsi014.md).
+KME mTLS material for QKD is generated separately by `lab/gen_kme_pki.py` into `lab/.gen/kme-pki/`. The KME CA includes `keyUsage` Certificate Sign + CRL Sign so Python 3.13+ `ssl.create_default_context()` (`VERIFY_X509_STRICT`) will accept SAE and peer client certs — without that extension, `make wait-kme-pool` fails even though the simulator is running. See [QKD / ETSI 014](../services/qkd-etsi014.md).
 
 ## TLS 1.3 certificate requirements
 
@@ -209,6 +209,7 @@ Expect `State: valid` and the configured certificate name.
 | RadSec | FreeRADIUS (`server.pem`) | EOS (`*-client.pem`) | Both sides trust lab CA |
 | Syslog | syslog-ng (`server.pem`) | EOS (`*-client.pem`) | Both sides trust lab CA |
 | EAP-TLS (802.1X) | FreeRADIUS EAP module | EOS supplicant (`DOT1X` profile) | `radsec-ca.pem` on supplicant |
+| KME (ETSI 014) | KME nodes (`kme-*.crt.pem`) | SAE clients (`sae*.pem`, QuaDRA bundles) | `kme-ca.crt.pem` on KME and EOS flash |
 
 Detailed ssl profiles and service bindings: [Services overview](../services/index.md).
 

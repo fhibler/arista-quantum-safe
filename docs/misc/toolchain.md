@@ -20,7 +20,7 @@ Stock Linux packages and upstream release binaries often **fail that requirement
 | **gnsic** | test-runner | Go `crypto/tls` | **Yes** — release **0.0.4** (Go **1.25+**) | Upstream tarball | **Yes** |
 | **gribic** | test-runner | Go `crypto/tls` | **No** — release **0.0.14** (`go 1.21` in upstream `go.mod`) | Source-build **0.0.14** (Go **1.25.1**, `go mod edit -go=1.25`) | **Yes** |
 | **grpcurl** | test-runner | Go `crypto/tls` | **No** — release **1.9.3** (`go 1.21` in upstream `go.mod`) | Source-build **1.9.3** (Go **1.25.1**, `go mod edit -go=1.25`) | **Partial** — gNPSI RPCs on `:6031` work but wire KEX often classical (WARN); `:6030` handshake fails (use gnoic/gnmic/gnsic) |
-| **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | Stock Alpine Python | **No** — ETSI mTLS; not validated against strict PQC profiles |
+| **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | `python:3-alpine` (compile `cffi` on aarch64) | **No** — ETSI mTLS; not validated against strict PQC profiles |
 | **EOS cEOS** | ceos* | Arista (native) | N/A (switch image) | Vendor image + templates | **Yes** when profile is strict (see [Services](../services/index.md) for wire exceptions) |
 
 **Column notes**
@@ -104,7 +104,7 @@ Expect `gnpsi.gNPSI` and `grpc.reflection.v1.ServerReflection`. Transport PQC on
 | Item | Notes |
 |------|-------|
 | **EOS cEOS-lab** | Arista image — PQC configured via startup templates, not rebuilt here |
-| **KME simulator** | Python/Flask mTLS — separate Dockerfile and lab PKI |
+| **KME simulator** | Python/Flask mTLS — `python:3-alpine` image and lab PKI (`keyUsage` on the KME CA) |
 | **Alpine packages** | Base OS packages (Python, docker-cli, etc.) — not used for PQC TLS probes |
 
 ## Operational notes

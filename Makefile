@@ -81,10 +81,15 @@ test: ## Run offline pytest (scaffold + contract validation)
 check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
 	@set -euo pipefail; \
 	if ! docker image inspect "$(CEOS_IMAGE)" >/dev/null 2>&1; then \
-		echo "cEOS image '$(CEOS_IMAGE)' not found locally."; \
-		echo ""; \
-		$(MAKE) --no-print-directory import-ceos-help; \
-		exit 1; \
+		if [ "$(SKIP_CEOS_IMPORT)" = 1 ]; then \
+			echo "cEOS image '$(CEOS_IMAGE)' not found locally."; \
+			echo ""; \
+			$(MAKE) --no-print-directory import-ceos-help; \
+			exit 1; \
+		fi; \
+		echo "cEOS image '$(CEOS_IMAGE)' not found locally; importing from $(CEOS_DOWNLOAD_DIR)/ if present."; \
+		$(MAKE) --no-print-directory import-ceos; \
+		exit 0; \
 	fi; \
 	img_arch=$$(docker image inspect "$(CEOS_IMAGE)" -f '{{.Architecture}}'); \
 	host_arch=$$(uname -m); \
@@ -154,7 +159,7 @@ import-ceos: ## Import cEOS tarball from download/ (no API token)
 	fi; \
 	echo "Importing $$CEOS_TAR → $(CEOS_IMAGE)"; \
 	docker import "$$CEOS_TAR" "$(CEOS_IMAGE)"; \
-	$(MAKE) --no-print-directory check-ceos-image
+	$(MAKE) --no-print-directory check-ceos-image SKIP_CEOS_IMPORT=1
 
 import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
 	@echo "# Manual import (no API token required):"

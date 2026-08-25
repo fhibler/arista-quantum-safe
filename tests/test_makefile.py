@@ -249,6 +249,15 @@ def test_check_ceos_image_fails_when_missing() -> None:
     combined = result.stdout + result.stderr
     assert "not found" in combined.lower()
     assert "docker import download/cEOS64-lab-" in combined
+    assert "import-ceos" in MAKEFILE.read_text(encoding="utf-8").split("check-ceos-image:")[1].split("check-containerlab:")[0]
+
+
+def test_check_ceos_image_imports_when_missing() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    check = content.split("check-ceos-image:")[1].split("check-containerlab:")[0]
+    assert "importing from" in check
+    assert "SKIP_CEOS_IMPORT" in check
+    assert '$(MAKE) --no-print-directory import-ceos' in check
 
 
 def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> None:

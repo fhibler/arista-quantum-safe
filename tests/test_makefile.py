@@ -260,6 +260,23 @@ def test_check_ceos_image_imports_when_missing() -> None:
     assert '$(MAKE) --no-print-directory import-ceos' in check
 
 
+def test_image_verify_targets_print_test_headers() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "PRINT_VERIFY_HEADER" in content
+    assert "print_test_header" in content
+    recipes = [
+        ("check-ceos-image:", "check-containerlab:", "cEOS image verification"),
+        ("test-radius-image:", "build-syslog:", "radius image verification"),
+        ("test-syslog-image:", "build-kme:", "syslog image verification"),
+        ("test-kme-image:", "build-test-runner:", "kme image verification"),
+        ("verify-test-runner-image:", "DEPLOY_KME_NODES", "test-runner image verification"),
+    ]
+    for start, end, title in recipes:
+        recipe = content.split(start)[1].split(end)[0]
+        assert "$(PRINT_VERIFY_HEADER)" in recipe
+        assert title in recipe
+
+
 def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "DOCKER_BUILD_FLAGS" in content

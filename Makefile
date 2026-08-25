@@ -56,6 +56,7 @@ DOCKER_BUILD_FLAGS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
 CLAB_DEPLOY_FLAGS := $(if $(filter 1,$(VERBOSE)),-d,)
 MAKE_VERBOSE := $(if $(filter 1,$(VERBOSE)),VERBOSE=1,)
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
+PRINT_VERIFY_HEADER := $(PYTHON) -c 'from lab.report import print_test_header; print_test_header(*__import__("sys").argv[1:])'
 MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
 MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-a'])")
 MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
@@ -94,6 +95,9 @@ test: ## Run offline pytest (scaffold + contract validation)
 
 check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
 	@set -euo pipefail; \
+	$(PRINT_VERIFY_HEADER) \
+		"cEOS image verification" \
+		"  $(CEOS_IMAGE)"; \
 	if ! docker image inspect "$(CEOS_IMAGE)" >/dev/null 2>&1; then \
 		if [ "$(SKIP_CEOS_IMPORT)" = 1 ]; then \
 			echo "cEOS image '$(CEOS_IMAGE)' not found locally."; \
@@ -289,6 +293,10 @@ endif
 
 test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
 	@set -euo pipefail; \
+	$(PRINT_VERIFY_HEADER) \
+		"radius image verification (FreeRADIUS 3.2.6 + OpenSSL 3.5 PQC)" \
+		"  $(RADIUS_IMAGE)" \
+		"  OpenSSL groups, RadSec tls site, radiusd -C"; \
 	echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
 	echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
 	groups=$$(docker run --rm $(RADIUS_IMAGE) openssl list -tls-groups); \
@@ -313,6 +321,10 @@ endif
 
 test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
 	@set -euo pipefail; \
+	$(PRINT_VERIFY_HEADER) \
+		"syslog image verification (syslog-ng + OpenSSL 3.5 PQC)" \
+		"  $(SYSLOG_IMAGE)" \
+		"  OpenSSL groups, config syntax, TLS healthcheck"; \
 	echo "OpenSSL:    $$(docker run --rm $(SYSLOG_IMAGE) openssl version)"; \
 	groups=$$(docker run --rm $(SYSLOG_IMAGE) openssl list -tls-groups); \
 	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
@@ -344,8 +356,11 @@ build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architec
 
 test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	@set -euo pipefail; \
-	docker run --rm --entrypoint python3 $(KME_IMAGE) -c "from server.app import App; import flask; print('import ok')"; \
-	echo "KME:        next-door-key-simulator import OK"; \
+	$(PRINT_VERIFY_HEADER) \
+		"kme image verification (ETSI QKD 014 simulator)" \
+		"  $(KME_IMAGE)" \
+		"  Flask import + entrypoint"; \
+	echo "KME:        $$(docker run --rm --entrypoint python3 $(KME_IMAGE) -c 'from server.app import App; import flask; print("import ok")')"; \
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
@@ -362,6 +377,10 @@ endif
 
 verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
 	@set -euo pipefail; \
+	$(PRINT_VERIFY_HEADER) \
+		"test-runner image verification (OpenSSL 3.5 PQC + probes)" \
+		"  $(TEST_RUNNER_IMAGE)" \
+		"  curl/OpenSSH PQC, gnmic/grpcurl/gnoic/gribic/gnsic"; \
 	echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
 	groups=$$(docker run --rm $(TEST_RUNNER_IMAGE) openssl list -tls-groups); \
 	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \

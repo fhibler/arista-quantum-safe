@@ -13,6 +13,7 @@ from lab.topology_contract import (
     DEFAULT_CEOS_IMAGE,
     GEN_TOPOLOGY_ANNOTATIONS_PATH,
     HOST_DATA_PLANE,
+    HOST_IMAGE,
     KME_A_PORT,
     KME_B_PORT,
     KME_BINDS,
@@ -213,6 +214,7 @@ def test_host_nodes_use_docker_mgmt(topology: dict, host: str, placeholder: str)
     node_cfg = topology["topology"]["nodes"][host]
     assert node_cfg.get("mgmt-ipv4") == placeholder
     assert node_cfg.get("network-mode") != "none"
+    assert node_cfg.get("image") == HOST_IMAGE
 
 
 @pytest.mark.parametrize("host,spec", HOST_DATA_PLANE.items())

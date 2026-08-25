@@ -21,6 +21,7 @@ MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd", "radius", "syslo
 RADIUS_IMAGE = "quantum-safe-radius:latest"
 SYSLOG_IMAGE = "quantum-safe-syslog:latest"
 TEST_RUNNER_IMAGE = "quantum-safe-test-runner:latest"
+HOST_IMAGE = "alpine:3.24"
 TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
 TOPOLOGY_ANNOTATIONS_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml.annotations.json"
 GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml"
@@ -1566,6 +1567,10 @@ def validate_topology(
         if host_cfg is None:
             errors.append(f"missing node {host}")
             continue
+        if host_cfg.get("kind") != "linux":
+            errors.append(f"{host} kind must be linux")
+        if host_cfg.get("image") != HOST_IMAGE:
+            errors.append(f"{host} image must be {HOST_IMAGE}")
         if host_cfg.get("network-mode") == "none":
             errors.append(f"{host} must use default docker mgmt (do not set network-mode: none)")
 

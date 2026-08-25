@@ -78,7 +78,7 @@ topology:
         - bash -c '{ echo enable; echo "copy flash:radsec-ca.pem certificate:"; echo "copy flash:ceos3-qkd-client.pem certificate:"; echo "copy flash:ceos3-qkd-client.key sslkey:"; echo "copy flash:ceos3-qkd-eapi.pem certificate:"; echo "copy flash:ceos3-qkd-eapi.key sslkey:"; echo "copy flash:ceos3-qkd-gnmi.pem certificate:"; echo "copy flash:ceos3-qkd-gnmi.key sslkey:"; } | Cli'
     host1:
       kind: linux
-      image: alpine:3.20
+      image: alpine:3.24
       mgmt-ipv4: ${MGMT_IP_HOST1}
       mgmt-ipv6: ${MGMT_IPV6_HOST1}
       exec:
@@ -89,7 +89,7 @@ topology:
         - ip -6 route replace default via 2001:db8:1::fe dev eth1
     host2:
       kind: linux
-      image: alpine:3.20
+      image: alpine:3.24
       mgmt-ipv4: ${MGMT_IP_HOST2}
       mgmt-ipv6: ${MGMT_IPV6_HOST2}
       exec:
@@ -100,7 +100,7 @@ topology:
         - ip -6 route replace default via 2001:db8:2::fe dev eth1
     host3:
       kind: linux
-      image: alpine:3.20
+      image: alpine:3.24
       mgmt-ipv4: ${MGMT_IP_HOST3}
       mgmt-ipv6: ${MGMT_IPV6_HOST3}
       exec:

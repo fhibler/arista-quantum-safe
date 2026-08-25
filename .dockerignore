@@ -1,0 +1,16 @@
+# Keep Docker build context small. Do not ignore lab/.gen/ — radius and syslog
+# COPY generated PKI and client files from there.
+.git
+download/
+docs/
+site/
+tmp/
+.venv
+.pytest_cache
+.stamp
+lab/logs/
+lab/clab-*
+clab-*
+internal/
+.github/
+*.md

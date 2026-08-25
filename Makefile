@@ -414,10 +414,8 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 			echo "  rmi $(CEOS_IMAGE)"; \
 			docker rmi "$(CEOS_IMAGE)" 2>/dev/null || true; \
 		fi; \
-		echo "=== Pruning Docker build cache ==="; \
-		docker buildx prune -af 2>/dev/null || true; \
 	fi; \
-	echo "=== Clean complete (download/ and .env preserved) ==="
+	echo "=== Clean complete (download/ and .env preserved; BuildKit cache kept) ==="
 
 reset: clean ## Reset repo to latest commit: discard local edits and remove all gitignored/untracked files
 	@set -euo pipefail; \
@@ -428,6 +426,10 @@ reset: clean ## Reset repo to latest commit: discard local edits and remove all 
 	echo "=== Resetting git working tree to HEAD ==="; \
 	git reset --hard HEAD; \
 	git clean -fdx; \
+	if command -v docker >/dev/null 2>&1; then \
+		echo "=== Pruning Docker build cache ==="; \
+		docker buildx prune -af 2>/dev/null || true; \
+	fi; \
 	echo "=== Reset complete ==="
 
 redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so destroy has a local topology file)

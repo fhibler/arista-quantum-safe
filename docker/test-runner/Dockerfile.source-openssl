@@ -1,16 +1,115 @@
 # PQC-capable probe client for live lab checks (curl + OpenSSL 3.5).
 #
 # Used by the test-runner Containerlab node and the optional test-lab-runner harness.
-# Alpine 3.24 apk OpenSSL 3.5.7, curl, and openssh-client provide PQC-hybrid TLS/SSH.
-# Rollback to source OpenSSL: make build-test-runner USE_SOURCE_OPENSSL=1
+# OpenSSL is supplied by quantum-safe-openssl:3.5.7-shared (make build-openssl-shared).
 
 ARG ALPINE_VERSION=3.24
+ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-shared
+ARG CURL_VERSION=8.12.1
+ARG OPENSSH_VERSION=10.0p1
 ARG GNMIC_VERSION=0.47.0
 ARG GRPCURL_VERSION=1.9.3
 ARG GO_VERSION=1.27.0
 ARG GNOIC_VERSION=0.2.1
 ARG GRIBIC_VERSION=0.0.14
 ARG GNSIC_VERSION=0.0.4
+
+FROM ${OPENSSL_IMAGE} AS openssl-base
+
+FROM alpine:${ALPINE_VERSION} AS curl-build
+ARG CURL_VERSION
+
+# Fetch sources with system TLS only — no custom OpenSSL in this layer.
+RUN apk add --no-cache \
+      build-base \
+      wget \
+      tar \
+      perl \
+      ca-certificates \
+      zlib-dev \
+      brotli-dev \
+      zstd-dev \
+      nghttp2-dev \
+      c-ares-dev \
+      libpsl-dev \
+      libidn2-dev \
+ && CURL_GITHUB_TAG="curl-$(echo "${CURL_VERSION}" | tr '.' '_')" \
+ && set -e; \
+    for url in \
+      "https://github.com/curl/curl/releases/download/${CURL_GITHUB_TAG}/curl-${CURL_VERSION}.tar.gz" \
+      "https://curl.se/download/curl-${CURL_VERSION}.tar.gz"; \
+    do \
+      wget -q --tries=5 --timeout=60 "$url" -O /tmp/curl.tar.gz && break; \
+    done \
+ && test -s /tmp/curl.tar.gz \
+ && tar -xzf /tmp/curl.tar.gz -C /tmp
+
+COPY --from=openssl-base /opt/openssl /opt/openssl
+
+RUN if [ -f /opt/openssl/lib64/libssl.so ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
+RUN OSSL_LIB=/opt/openssl/lib64; \
+    if [ ! -d "$OSSL_LIB" ]; then OSSL_LIB=/opt/openssl/lib; fi; \
+    export PATH="/opt/openssl/bin:$PATH"; \
+    export PKG_CONFIG_PATH="/opt/openssl/lib/pkgconfig:/opt/openssl/lib64/pkgconfig"; \
+    export CPPFLAGS="-I/opt/openssl/include"; \
+    export LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib"; \
+    cd "/tmp/curl-${CURL_VERSION}"; \
+    ./configure \
+      --prefix=/usr/local \
+      --with-openssl="/opt/openssl" \
+      --with-openssl-includes="/opt/openssl/include" \
+      --with-openssl-libs="${OSSL_LIB}" \
+      --disable-shared \
+      --enable-static \
+      --without-libpsl \
+      --disable-ldap \
+      --disable-ldaps \
+      --disable-rtsp \
+      --disable-dict \
+      --disable-telnet \
+      --disable-tftp \
+      --disable-pop3 \
+      --disable-imap \
+      --disable-smb \
+      --disable-smtp \
+      --disable-gopher \
+      --disable-mqtt; \
+    make -j"$(nproc)"; \
+    make install; \
+    /usr/local/bin/curl --version
+
+FROM alpine:${ALPINE_VERSION} AS openssh-build
+ARG OPENSSH_VERSION
+
+RUN apk add --no-cache build-base wget tar zlib-dev linux-headers ca-certificates \
+ && wget -q --tries=5 --timeout=60 \
+      "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz" \
+      -O /tmp/openssh.tar.gz \
+ && tar -xzf /tmp/openssh.tar.gz -C /tmp
+
+COPY --from=openssl-base /opt/openssl /opt/openssl
+
+RUN if [ -f /opt/openssl/lib64/libssl.so ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
+RUN OSSL_LIB=/opt/openssl/lib64; \
+    if [ ! -d "$OSSL_LIB" ]; then OSSL_LIB=/opt/openssl/lib; fi; \
+    export PATH="/opt/openssl/bin:$PATH"; \
+    export LD_LIBRARY_PATH="/opt/openssl/lib:/opt/openssl/lib64"; \
+    export LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64"; \
+    export CPPFLAGS="-I/opt/openssl/include"; \
+    cd "/tmp/openssh-${OPENSSH_VERSION}"; \
+    ./configure \
+      --prefix=/usr/local \
+      --sysconfdir=/etc/ssh \
+      --with-ssl-dir=/opt/openssl \
+      --without-pam \
+      --without-sandbox \
+      --disable-strip; \
+    make -j"$(nproc)"; \
+    make install; \
+    /usr/local/bin/ssh -V; \
+    /usr/local/bin/ssh -Q kex | grep -q mlkem768x25519-sha256
 
 FROM alpine:${ALPINE_VERSION} AS gnmic-fetch
 ARG GNMIC_VERSION
@@ -104,9 +203,6 @@ FROM alpine:${ALPINE_VERSION}
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    openssl \
-    curl \
-    openssh-client \
     ca-certificates \
     docker-cli \
     iputils \
@@ -121,12 +217,19 @@ COPY requirements-lab.txt /tmp/requirements-lab.txt
 RUN pip install --break-system-packages --no-cache-dir -r /tmp/requirements-lab.txt \
  && rm -f /tmp/requirements-lab.txt
 
+COPY --from=openssl-base /opt/openssl /opt/openssl
+COPY --from=curl-build /usr/local/bin/curl /usr/local/bin/curl
+COPY --from=openssh-build /usr/local/bin/ssh /usr/local/bin/ssh
 COPY --from=gnmic-fetch /usr/local/bin/gnmic /usr/local/bin/gnmic
 COPY --from=grpcurl-build /usr/local/bin/grpcurl /usr/local/bin/grpcurl
 COPY --from=gnoic-fetch /usr/local/bin/gnoic /usr/local/bin/gnoic
 COPY --from=gribic-build /usr/local/bin/gribic /usr/local/bin/gribic
 COPY --from=gnsic-fetch /usr/local/bin/gnsic /usr/local/bin/gnsic
 
+RUN if [ -f /opt/openssl/lib64/libssl.so ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
+ENV PATH=/opt/openssl/bin:/usr/local/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
 ENV OPENSSL_CONF=/etc/probe/openssl-pqc.cnf
 
 RUN mkdir -p /etc/probe/certs

@@ -1,18 +1,30 @@
-# syslog-ng linked against Alpine 3.24 OpenSSL 3.5 for EOS PQC-hybrid syslog-over-TLS.
+# syslog-ng linked against OpenSSL 3.5+ for EOS PQC-hybrid syslog-over-TLS.
 #
 # EOS ssl profile (example):
 #   key-establishment-group X25519MLKEM768
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
-# Rollback to source OpenSSL: make build-syslog USE_SOURCE_OPENSSL=1
 
 ARG ALPINE_VERSION=3.24
+ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-static
 ARG SYSLOG_NG_VERSION=4.8.1
+
+FROM ${OPENSSL_IMAGE} AS openssl-base
 
 FROM alpine:${ALPINE_VERSION} AS syslog-ng-build
 ARG SYSLOG_NG_VERSION
 
-RUN apk add --no-cache build-base wget tar glib-dev curl-dev flex bison json-c-dev pcre2-dev openssl-dev
+COPY --from=openssl-base /opt/openssl /opt/openssl
+
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
+ENV PATH=/opt/openssl/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
+ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig:/opt/openssl/lib64/pkgconfig
+ENV CPPFLAGS="-I/opt/openssl/include"
+ENV LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib"
+
+RUN apk add --no-cache build-base wget tar glib-dev curl-dev flex bison json-c-dev pcre2-dev
 
 RUN wget -q "https://github.com/syslog-ng/syslog-ng/releases/download/syslog-ng-${SYSLOG_NG_VERSION}/syslog-ng-${SYSLOG_NG_VERSION}.tar.gz" \
       -O /tmp/syslog-ng.tar.gz \
@@ -21,7 +33,7 @@ RUN wget -q "https://github.com/syslog-ng/syslog-ng/releases/download/syslog-ng-
  && ./configure --prefix=/opt/syslog-ng \
       --sysconfdir=/etc/syslog-ng \
       --enable-tls \
-      --with-openssl=/usr \
+      --with-openssl=/opt/openssl \
       --disable-afuser \
       --disable-python \
       --disable-redis \
@@ -37,12 +49,13 @@ RUN wget -q "https://github.com/syslog-ng/syslog-ng/releases/download/syslog-ng-
 
 FROM alpine:${ALPINE_VERSION}
 
-RUN apk add --no-cache glib libcurl json-c pcre2 libstdc++ tzdata tcpdump openssl
+RUN apk add --no-cache glib libcurl json-c pcre2 libstdc++ tzdata tcpdump
 
+COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=syslog-ng-build /opt/syslog-ng /opt/syslog-ng
 
-ENV PATH=/opt/syslog-ng/sbin:$PATH
-ENV LD_LIBRARY_PATH=/opt/syslog-ng/lib
+ENV PATH=/opt/syslog-ng/sbin:/opt/openssl/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64:/opt/syslog-ng/lib
 ENV OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf
 
 RUN mkdir -p /etc/syslog-ng/certs /var/log/syslog

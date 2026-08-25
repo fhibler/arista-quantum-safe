@@ -21,14 +21,23 @@ CLAB_MGMT_NETWORK := quantum-safe-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
 VERBOSE       ?=
 GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem syslog-server.pem syslog-server.key ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem kme-sae-bundle.pem kme-sae-b-bundle.pem)
+# 0 = Alpine 3.24 apk OpenSSL (default after cutover)
+# 1 = historic source OpenSSL 3.5.7 under /opt/openssl
+USE_SOURCE_OPENSSL ?= 0
 RADIUS_IMAGE  := quantum-safe-radius:latest
-RADIUS_DOCKERFILE := docker/radius/Dockerfile
 SYSLOG_IMAGE  := quantum-safe-syslog:latest
-SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
 KME_IMAGE     := quantum-safe-kme:latest
 KME_DOCKERFILE := docker/kme/Dockerfile
 TEST_RUNNER_IMAGE := quantum-safe-test-runner:latest
+ifeq ($(USE_SOURCE_OPENSSL),1)
+RADIUS_DOCKERFILE := docker/radius/Dockerfile.source-openssl
+SYSLOG_DOCKERFILE := docker/syslog/Dockerfile.source-openssl
+TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile.source-openssl
+else
+RADIUS_DOCKERFILE := docker/radius/Dockerfile
+SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
 TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile
+endif
 OPENSSL_VERSION_TAG := 3.5.7
 OPENSSL_SHARED_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-shared
 OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
@@ -49,7 +58,7 @@ MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips
 MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
 KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID; print(KME_SAE_ID)")
 
-# Image builds share one builder and tag the same OpenSSL bases — do not run under make -j.
+# Image builds share one builder — do not run under make -j.
 .NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared build-lab-images build-radius build-syslog build-kme build-test-runner
 
 .PHONY: help gen-topo validate-topo sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
@@ -234,7 +243,8 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-openssl-shared: $(OPENSSL_SHARED_STAMP) ## Build quantum-safe-openssl:3.5.7-shared (shared libs for test-runner)
+build-openssl-shared: ## Build quantum-safe-openssl:3.5.7-shared (no-op unless USE_SOURCE_OPENSSL=1)
+	@$(if $(filter 1,$(USE_SOURCE_OPENSSL)),$(MAKE) --no-print-directory $(OPENSSL_SHARED_STAMP),echo "Skipping source OpenSSL shared image (USE_SOURCE_OPENSSL=0; Alpine 3.24 apk provides 3.5.7)")
 
 $(OPENSSL_SHARED_STAMP): $(OPENSSL_DOCKERFILE)
 	@mkdir -p $(STAMP_DIR)
@@ -243,7 +253,8 @@ $(OPENSSL_SHARED_STAMP): $(OPENSSL_DOCKERFILE)
 		-t $(OPENSSL_SHARED_IMAGE) -f $(OPENSSL_DOCKERFILE) .
 	@touch $@
 
-build-openssl-static: $(OPENSSL_STATIC_STAMP) ## Build quantum-safe-openssl:3.5.7-static (static libs for radius/syslog)
+build-openssl-static: ## Build quantum-safe-openssl:3.5.7-static (no-op unless USE_SOURCE_OPENSSL=1)
+	@$(if $(filter 1,$(USE_SOURCE_OPENSSL)),$(MAKE) --no-print-directory $(OPENSSL_STATIC_STAMP),echo "Skipping source OpenSSL static image (USE_SOURCE_OPENSSL=0; Alpine 3.24 apk provides 3.5.7)")
 
 $(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
 	@mkdir -p $(STAMP_DIR)
@@ -252,13 +263,13 @@ $(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
 		-t $(OPENSSL_STATIC_IMAGE) -f $(OPENSSL_DOCKERFILE) .
 	@touch $@
 
-build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL base images
+build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL base images (no-op unless USE_SOURCE_OPENSSL=1)
 
-build-lab-images: build-openssl build-radius build-syslog build-kme build-test-runner ## Build all lab Docker images (OpenSSL bases once, then services)
+build-lab-images: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl,) build-radius build-syslog build-kme build-test-runner ## Build all lab Docker images
 
-build-radius: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
+build-radius: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
+		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE),) \
 		-t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-radius-image $(MAKE_VERBOSE)
 
@@ -276,9 +287,9 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-build-syslog: $(GEN_CONFIGS) build-openssl-static ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
+build-syslog: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
+		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE),) \
 		-t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
 	@$(MAKE) --no-print-directory test-syslog-image $(MAKE_VERBOSE)
 
@@ -321,9 +332,9 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-build-test-runner: build-openssl-shared ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
+build-test-runner: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-shared,) ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
+		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE),) \
 		--build-arg GO_VERSION=$(GO_VERSION) \
 		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
 	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)

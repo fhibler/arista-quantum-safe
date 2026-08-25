@@ -1310,7 +1310,7 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
     if dockerfile_path.is_file():
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
         for fragment in (
-            "quantum-safe-openssl:3.5.7-static",
+            "ALPINE_VERSION=3.24",
             "SYSLOG_NG_VERSION=4.8.1",
             "openssl-pqc.cnf",
             "OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf",
@@ -1468,7 +1468,8 @@ def validate_radius_configs(
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
         for fragment in (
             "ARG FREERADIUS_VERSION=release_3_2_6",
-            "quantum-safe-openssl:3.5.7-static",
+            "ALPINE_VERSION=3.24",
+            "OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf",
             "openssl-pqc.cnf",
             "mods-available/eap",
             "mods-enabled/eap",

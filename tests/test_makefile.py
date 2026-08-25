@@ -272,6 +272,31 @@ def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> N
     assert "docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS)" in content
 
 
+def test_use_source_openssl_flag_defaults_to_apk() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "USE_SOURCE_OPENSSL ?= 0" in content
+    assert "Dockerfile.source-openssl" in content
+    result = _run_make("-n", "build-openssl")
+    combined = result.stdout + result.stderr
+    assert "Skipping source OpenSSL" in combined
+    assert "docker/openssl/Dockerfile" not in combined
+    result = _run_make("-n", "build-lab-images")
+    combined = result.stdout + result.stderr
+    assert "docker/openssl/Dockerfile" not in combined
+    assert "-f docker/radius/Dockerfile.source-openssl" not in combined
+    assert "-f docker/radius/Dockerfile" in combined
+
+
+def test_use_source_openssl_rollback_builds_source_images() -> None:
+    result = _run_make("-n", "build-openssl", "USE_SOURCE_OPENSSL=1")
+    combined = result.stdout + result.stderr
+    assert "Skipping source OpenSSL" not in combined
+    assert "docker/openssl/Dockerfile" in combined
+    result = _run_make("-n", "build-radius", "USE_SOURCE_OPENSSL=1")
+    combined = result.stdout + result.stderr
+    assert "-f docker/radius/Dockerfile.source-openssl" in combined
+
+
 def test_makefile_defines_check_containerlab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "CLAB_MIN_VERSION ?=" in content

@@ -1,38 +1,57 @@
-# FreeRADIUS 3.2.x linked against Alpine 3.24 OpenSSL 3.5 for EOS PQC-hybrid RadSec.
+# FreeRADIUS 3.2.x linked against OpenSSL 3.5+ for EOS PQC-hybrid RadSec.
 #
 # EOS ssl profile (example):
 #   key-establishment-group X25519MLKEM768
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
-# Rollback to source OpenSSL: make build-radius USE_SOURCE_OPENSSL=1
 
 ARG ALPINE_VERSION=3.24
 ARG FREERADIUS_VERSION=release_3_2_6
+ARG OPENSSL_IMAGE=quantum-safe-openssl:3.5.7-static
+
+FROM ${OPENSSL_IMAGE} AS openssl-base
 
 FROM alpine:${ALPINE_VERSION} AS freeradius-build
 ARG FREERADIUS_VERSION
 
+COPY --from=openssl-base /opt/openssl /opt/openssl
+
+# curl-dev pulls Alpine openssl-dev (3.3); pin FreeRADIUS to our OpenSSL 3.5 static libs.
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then ln -sfn lib64 /opt/openssl/lib; fi
+
+ENV PATH=/opt/openssl/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
+ENV PKG_CONFIG_PATH=/opt/openssl/lib/pkgconfig:/opt/openssl/lib64/pkgconfig
+ENV CPPFLAGS="-I/opt/openssl/include"
+ENV LDFLAGS="-L/opt/openssl/lib -L/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib64 -Wl,-rpath,/opt/openssl/lib"
+
 RUN apk add --no-cache \
     git gcc g++ make musl-dev linux-headers \
-    talloc-dev pcre-dev curl-dev json-c-dev perl \
-    openssl-dev
+    talloc-dev pcre-dev curl-dev json-c-dev perl
 
 RUN git clone --depth 1 --branch "${FREERADIUS_VERSION}" \
     https://github.com/FreeRADIUS/freeradius-server.git /src
 
 WORKDIR /src
-RUN ./configure --prefix=/opt/freeradius \
+RUN if [ -f /opt/openssl/lib64/libcrypto.a ]; then OSSL_LIB=/opt/openssl/lib64; \
+    elif [ -f /opt/openssl/lib/libcrypto.a ]; then OSSL_LIB=/opt/openssl/lib; \
+    else echo "OpenSSL static libs not found under /opt/openssl" >&2; exit 1; fi \
+ && ./configure --prefix=/opt/freeradius \
+      --with-openssl-include-dir=/opt/openssl/include \
+      --with-openssl-lib-dir="${OSSL_LIB}" \
  && make -j"$(nproc)" \
  && make install \
  && rm -f /opt/freeradius/lib/*.a
 
 FROM alpine:${ALPINE_VERSION}
 
-RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl openssl
+RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl
 
+COPY --from=openssl-base /opt/openssl /opt/openssl
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius
 
-ENV PATH=/opt/freeradius/sbin:/opt/freeradius/bin:$PATH
+ENV PATH=/opt/openssl/bin:/opt/freeradius/sbin:/opt/freeradius/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/openssl/lib:/opt/openssl/lib64
 ENV OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf
 
 RUN ln -sf /opt/freeradius/etc/raddb /etc/raddb \

@@ -270,6 +270,8 @@ def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> N
     assert "deploy-kme $(MAKE_VERBOSE)" in deploy
     assert "wait-kme-pool $(MAKE_VERBOSE)" in deploy
     assert "docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS)" in content
+    assert "docker buildx bake" in content
+    assert "BAKE" in content
 
 
 def test_use_source_openssl_flag_defaults_to_apk() -> None:
@@ -282,17 +284,26 @@ def test_use_source_openssl_flag_defaults_to_apk() -> None:
     assert "docker/openssl/Dockerfile" not in combined
     result = _run_make("-n", "build-lab-images")
     combined = result.stdout + result.stderr
+    assert "docker buildx bake" in combined
+    assert "docker-bake.hcl" in combined
     assert "docker/openssl/Dockerfile" not in combined
     assert "-f docker/radius/Dockerfile.source-openssl" not in combined
-    assert "-f docker/radius/Dockerfile" in combined
 
 
 def test_use_source_openssl_rollback_builds_source_images() -> None:
+    content = MAKEFILE.read_text(encoding="utf-8")
+    assert "docker/openssl/Dockerfile" in content
+    openssl_static = content.split("$(OPENSSL_STATIC_STAMP):")[1].split("build-openssl:")[0]
+    assert "OPENSSL_DOCKERFILE" in openssl_static
+    assert "-t $(OPENSSL_STATIC_IMAGE)" in openssl_static
     result = _run_make("-n", "build-openssl", "USE_SOURCE_OPENSSL=1")
     combined = result.stdout + result.stderr
     assert "Skipping source OpenSSL" not in combined
-    assert "docker/openssl/Dockerfile" in combined
     result = _run_make("-n", "build-radius", "USE_SOURCE_OPENSSL=1")
+    combined = result.stdout + result.stderr
+    assert "-f docker/radius/Dockerfile.source-openssl" in combined
+    assert "docker buildx bake" not in combined
+    result = _run_make("-n", "build-lab-images", "USE_SOURCE_OPENSSL=1")
     combined = result.stdout + result.stderr
     assert "-f docker/radius/Dockerfile.source-openssl" in combined
 
@@ -448,6 +459,8 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert 'rm -rf ".stamp"' in clean or 'rm -rf "$(STAMP_DIR)"' in clean
     assert "docker images" in clean
     assert "quantum-safe-openssl" in clean
+    assert "quantum-safe-builder" in clean
+    assert "quantum-safe-runtime" in clean
     assert "quantum-safe-radius" in clean
     assert "quantum-safe-syslog" in clean
     assert "quantum-safe-kme" in clean
@@ -483,6 +496,17 @@ def test_dockerignore_excludes_download_and_keeps_generated_pki() -> None:
     assert "download/" in patterns
     assert "lab/.gen/" not in patterns
     assert "lab/.gen" not in patterns
+
+
+def test_docker_bake_file_lists_apk_lab_images() -> None:
+    bake = REPO_ROOT / "docker-bake.hcl"
+    assert bake.is_file()
+    content = bake.read_text(encoding="utf-8")
+    for name in ("builder", "runtime", "radius", "syslog", "kme", "test-runner"):
+        assert f'target "{name}"' in content
+    assert 'group "default"' in content
+    assert "docker/base/Dockerfile.builder" in content
+    assert "docker/base/Dockerfile.runtime" in content
 
 
 def test_root_makefile_has_no_export_targets() -> None:

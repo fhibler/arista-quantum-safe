@@ -85,7 +85,7 @@ Run `make help` for the authoritative target list in your clone.
 
 | Target | Description |
 |--------|-------------|
-| `make build-lab-images` | Build radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL by default) |
+| `make build-lab-images` | `docker buildx bake` radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL by default) |
 | `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build one lab image (includes image smoke tests) |
 | `make build-openssl` | No-op on the default path. Historic source OpenSSL 3.5.7: `make build-openssl USE_SOURCE_OPENSSL=1` (see [PQC overview](pqc-overview.md#alpine-324-openssl-357-lab-containers)) |
 | `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
@@ -131,6 +131,7 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 | `MGMT_SUBNET` | `172.20.127.0/24` | Management network CIDR |
 | `CLAB_MIN_VERSION` | `0.78.0` | Minimum Containerlab version enforced by `make check-containerlab` |
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
+| `USE_SOURCE_OPENSSL` | `0` | `0` = Alpine 3.24 apk OpenSSL; `1` = historic source OpenSSL 3.5.7 (`make deploy USE_SOURCE_OPENSSL=1`) |
 | `VERBOSE` | (unset) | `VERBOSE=1 make deploy` — plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
 
 Copy `.env.example` → `.env` to set any of the above persistently. The Makefile `-include`s `.env` for every target (command-line assignments override).
@@ -153,6 +154,6 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 | Syslog connection cap | Collector defaults to 10 TLS sessions; see [Syslog](services/syslog.md) in Services |
 | Host ping failures | Verify data-plane routes in rendered `lab/.gen/ceos*.cfg` |
 
-Reset lab artifacts while keeping cEOS tarballs and `.env`: `make clean`, then redeploy from scratch.
+Reset lab artifacts while keeping cEOS tarballs, `.env`, and the Docker BuildKit cache: `make clean`, then redeploy from scratch.
 
-To discard **all** local changes and gitignored files (including `download/` and `.env`), use `make reset` instead.
+To discard **all** local changes and gitignored files (including `download/`, `.env`, and the BuildKit cache), use `make reset` instead.

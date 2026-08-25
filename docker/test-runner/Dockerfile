@@ -99,15 +99,13 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnsic /usr/local/bin/gnsic \
  && gnsic version
 
-FROM alpine:${ALPINE_VERSION}
+FROM runtime
 
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    openssl \
     curl \
     openssh-client \
-    ca-certificates \
     docker-cli \
     iputils \
     iproute2 \

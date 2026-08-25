@@ -44,6 +44,9 @@ OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
 OPENSSL_DOCKERFILE := docker/openssl/Dockerfile
 GO_VERSION    ?= 1.27.0
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+BAKE_FILE     := docker-bake.hcl
+BAKE_PROGRESS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
+BAKE          := HOST_ARCH=$(HOST_ARCH) GO_VERSION=$(GO_VERSION) docker buildx bake -f $(BAKE_FILE) $(BAKE_PROGRESS)
 STAMP_DIR := .stamp
 OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
 OPENSSL_SHARED_STAMP := $(STAMP_DIR)/openssl-shared.$(HOST_ARCH)
@@ -58,8 +61,9 @@ MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips
 MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
 KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID; print(KME_SAE_ID)")
 
-# Image builds share one builder — do not run under make -j.
-.NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared build-lab-images build-radius build-syslog build-kme build-test-runner
+# Source-OpenSSL rollback still shares one builder — do not run those under make -j.
+# Apk images use `docker buildx bake` (one solve); individual apk targets may run in parallel.
+.NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared
 
 .PHONY: help gen-topo validate-topo sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
         download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
@@ -265,12 +269,22 @@ $(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
 
 build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL base images (no-op unless USE_SOURCE_OPENSSL=1)
 
-build-lab-images: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl,) build-radius build-syslog build-kme build-test-runner ## Build all lab Docker images
+build-lab-images: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl,) ## Build all lab Docker images
+ifeq ($(USE_SOURCE_OPENSSL),1)
+	@$(MAKE) --no-print-directory build-radius build-syslog build-kme build-test-runner USE_SOURCE_OPENSSL=1 $(MAKE_VERBOSE)
+else
+	$(BAKE)
+	@$(MAKE) --no-print-directory test-radius-image test-syslog-image test-kme-image verify-test-runner-image $(MAKE_VERBOSE)
+endif
 
-build-radius: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-radius:latest for the host architecture (buildx --load)
+build-radius: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-radius:latest for the host architecture
+ifeq ($(USE_SOURCE_OPENSSL),1)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE),) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
 		-t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
+else
+	$(BAKE) radius
+endif
 	@$(MAKE) --no-print-directory test-radius-image $(MAKE_VERBOSE)
 
 test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
@@ -287,10 +301,14 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-build-syslog: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-syslog:latest for the host architecture (buildx --load)
+build-syslog: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-syslog:latest for the host architecture
+ifeq ($(USE_SOURCE_OPENSSL),1)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE),) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
 		-t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
+else
+	$(BAKE) syslog
+endif
 	@$(MAKE) --no-print-directory test-syslog-image $(MAKE_VERBOSE)
 
 test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
@@ -320,9 +338,8 @@ test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5
 	docker logs $$cid 2>&1 | tail -20; \
 	exit 1
 
-build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture (buildx --load)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		-t $(KME_IMAGE) -f $(KME_DOCKERFILE) .
+build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture
+	$(BAKE) kme
 	@$(MAKE) --no-print-directory test-kme-image $(MAKE_VERBOSE)
 
 test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
@@ -332,11 +349,15 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-build-test-runner: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-shared,) ## Build quantum-safe-test-runner:latest for the host architecture (buildx --load)
+build-test-runner: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-shared,) ## Build quantum-safe-test-runner:latest for the host architecture
+ifeq ($(USE_SOURCE_OPENSSL),1)
 	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		$(if $(filter 1,$(USE_SOURCE_OPENSSL)),--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE),) \
+		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
 		--build-arg GO_VERSION=$(GO_VERSION) \
 		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
+else
+	$(BAKE) test-runner
+endif
 	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
 
 verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
@@ -415,7 +436,7 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 	rm -rf "$(STAMP_DIR)"; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in quantum-safe-openssl quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
+		for repo in quantum-safe-openssl quantum-safe-builder quantum-safe-runtime quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \

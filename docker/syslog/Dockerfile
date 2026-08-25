@@ -9,10 +9,10 @@
 ARG ALPINE_VERSION=3.24
 ARG SYSLOG_NG_VERSION=4.8.1
 
-FROM alpine:${ALPINE_VERSION} AS syslog-ng-build
+FROM builder AS syslog-ng-build
 ARG SYSLOG_NG_VERSION
 
-RUN apk add --no-cache build-base wget tar glib-dev curl-dev flex bison json-c-dev pcre2-dev openssl-dev
+RUN apk add --no-cache glib-dev curl-dev flex bison json-c-dev pcre2-dev openssl-dev
 
 RUN wget -q "https://github.com/syslog-ng/syslog-ng/releases/download/syslog-ng-${SYSLOG_NG_VERSION}/syslog-ng-${SYSLOG_NG_VERSION}.tar.gz" \
       -O /tmp/syslog-ng.tar.gz \
@@ -35,9 +35,9 @@ RUN wget -q "https://github.com/syslog-ng/syslog-ng/releases/download/syslog-ng-
  && make -j"$(nproc)" \
  && make install
 
-FROM alpine:${ALPINE_VERSION}
+FROM runtime
 
-RUN apk add --no-cache glib libcurl json-c pcre2 libstdc++ tzdata tcpdump openssl
+RUN apk add --no-cache glib libcurl json-c pcre2 libstdc++ tcpdump
 
 COPY --from=syslog-ng-build /opt/syslog-ng /opt/syslog-ng
 

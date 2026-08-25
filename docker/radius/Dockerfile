@@ -9,12 +9,11 @@
 ARG ALPINE_VERSION=3.24
 ARG FREERADIUS_VERSION=release_3_2_6
 
-FROM alpine:${ALPINE_VERSION} AS freeradius-build
+FROM builder AS freeradius-build
 ARG FREERADIUS_VERSION
 
 RUN apk add --no-cache \
-    git gcc g++ make musl-dev linux-headers \
-    talloc-dev pcre-dev curl-dev json-c-dev perl \
+    talloc-dev pcre-dev curl-dev json-c-dev \
     openssl openssl-dev
 
 RUN git clone --depth 1 --branch "${FREERADIUS_VERSION}" \
@@ -26,9 +25,9 @@ RUN ./configure --prefix=/opt/freeradius \
  && make install \
  && rm -f /opt/freeradius/lib/*.a
 
-FROM alpine:${ALPINE_VERSION}
+FROM runtime
 
-RUN apk add --no-cache talloc pcre libcurl json-c tzdata curl openssl
+RUN apk add --no-cache talloc pcre libcurl json-c curl
 
 COPY --from=freeradius-build /opt/freeradius /opt/freeradius
 

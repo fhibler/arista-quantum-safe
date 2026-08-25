@@ -6,7 +6,7 @@ ARG ALPINE_VERSION=3.24
 ARG KME_SIMULATOR_REPO=https://github.com/CreepPork/next-door-key-simulator.git
 ARG KME_SIMULATOR_REF=master
 
-FROM alpine:${ALPINE_VERSION}
+FROM runtime
 
 ARG KME_SIMULATOR_REPO
 ARG KME_SIMULATOR_REF

@@ -17,6 +17,12 @@ def test_readme_has_no_todo_placeholders() -> None:
     assert "TODO —" not in content
 
 
+def test_readme_does_not_mention_cnsa() -> None:
+    content = README.read_text(encoding="utf-8").lower()
+    assert "cnsa" not in content
+    assert "csna" not in content
+
+
 def test_readme_covers_required_sections() -> None:
     content = README.read_text(encoding="utf-8").lower()
     for fragment in (
@@ -51,3 +57,4 @@ def test_internal_docs_index_links_verification() -> None:
     content = INTERNAL_DOCS_INDEX.read_text(encoding="utf-8")
     assert "verification.md" in content
     assert "syslog.md" in content
+    assert "plans/csna/README.md" in content

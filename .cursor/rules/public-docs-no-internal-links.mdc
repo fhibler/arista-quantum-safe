@@ -1,0 +1,14 @@
+---
+description: Public README and docs must not mention CNSA or link to internal/
+alwaysApply: true
+---
+
+# Public docs vs internal notes
+
+Public documentation is `docs/**/*.md`, root `README.md`, and `mkdocs.yml`. The `internal/` tree is stripped from the public mirror.
+
+- Do **not** mention CNSA (or CSNA) in root `README.md`.
+- Do **not** add markdown links, MkDocs nav entries, or path mentions of `internal/` in public docs.
+- Keep CNSA analysis under `internal/plans/csna/` only. Index it from `internal/docs/README.md`, never from the public README.
+- When a change needs both audiences, write the public page in `docs/` with no internal pointers; internal pages may link *to* public `docs/`.
+- `scripts/check_public_export.py` and `tests/test_public_docs.py` fail the export if public markdown contains `internal/`.

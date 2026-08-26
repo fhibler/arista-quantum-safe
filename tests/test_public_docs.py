@@ -197,6 +197,19 @@ def test_public_docs_exclude_internal_make_targets() -> None:
         assert target not in readme, f"README must not reference {target!r}"
 
 
+def test_public_docs_have_no_internal_links() -> None:
+    offenders: list[str] = []
+    for path in (README, *sorted(PUBLIC_DOCS.rglob("*.md"))):
+        text = path.read_text(encoding="utf-8")
+        if "internal/" in text.replace("\\", "/"):
+            offenders.append(f"{path.relative_to(REPO_ROOT)} contains 'internal/'")
+        for match in LINK_RE.finditer(text):
+            target = match.group(1).strip().replace("\\", "/")
+            if "internal/" in target:
+                offenders.append(f"{path.relative_to(REPO_ROOT)} links to {target!r}")
+    assert not offenders, "public docs must not reference internal/:\n" + "\n".join(offenders)
+
+
 def test_public_setup_doc_has_makefile_reference() -> None:
     content = (PUBLIC_DOCS / "setup.md").read_text(encoding="utf-8")
     assert "make help" in content

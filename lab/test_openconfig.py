@@ -8,11 +8,11 @@ import subprocess
 import sys
 
 from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_check_summary, report_summary, reset_check_stats
+from lab.errors import PqcConnectionError
 from lab.test_openconfig_grpc import run_openconfig_grpc_checks
 from lab.test_pqc_connections import (
     CEOS_NODES,
     LabTargets,
-    PqcConnectionError,
     check_eossdkrpc_config,
     check_gnmi_config,
     check_restconf_config,

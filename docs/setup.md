@@ -48,11 +48,12 @@ make test-lab          # all live checks
 `make deploy` runs:
 
 1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
-2. `make build-radius`, `build-syslog`, `build-kme`, `build-test-runner` — Docker images ([Tool chain](misc/toolchain.md) — OpenSSL 3.5, curl, OpenSSH, and grpcurl build requirements)
-3. `make check-ceos-image` — verify local `ceos:4.36.2F`
-4. `make deploy-kme` — `check-containerlab`, then staged KME deploy
-5. Key-pool wait (`wait-kme-pool`)
-6. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
+2. `make check-containerlab` — Containerlab installed and new enough
+3. `make build-lab-images` — `docker buildx bake` of radius, syslog, kme, and test-runner ([Tool chain](misc/toolchain.md) — OpenSSL **3.5.0** minimum for PQC-safe TLS; lab pin is Alpine 3.24 apk **3.5.7**)
+4. `make check-ceos-image` — verify local `ceos:4.36.2F`
+5. `make deploy-kme` — staged KME deploy
+6. Key-pool wait (`wait-kme-pool`)
+7. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
 
 First EOS boot can take **5–10 minutes** per node on arm64.
 
@@ -85,14 +86,13 @@ Run `make help` for the authoritative target list in your clone.
 
 | Target | Description |
 |--------|-------------|
-| `make build-lab-images` | `docker buildx bake` radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL by default) |
+| `make build-lab-images` | `docker buildx bake` radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL **3.5.7**; PQC-safe minimum is OpenSSL **3.5.0**) |
 | `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build one lab image (includes image smoke tests) |
-| `make build-openssl` | No-op on the default path. Historic source OpenSSL 3.5.7: `make build-openssl USE_SOURCE_OPENSSL=1` (see [PQC overview](pqc-overview.md#alpine-324-openssl-357-lab-containers)) |
 | `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
 | `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
 | `make destroy` | Tear down Containerlab lab |
 | `make redeploy` | `gen-topo`, then `destroy`, then `deploy` |
-| `make clean` | Tear down lab, remove build artifacts and Docker images; **keeps** `download/`, `.env`, and the Docker BuildKit cache |
+| `make clean` | Tear down lab, remove build artifacts and Docker images (including the local `CEOS_IMAGE` tag); **keeps** `download/`, `.env`, and the Docker BuildKit cache |
 | `make reset` | `clean`, then `git reset --hard HEAD`, `git clean -fdx`, and `docker buildx prune` (discards local edits, gitignored files, and build cache) |
 | `make inspect` | Node status |
 
@@ -128,10 +128,11 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 | `CEOS_IMAGE` | `ceos:4.36.2F` | cEOS-lab Docker image tag |
 | `CLAB_PREFIX` | `arista` | Container name prefix |
 | `CLAB_NAME` | `quantum-safe` | Containerlab lab name |
-| `MGMT_SUBNET` | `172.20.127.0/24` | Management network CIDR |
+| `MGMT_SUBNET` | `172.20.127.0/24` | Management network IPv4 CIDR |
+| `MGMT_IPV6_SUBNET` | `2001:db8:127::/64` | Management network IPv6 CIDR |
 | `CLAB_MIN_VERSION` | `0.78.0` | Minimum Containerlab version enforced by `make check-containerlab` |
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
-| `USE_SOURCE_OPENSSL` | `0` | `0` = Alpine 3.24 apk OpenSSL; `1` = historic source OpenSSL 3.5.7 (`make deploy USE_SOURCE_OPENSSL=1`) |
+| `ALPINE_VERSION` | `3.24` | Alpine pin for lab image bake (`docker/base` and test-runner fetch/Go stages) |
 | `VERBOSE` | (unset) | `VERBOSE=1 make deploy` — plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
 
 Copy `.env.example` → `.env` to set any of the above persistently. The Makefile `-include`s `.env` for every target (command-line assignments override).

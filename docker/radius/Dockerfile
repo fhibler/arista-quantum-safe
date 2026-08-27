@@ -4,9 +4,8 @@
 #   key-establishment-group X25519MLKEM768
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
-# Rollback to source OpenSSL: make build-radius USE_SOURCE_OPENSSL=1
+# Alpine pin is docker-bake.hcl → docker/base (FROM builder / FROM runtime).
 
-ARG ALPINE_VERSION=3.24
 ARG FREERADIUS_VERSION=release_3_2_6
 
 FROM builder AS freeradius-build

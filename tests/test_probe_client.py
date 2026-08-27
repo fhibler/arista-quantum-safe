@@ -23,7 +23,6 @@ from lab.probe_client import (
     probe_client_key_path,
     probe_client_mode,
     probe_container,
-    probe_gnmi_cert_path,
     probe_node_name,
     run_curl_eapi,
 )
@@ -143,12 +142,6 @@ def test_live_check_prefix_default() -> None:
 
 def test_live_check_prefix_radius() -> None:
     assert live_check_prefix(PROBE_RADIUS_NODE) == "[live / radius]  "
-
-
-def test_probe_gnmi_cert_path_test_runner() -> None:
-    assert probe_gnmi_cert_path("ceos1-both", DEFAULT_PROBE_NODE) == (
-        "/etc/probe/certs/ceos1-both-gnmi.pem"
-    )
 
 
 def test_openssl_s_client_command_pqc_groups() -> None:

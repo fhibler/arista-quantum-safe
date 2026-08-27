@@ -44,17 +44,17 @@ EOS-side exceptions (config lists hybrid; wire may be classical): [Syslog](../se
 | **gribic** | Upstream **`go 1.21`** in `go.mod` — same `tlsmlkem=0` default | Source-build **0.0.14** with Go **1.27.0**; **`go mod edit -go=1.27`** before compile |
 | **gnoic / gnsic / gnmic** | Go **1.25+** prebuilt tarballs OK | Pin upstream release tarballs |
 
-Build entry points: `make build-lab-images`, `make build-radius`, `make build-syslog`, `make build-test-runner`. Historic source OpenSSL: `USE_SOURCE_OPENSSL=1`. Smoke checks: `make verify-test-runner-image`, plus the radius and syslog image test Makefile targets.
+Build entry points: `make build-lab-images`, `make build-radius`, `make build-syslog`, `make build-test-runner`. Smoke checks: `make verify-test-runner-image`, plus the radius and syslog image test Makefile targets.
 
 ## OpenSSL 3.5 (peer containers)
 
-EOS implements PQC-hybrid TLS on the switch. **Alpine 3.24 apk OpenSSL 3.5.7 advertises `X25519MLKEM768`**, so lab images no longer compile OpenSSL, curl, or OpenSSH from source.
+**OpenSSL 3.5.0** is the minimum version this lab treats as PQC-safe: it is the first OpenSSL release with built-in ML-KEM (FIPS 203) and the hybrid TLS groups `X25519MLKEM768` / `SecP256r1MLKEM768`. OpenSSL **3.2–3.4** do not advertise those groups without a third-party provider.
+
+EOS implements PQC-hybrid TLS on the switch. **Alpine 3.24 apk OpenSSL 3.5.7** (3.5 LTS) advertises `X25519MLKEM768`, so lab images use distro OpenSSL, curl, and OpenSSH — they do not compile those from source.
 
 Runtime policy is still `OPENSSL_CONF` pointing at PQC-only group lists (for example `Groups = X25519MLKEM768` in `docker/radius/openssl-pqc.cnf`). That file is **policy**, not a compile workaround.
 
-Rollback until soak: `make build-lab-images USE_SOURCE_OPENSSL=1` (source OpenSSL 3.5.7 under `/opt/openssl`).
-
-See also [PQC overview — Alpine 3.24 OpenSSL](../pqc-overview.md#alpine-324-openssl-357-lab-containers).
+See also [PQC overview — OpenSSL 3.5](../pqc-overview.md#openssl-35-minimum-for-pqc-safe-lab-containers).
 
 ## Go `crypto/tls` (gRPC clients)
 

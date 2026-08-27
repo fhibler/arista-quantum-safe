@@ -6,6 +6,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 
+from lab.errors import PqcConnectionError
 from lab.ceos_json import (
     CeosJsonError,
     assert_json_contains,
@@ -138,10 +139,6 @@ class LabTargets:
 
     def ceos_container(self, node: str) -> str:
         return container_name(node, lab_name=self.clab_name)
-
-
-class PqcConnectionError(RuntimeError):
-    """Raised when a live PQC connectivity check fails."""
 
 
 def report_config(detail: str) -> None:

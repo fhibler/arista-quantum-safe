@@ -1,6 +1,6 @@
 # Post-quantum cryptography (PQC) overview
 
-This page explains **terminology**, **algorithms used in the lab**, and **how lab containers get PQC-hybrid TLS** from Alpine 3.24 OpenSSL 3.5.7 plus `OPENSSL_CONF`.
+This page explains **terminology**, **algorithms used in the lab**, and **how lab containers get PQC-hybrid TLS** from Alpine 3.24 OpenSSL **3.5.7** (minimum PQC-safe OpenSSL: **3.5.0**) plus `OPENSSL_CONF`.
 
 PQC in Arista EOS 4.35+ applies primarily to **key establishment** — how two peers agree on session keys. **Certificates and signatures** in this lab remain **classical** (RSA/ECDSA). Record-layer **AEAD ciphers** (for example `TLS_AES_256_GCM_SHA384`) are unchanged; security against harvest-now-decrypt-later attacks comes from **PQC-hybrid key exchange**, not from renaming those ciphers.
 
@@ -99,11 +99,13 @@ These are **not** “PQC ciphers” in the sense of ML-KEM — they are standard
 
 See [Services overview](services/index.md) for per-interface live PQC status.
 
-## Alpine 3.24 OpenSSL 3.5.7 (lab containers)
+## OpenSSL 3.5 (minimum for PQC-safe lab containers)
 
-EOS implements switch-side TLS natively. **Peer containers use Alpine 3.24 apk OpenSSL 3.5.7**, which advertises `X25519MLKEM768`. Runtime policy is `OPENSSL_CONF` (PQC-hybrid groups only) — not a custom OpenSSL compile. See [Tool chain](misc/toolchain.md#probe-and-peer-client-summary) for per-client status, and [Setup](setup.md) for build targets (`make build-lab-images`, `make build-test-runner`, etc.).
+**OpenSSL 3.5.0** is the first OpenSSL release with **built-in** ML-KEM (FIPS 203) and the hybrid TLS groups this lab requires (`X25519MLKEM768`, `SecP256r1MLKEM768`). Earlier OpenSSL **3.2–3.4** lines do **not** advertise those groups without a third-party provider. This lab therefore treats **3.5.0** as the minimum OpenSSL version that is PQC-safe for TLS peers and probes.
 
-FreeRADIUS **3.2.6** and syslog-ng **4.8.1** are still compiled from source (Alpine’s `freeradius` package is 3.0.x). They **link against apk OpenSSL**. Historic source OpenSSL images remain behind `make … USE_SOURCE_OPENSSL=1` until soak is done.
+EOS implements switch-side TLS natively. **Peer containers use Alpine 3.24 apk OpenSSL 3.5.7** (3.5 LTS; EOL 2030-04-08), which advertises `X25519MLKEM768`. Runtime policy is `OPENSSL_CONF` (PQC-hybrid groups only) — not a custom OpenSSL compile. See [Tool chain](misc/toolchain.md#probe-and-peer-client-summary) for per-client status, and [Setup](setup.md) for build targets (`make build-lab-images`, `make build-test-runner`, etc.).
+
+FreeRADIUS **3.2.6** and syslog-ng **4.8.1** are still compiled from source (Alpine’s `freeradius` package is 3.0.x). They **link against apk OpenSSL**.
 
 The **KME simulator** (`quantum-safe-kme:latest`) uses Python/Flask mTLS separately — see [QKD service](services/qkd-etsi014.md).
 

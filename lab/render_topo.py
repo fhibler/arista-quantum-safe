@@ -173,6 +173,7 @@ def render_topology(
     repo_root: Path,
     ceos_image: str,
     mgmt_subnet: str,
+    mgmt_ipv6_subnet: str = DEFAULT_MGMT_IPV6_SUBNET,
     src: Path | None = None,
     dst: Path | None = None,
 ) -> Path:
@@ -180,6 +181,7 @@ def render_topology(
         repo_root=repo_root,
         ceos_image=ceos_image,
         mgmt_subnet=mgmt_subnet,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
     )
     topo_src = src or (repo_root / TOPOLOGY_PATH.relative_to(repo_root))
     topo_dst = dst or (repo_root / GEN_TOPOLOGY_PATH.relative_to(repo_root))
@@ -205,11 +207,18 @@ def render_topology_annotations(
     return ann_dst
 
 
-def render_config_templates(*, repo_root: Path, mgmt_subnet: str, ceos_image: str) -> None:
+def render_config_templates(
+    *,
+    repo_root: Path,
+    mgmt_subnet: str,
+    ceos_image: str,
+    mgmt_ipv6_subnet: str = DEFAULT_MGMT_IPV6_SUBNET,
+) -> None:
     substitutions = build_substitutions(
         repo_root=repo_root,
         ceos_image=ceos_image,
         mgmt_subnet=mgmt_subnet,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
     )
     out_dir = repo_root / "lab" / ".gen"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -253,11 +262,17 @@ def render_lab(
     repo_root: Path | None = None,
     ceos_image: str = DEFAULT_CEOS_IMAGE,
     mgmt_subnet: str = DEFAULT_MGMT_SUBNET,
+    mgmt_ipv6_subnet: str = DEFAULT_MGMT_IPV6_SUBNET,
 ) -> Path:
     root = repo_root or Path(__file__).resolve().parents[1]
-    render_config_templates(repo_root=root, mgmt_subnet=mgmt_subnet, ceos_image=ceos_image)
+    render_config_templates(
+        repo_root=root,
+        mgmt_subnet=mgmt_subnet,
+        ceos_image=ceos_image,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
+    )
     ips = mgmt_ips_for_subnet(mgmt_subnet)
-    ips6 = mgmt_ipv6_ips_for_subnet()
+    ips6 = mgmt_ipv6_ips_for_subnet(mgmt_ipv6_subnet)
     generate_radsec_pki(
         repo_root=root,
         radius_ips=(ips["radius"], ips6["radius"]),
@@ -280,6 +295,7 @@ def render_lab(
         repo_root=root,
         ceos_image=ceos_image,
         mgmt_subnet=mgmt_subnet,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
         src=root / "lab" / "quantum-safe.clab.yml",
         dst=root / "lab" / ".gen.quantum-safe.clab.yml",
     )
@@ -301,10 +317,19 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MGMT_SUBNET,
         help=f"Management IPv4 subnet (default: {DEFAULT_MGMT_SUBNET})",
     )
+    parser.add_argument(
+        "--mgmt-ipv6-subnet",
+        default=DEFAULT_MGMT_IPV6_SUBNET,
+        help=f"Management IPv6 subnet (default: {DEFAULT_MGMT_IPV6_SUBNET})",
+    )
     args = parser.parse_args(argv)
 
     try:
-        topo_path = render_lab(ceos_image=args.ceos_image, mgmt_subnet=args.mgmt_subnet)
+        topo_path = render_lab(
+            ceos_image=args.ceos_image,
+            mgmt_subnet=args.mgmt_subnet,
+            mgmt_ipv6_subnet=args.mgmt_ipv6_subnet,
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

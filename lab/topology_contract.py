@@ -21,7 +21,8 @@ MGMT_NODES = frozenset({"ceos1-both", "ceos2-pqc", "ceos3-qkd", "radius", "syslo
 RADIUS_IMAGE = "quantum-safe-radius:latest"
 SYSLOG_IMAGE = "quantum-safe-syslog:latest"
 TEST_RUNNER_IMAGE = "quantum-safe-test-runner:latest"
-HOST_IMAGE = "alpine:3.24"
+ALPINE_VERSION = "3.24"
+HOST_IMAGE = f"alpine:{ALPINE_VERSION}"
 TOPOLOGY_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml"
 TOPOLOGY_ANNOTATIONS_PATH = REPO_ROOT / "lab" / f"{LAB_NAME}.clab.yml.annotations.json"
 GEN_TOPOLOGY_PATH = REPO_ROOT / "lab" / f".gen.{LAB_NAME}.clab.yml"
@@ -314,7 +315,6 @@ CEOS_IMAGE_PLACEHOLDER = "${CEOS_IMAGE}"
 MGMT_SUBNET_PLACEHOLDER = "${MGMT_SUBNET}"
 MGMT_IPV6_SUBNET_PLACEHOLDER = "${MGMT_IPV6_SUBNET}"
 MGMT_VRF_ENV = "MGMT"
-MGMT_VRF_ENV = "MGMT"
 RADSEC_SECRET = "radsec"
 RADSEC_PORT = 2083
 SSL_PROFILE = "RADSEC"
@@ -340,8 +340,6 @@ PROBE_CA_TEST_RUNNER = "/etc/probe/certs/radsec-ca.pem"
 PROBE_SYSLOG_CA_TEST_RUNNER = "/etc/probe/certs/ca.pem"
 PROBE_CLIENT_CERT_TEST_RUNNER = "/etc/probe/certs/{node}-client.pem"
 PROBE_CLIENT_KEY_TEST_RUNNER = "/etc/probe/certs/{node}-client.key"
-PROBE_GNMI_CERT_TEST_RUNNER = "/etc/probe/certs/{node}-gnmi.pem"
-PROBE_GNMI_KEY_TEST_RUNNER = "/etc/probe/certs/{node}-gnmi.key"
 GNMI_GET_PATH = "/system/config/hostname"
 MACSEC_PROFILE = "dynamic"
 DOT1X_SUPPLICANT_PROFILE = "macsec-sp"
@@ -350,6 +348,14 @@ DOT1X_EAP_IDENTITY = "ceos2-pqc"
 DOT1X_REAUTH_PERIOD_SEC = 60
 TLS_PQC_GROUP = "X25519MLKEM768"
 TLS_PQC_EOS_GROUPS = TLS_PQC_GROUP
+OPENSSL_PQC_TLS_GROUPS = (TLS_PQC_GROUP, "MLKEM768", "SecP256r1MLKEM768")
+# Lab images use Alpine apk OpenSSL; these strings must not reappear in Dockerfiles.
+SOURCE_OPENSSL_DOCKERFILE_FORBIDDEN = (
+    "USE_SOURCE_OPENSSL",
+    "/opt/openssl",
+    "quantum-safe-openssl",
+    "OPENSSL_IMAGE",
+)
 # Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.2F syslog client gap on PQC-only).
 SYSLOG_TLS_PQC_SAFE_EOS_GROUPS = "X25519MLKEM768:ecdh_x25519:secp256r1"
 SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
@@ -528,7 +534,7 @@ KME_BINDS = [
 def _test_runner_probe_cert_binds() -> list[str]:
     binds: list[str] = []
     for node in sorted(CEOS_MGMT_NODES):
-        for suffix in ("client.pem", "client.key", "gnmi.pem", "gnmi.key"):
+        for suffix in ("client.pem", "client.key"):
             binds.append(
                 f"../lab/.gen/pki/{node}-{suffix}:/etc/probe/certs/{node}-{suffix}:ro"
             )
@@ -1268,6 +1274,73 @@ def validate_ceos_configs(
     return errors
 
 
+def dockerfile_source_openssl_errors(text: str, *, label: str) -> list[str]:
+    """Return contract errors when a Dockerfile still references source OpenSSL."""
+    return [
+        f"{label} must not contain: {forbidden!r}"
+        for forbidden in SOURCE_OPENSSL_DOCKERFILE_FORBIDDEN
+        if forbidden in text
+    ]
+
+
+def validate_lab_image_pins(repo_root: Path | None = None) -> list[str]:
+    """Validate Alpine / OpenSSL image pins live in bake + base images only."""
+    errors: list[str] = []
+    root = repo_root or REPO_ROOT
+    bake_path = root / "docker-bake.hcl"
+    if not bake_path.is_file():
+        errors.append("missing docker-bake.hcl")
+        return errors
+    bake = bake_path.read_text(encoding="utf-8")
+    alpine_block = (
+        'variable "ALPINE_VERSION" {\n'
+        f'  default = "{ALPINE_VERSION}"\n'
+        "}"
+    )
+    if alpine_block not in bake:
+        errors.append(f"docker-bake.hcl must pin ALPINE_VERSION default {ALPINE_VERSION!r}")
+    test_runner_args = bake.split('target "test-runner"')[-1].split("group ")[0]
+    if "ALPINE_VERSION = ALPINE_VERSION" not in test_runner_args:
+        errors.append("docker-bake.hcl test-runner target must pass ALPINE_VERSION")
+
+    for name in ("builder", "runtime"):
+        path = root / "docker" / "base" / f"Dockerfile.{name}"
+        if not path.is_file():
+            errors.append(f"missing {path.relative_to(root)}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "FROM alpine:${ALPINE_VERSION}" not in text:
+            errors.append(f"{path.relative_to(root)} must FROM alpine:${{ALPINE_VERSION}}")
+        errors.extend(dockerfile_source_openssl_errors(text, label=str(path.relative_to(root))))
+
+    for rel in (
+        "docker/radius/Dockerfile",
+        "docker/syslog/Dockerfile",
+        "docker/kme/Dockerfile",
+    ):
+        path = root / rel
+        if not path.is_file():
+            errors.append(f"missing {rel}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "ARG ALPINE_VERSION" in text:
+            errors.append(f"{rel} must not declare ARG ALPINE_VERSION (pin is bake + docker/base)")
+        errors.extend(dockerfile_source_openssl_errors(text, label=rel))
+
+    test_runner = root / "docker" / "test-runner" / "Dockerfile"
+    if not test_runner.is_file():
+        errors.append("missing docker/test-runner/Dockerfile")
+    else:
+        text = test_runner.read_text(encoding="utf-8")
+        if "FROM alpine:${ALPINE_VERSION}" not in text:
+            errors.append("test-runner Dockerfile fetch stages must FROM alpine:${ALPINE_VERSION}")
+        if "golang:${GO_VERSION}-alpine${ALPINE_VERSION}" not in text:
+            errors.append("test-runner Dockerfile must pin golang to alpine${ALPINE_VERSION}")
+        errors.extend(dockerfile_source_openssl_errors(text, label="docker/test-runner/Dockerfile"))
+
+    return errors
+
+
 def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
     """Validate syslog-ng image and collector configuration."""
     errors: list[str] = []
@@ -1317,8 +1390,9 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
     if dockerfile_path.is_file():
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
         for fragment in (
-            "ALPINE_VERSION=3.24",
             "SYSLOG_NG_VERSION=4.8.1",
+            "FROM builder",
+            "FROM runtime",
             "openssl-pqc.cnf",
             "OPENSSL_CONF=/etc/syslog-ng/openssl-pqc.cnf",
             "syslog-ng.conf",
@@ -1475,7 +1549,8 @@ def validate_radius_configs(
         dockerfile = dockerfile_path.read_text(encoding="utf-8")
         for fragment in (
             "ARG FREERADIUS_VERSION=release_3_2_6",
-            "ALPINE_VERSION=3.24",
+            "FROM builder",
+            "FROM runtime",
             "OPENSSL_CONF=/etc/raddb/openssl-pqc.cnf",
             "openssl-pqc.cnf",
             "mods-available/eap",
@@ -1740,6 +1815,7 @@ def validate_topology(
         mgmt_ipv6_subnet=expected_mgmt_ipv6_subnet,
     ))
     errors.extend(validate_syslog_configs(repo_root))
+    errors.extend(validate_lab_image_pins(repo_root))
     errors.extend(validate_topo_host_paths(repo_root))
 
     return errors

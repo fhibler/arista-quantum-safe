@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+from lab.topology_contract import ALPINE_VERSION
 from tests.scaffold_contract import REPO_ROOT
 
 DEVCONTAINER_JSON = REPO_ROOT / ".devcontainer" / "devcontainer.json"
@@ -128,7 +129,9 @@ def test_test_runner_harness_uses_container_python() -> None:
     assert 'make PYTHON="$PYTHON"' in harness
     assert "requirements-dev.txt" not in harness
     assert "PyYAML>=" in requirements_lab
-    assert "ALPINE_VERSION=3.24" in test_runner
+    assert f"ALPINE_VERSION={ALPINE_VERSION}" in test_runner
+    assert "FROM alpine:${ALPINE_VERSION}" in test_runner
+    assert "golang:${GO_VERSION}-alpine${ALPINE_VERSION}" in test_runner
     assert "python3" in test_runner
     assert "FROM python:3-alpine" not in test_runner
     assert "py3-yaml" not in test_runner
@@ -137,7 +140,7 @@ def test_test_runner_harness_uses_container_python() -> None:
 
 def test_kme_uses_apk_python3() -> None:
     kme = (REPO_ROOT / "docker" / "kme" / "Dockerfile").read_text(encoding="utf-8")
-    assert "ALPINE_VERSION=3.24" in kme
+    assert "ARG ALPINE_VERSION" not in kme
     assert "python3" in kme
     assert "FROM python:3-alpine" not in kme
     assert "PYTHON_VERSION" not in kme

@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 from lab.report import CheckStatus, report_summary
-from lab.test_pqc_connections import PqcConnectionError, run_eapi_checks
+from lab.errors import PqcConnectionError
+from lab.test_pqc_connections import run_eapi_checks
 from lab.topology_contract import LAB_NAME
 
 

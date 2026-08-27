@@ -4,9 +4,8 @@
 #   key-establishment-group X25519MLKEM768
 #
 # OpenSSL 3.5 negotiates hybrid groups via OPENSSL_CONF (openssl-pqc.cnf).
-# Rollback to source OpenSSL: make build-syslog USE_SOURCE_OPENSSL=1
+# Alpine pin is docker-bake.hcl → docker/base (FROM builder / FROM runtime).
 
-ARG ALPINE_VERSION=3.24
 ARG SYSLOG_NG_VERSION=4.8.1
 
 FROM builder AS syslog-ng-build

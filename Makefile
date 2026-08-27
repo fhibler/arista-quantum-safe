@@ -19,68 +19,44 @@ CLAB_PREFIX   := arista
 CLAB_NAME     := quantum-safe
 CLAB_MGMT_NETWORK := quantum-safe-mgmt
 MGMT_SUBNET   ?= 172.20.127.0/24
+MGMT_IPV6_SUBNET ?= 2001:db8:127::/64
 VERBOSE       ?=
 GEN_CONFIGS   := lab/.gen/clients.conf lab/.gen/clients-radsec.conf lab/.gen/ceos1-both.cfg lab/.gen/ceos2-pqc.cfg lab/.gen/ceos3-qkd.cfg lab/.gen/kme-lab.conf $(addprefix lab/.gen/pki/,ca.pem server.pem radsec-ca.pem syslog-server.pem syslog-server.key ceos1-both-client.pem ceos1-both-client.key ceos1-both-eapi.pem ceos1-both-eapi.key ceos1-both-gnmi.pem ceos1-both-gnmi.key ceos2-pqc-client.pem ceos2-pqc-client.key ceos2-pqc-eapi.pem ceos2-pqc-eapi.key ceos2-pqc-gnmi.pem ceos2-pqc-gnmi.key ceos3-qkd-client.pem ceos3-qkd-client.key ceos3-qkd-eapi.pem ceos3-qkd-eapi.key ceos3-qkd-gnmi.pem ceos3-qkd-gnmi.key) $(addprefix lab/.gen/kme-pki/,ca.crt.pem kme-a.crt.pem kme-a.key.pem kme-b.crt.pem kme-b.key.pem sae.crt.pem sae.key.pem sae-b.crt.pem sae-b.key.pem kme-sae-bundle.pem kme-sae-b-bundle.pem)
-# 0 = Alpine 3.24 apk OpenSSL (default after cutover)
-# 1 = historic source OpenSSL 3.5.7 under /opt/openssl
-USE_SOURCE_OPENSSL ?= 0
 RADIUS_IMAGE  := quantum-safe-radius:latest
 SYSLOG_IMAGE  := quantum-safe-syslog:latest
 KME_IMAGE     := quantum-safe-kme:latest
-KME_DOCKERFILE := docker/kme/Dockerfile
 TEST_RUNNER_IMAGE := quantum-safe-test-runner:latest
-ifeq ($(USE_SOURCE_OPENSSL),1)
-RADIUS_DOCKERFILE := docker/radius/Dockerfile.source-openssl
-SYSLOG_DOCKERFILE := docker/syslog/Dockerfile.source-openssl
-TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile.source-openssl
-else
-RADIUS_DOCKERFILE := docker/radius/Dockerfile
-SYSLOG_DOCKERFILE := docker/syslog/Dockerfile
-TEST_RUNNER_DOCKERFILE := docker/test-runner/Dockerfile
-endif
-OPENSSL_VERSION_TAG := 3.5.7
-OPENSSL_SHARED_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-shared
-OPENSSL_STATIC_IMAGE := quantum-safe-openssl:$(OPENSSL_VERSION_TAG)-static
-OPENSSL_DOCKERFILE := docker/openssl/Dockerfile
 GO_VERSION    ?= 1.27.0
+ALPINE_VERSION ?= 3.24
 HOST_ARCH     := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 BAKE_FILE     := docker-bake.hcl
 BAKE_PROGRESS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
-BAKE          := HOST_ARCH=$(HOST_ARCH) GO_VERSION=$(GO_VERSION) docker buildx bake -f $(BAKE_FILE) $(BAKE_PROGRESS)
-STAMP_DIR := .stamp
-OPENSSL_STATIC_STAMP := $(STAMP_DIR)/openssl-static.$(HOST_ARCH)
-OPENSSL_SHARED_STAMP := $(STAMP_DIR)/openssl-shared.$(HOST_ARCH)
+BAKE          := GO_VERSION=$(GO_VERSION) ALPINE_VERSION=$(ALPINE_VERSION) docker buildx bake -f $(BAKE_FILE) $(BAKE_PROGRESS) --set '*.platform=linux/$(HOST_ARCH)'
+OPENSSL_PQC_TLS_GROUPS := X25519MLKEM768 MLKEM768 SecP256r1MLKEM768
+verify_openssl_pqc_tls_groups = groups=$$(docker run --rm $(1) openssl list -tls-groups); for g in $(OPENSSL_PQC_TLS_GROUPS); do echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; echo "PQC group:  $$g present"; done
 # VERBOSE=1 in .env or on the command line, e.g. make deploy VERBOSE=1.
 # VERBOSE=1 → plain Docker build output and debug containerlab deploy logs.
-DOCKER_BUILD_FLAGS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
 CLAB_DEPLOY_FLAGS := $(if $(filter 1,$(VERBOSE)),-d,)
 MAKE_VERBOSE := $(if $(filter 1,$(VERBOSE)),VERBOSE=1,)
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 PRINT_VERIFY_HEADER := $(PYTHON) -c 'from lab.report import print_test_header; print_test_header(*__import__("sys").argv[1:])'
-MGMT_IP_RADIUS = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['radius'])")
-MGMT_IP_KME_A = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-a'])")
-MGMT_IP_KME_B = $(shell $(PYTHON) -c "from lab.topology_contract import mgmt_ips_for_subnet; print(mgmt_ips_for_subnet('$(MGMT_SUBNET)')['kme-b'])")
-KME_SAE_ID = $(shell $(PYTHON) -c "from lab.topology_contract import KME_SAE_ID; print(KME_SAE_ID)")
-
-# Source-OpenSSL rollback still shares one builder — do not run those under make -j.
-# Apk images use `docker buildx bake` (one solve); individual apk targets may run in parallel.
-.NOTPARALLEL: build-openssl build-openssl-static build-openssl-shared
 
 .PHONY: help gen-topo validate-topo sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-openssl build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean reset inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
+        download-ceos download-ceos-help build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
+        clean reset inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts \
+        test-radius-image test-syslog-image test-kme-image verify-test-runner-image
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/ceos/quadra-daemon-master.cfg.in configs/ceos/quadra-daemon-slave.cfg.in configs/ceos/quadra-macsec-master.cfg.in configs/ceos/quadra-macsec-slave.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
-	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
+	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
 
-gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET overrides (VERBOSE=1 echoes commands)
+gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET / MGMT_IPV6_SUBNET overrides (VERBOSE=1 echoes commands)
 	@if [ "$(VERBOSE)" = "1" ]; then set -x; fi; \
 	env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
-		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
+		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
 	@$(MAKE) --no-print-directory validate-topo $(MAKE_VERBOSE)
 
 sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
@@ -88,7 +64,7 @@ sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
 	@$(PYTHON) scripts/site_config.py --sync-mkdocs
 
 validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
-	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)'
+	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
 
 test: ## Run offline pytest (scaffold + contract validation)
 	$(PYTHON) -m pytest
@@ -251,44 +227,12 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		exit 1; \
 	}
 
-build-openssl-shared: ## Build quantum-safe-openssl:3.5.7-shared (no-op unless USE_SOURCE_OPENSSL=1)
-	@$(if $(filter 1,$(USE_SOURCE_OPENSSL)),$(MAKE) --no-print-directory $(OPENSSL_SHARED_STAMP),echo "Skipping source OpenSSL shared image (USE_SOURCE_OPENSSL=0; Alpine 3.24 apk provides 3.5.7)")
-
-$(OPENSSL_SHARED_STAMP): $(OPENSSL_DOCKERFILE)
-	@mkdir -p $(STAMP_DIR)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_SHARED=1 \
-		-t $(OPENSSL_SHARED_IMAGE) -f $(OPENSSL_DOCKERFILE) .
-	@touch $@
-
-build-openssl-static: ## Build quantum-safe-openssl:3.5.7-static (no-op unless USE_SOURCE_OPENSSL=1)
-	@$(if $(filter 1,$(USE_SOURCE_OPENSSL)),$(MAKE) --no-print-directory $(OPENSSL_STATIC_STAMP),echo "Skipping source OpenSSL static image (USE_SOURCE_OPENSSL=0; Alpine 3.24 apk provides 3.5.7)")
-
-$(OPENSSL_STATIC_STAMP): $(OPENSSL_DOCKERFILE)
-	@mkdir -p $(STAMP_DIR)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_SHARED=0 \
-		-t $(OPENSSL_STATIC_IMAGE) -f $(OPENSSL_DOCKERFILE) .
-	@touch $@
-
-build-openssl: build-openssl-static build-openssl-shared ## Build both OpenSSL base images (no-op unless USE_SOURCE_OPENSSL=1)
-
-build-lab-images: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl,) ## Build all lab Docker images
-ifeq ($(USE_SOURCE_OPENSSL),1)
-	@$(MAKE) --no-print-directory build-radius build-syslog build-kme build-test-runner USE_SOURCE_OPENSSL=1 $(MAKE_VERBOSE)
-else
+build-lab-images: $(GEN_CONFIGS) ## Build all lab Docker images (Alpine 3.24 apk OpenSSL 3.5+)
 	$(BAKE)
 	@$(MAKE) --no-print-directory test-radius-image test-syslog-image test-kme-image verify-test-runner-image $(MAKE_VERBOSE)
-endif
 
-build-radius: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-radius:latest for the host architecture
-ifeq ($(USE_SOURCE_OPENSSL),1)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
-		-t $(RADIUS_IMAGE) -f $(RADIUS_DOCKERFILE) .
-else
+build-radius: $(GEN_CONFIGS) ## Build quantum-safe-radius:latest for the host architecture
 	$(BAKE) radius
-endif
 	@$(MAKE) --no-print-directory test-radius-image $(MAKE_VERBOSE)
 
 test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
@@ -299,24 +243,14 @@ test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + Open
 		"  OpenSSL groups, RadSec tls site, radiusd -C"; \
 	echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
 	echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
-	groups=$$(docker run --rm $(RADIUS_IMAGE) openssl list -tls-groups); \
-	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
-		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
-		echo "PQC group:  $$g present"; \
-	done; \
+	$(call verify_openssl_pqc_tls_groups,$(RADIUS_IMAGE)); \
 	docker run --rm $(RADIUS_IMAGE) test -L /etc/raddb/sites-enabled/tls; \
 	echo "RadSec:     tls site enabled"; \
 	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
 	echo "RadSec:     radiusd config OK"
 
-build-syslog: $(GEN_CONFIGS) $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-static,) ## Build quantum-safe-syslog:latest for the host architecture
-ifeq ($(USE_SOURCE_OPENSSL),1)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_STATIC_IMAGE) \
-		-t $(SYSLOG_IMAGE) -f $(SYSLOG_DOCKERFILE) .
-else
+build-syslog: $(GEN_CONFIGS) ## Build quantum-safe-syslog:latest for the host architecture
 	$(BAKE) syslog
-endif
 	@$(MAKE) --no-print-directory test-syslog-image $(MAKE_VERBOSE)
 
 test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
@@ -326,11 +260,7 @@ test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5
 		"  $(SYSLOG_IMAGE)" \
 		"  OpenSSL groups, config syntax, TLS healthcheck"; \
 	echo "OpenSSL:    $$(docker run --rm $(SYSLOG_IMAGE) openssl version)"; \
-	groups=$$(docker run --rm $(SYSLOG_IMAGE) openssl list -tls-groups); \
-	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
-		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
-		echo "PQC group:  $$g present"; \
-	done; \
+	$(call verify_openssl_pqc_tls_groups,$(SYSLOG_IMAGE)); \
 	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -f /etc/syslog-ng/syslog-ng.conf; \
 	docker run --rm --entrypoint /opt/syslog-ng/sbin/syslog-ng $(SYSLOG_IMAGE) -s -f /etc/syslog-ng/syslog-ng.conf; \
 	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /entrypoint.sh; \
@@ -364,15 +294,8 @@ test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
 	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
 	echo "KME:        entrypoint present"
 
-build-test-runner: $(if $(filter 1,$(USE_SOURCE_OPENSSL)),build-openssl-shared,) ## Build quantum-safe-test-runner:latest for the host architecture
-ifeq ($(USE_SOURCE_OPENSSL),1)
-	docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS) \
-		--build-arg OPENSSL_IMAGE=$(OPENSSL_SHARED_IMAGE) \
-		--build-arg GO_VERSION=$(GO_VERSION) \
-		-t $(TEST_RUNNER_IMAGE) -f $(TEST_RUNNER_DOCKERFILE) .
-else
+build-test-runner: ## Build quantum-safe-test-runner:latest for the host architecture
 	$(BAKE) test-runner
-endif
 	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
 
 verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
@@ -382,11 +305,7 @@ verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5
 		"  $(TEST_RUNNER_IMAGE)" \
 		"  curl/OpenSSH PQC, gnmic/grpcurl/gnoic/gribic/gnsic"; \
 	echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
-	groups=$$(docker run --rm $(TEST_RUNNER_IMAGE) openssl list -tls-groups); \
-	for g in X25519MLKEM768 MLKEM768 SecP256r1MLKEM768; do \
-		echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; \
-		echo "PQC group:  $$g present"; \
-	done; \
+	$(call verify_openssl_pqc_tls_groups,$(TEST_RUNNER_IMAGE)); \
 	echo "curl:       $$(docker run --rm $(TEST_RUNNER_IMAGE) curl --version 2>&1 | sed -n '1p')"; \
 	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'curl --version | grep -qi openssl'; \
 	echo "Probe:      curl linked to OpenSSL"; \
@@ -413,7 +332,7 @@ wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, po
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo build-lab-images check-ceos-image ## Deploy lab (VERBOSE=1: plain Docker build logs + debug containerlab)
+deploy: gen-topo check-containerlab build-lab-images check-ceos-image ## Deploy lab (VERBOSE=1: plain Docker build logs + debug containerlab)
 	@$(MAKE) --no-print-directory deploy-kme $(MAKE_VERBOSE)
 	@$(MAKE) --no-print-directory wait-kme-pool $(MAKE_VERBOSE)
 	containerlab deploy -t $(CLAB_TOPO_GEN) $(CLAB_DEPLOY_FLAGS)
@@ -439,7 +358,7 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 		fi; \
 		echo "=== Cleaning lab logs ==="; \
 		if docker info >/dev/null 2>&1; then \
-			docker run --rm -v "$(CURDIR)/lab/logs:/logs:rw" alpine sh -c \
+			docker run --rm -v "$(CURDIR)/lab/logs:/logs:rw" alpine:$(ALPINE_VERSION) sh -c \
 				'find /logs/radius /logs/syslog -mindepth 1 ! -name .gitkeep -exec rm -rf {} + 2>/dev/null || true'; \
 		fi; \
 	else \
@@ -452,10 +371,9 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true; \
 	echo "=== Removing tmp/ workspace ==="; \
 	rm -rf tmp; \
-	rm -rf "$(STAMP_DIR)"; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "=== Removing Docker images ==="; \
-		for repo in quantum-safe-openssl quantum-safe-builder quantum-safe-runtime quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
+		for repo in quantum-safe-builder quantum-safe-runtime quantum-safe-radius quantum-safe-syslog quantum-safe-kme quantum-safe-test-runner; do \
 			tags=$$(docker images "$$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true); \
 			for tag in $$tags; do \
 				echo "  rmi $$tag"; \

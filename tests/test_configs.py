@@ -16,6 +16,7 @@ from lab.topology_contract import (
     RADIUS_SERVER_IP,
     RADIUS_SERVER_IPV6,
     validate_ceos_configs,
+    validate_lab_image_pins,
     validate_radius_configs,
     validate_syslog_configs,
 )
@@ -48,6 +49,11 @@ def test_radius_configs_contract(repo_root: Path) -> None:
 
 def test_syslog_configs_contract(repo_root: Path) -> None:
     errors = validate_syslog_configs(repo_root)
+    assert errors == [], "\n".join(errors)
+
+
+def test_lab_image_pins_contract(repo_root: Path) -> None:
+    errors = validate_lab_image_pins(repo_root)
     assert errors == [], "\n".join(errors)
 
 

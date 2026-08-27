@@ -11,11 +11,15 @@ import pytest
 import yaml
 
 from lab.topology_contract import (
+    ALPINE_VERSION,
     DEFAULT_CEOS_IMAGE,
+    DEFAULT_MGMT_IPV6_SUBNET,
     DEFAULT_MGMT_SUBNET,
     GEN_TOPOLOGY_PATH,
+    OPENSSL_PQC_TLS_GROUPS,
     TOPOLOGY_PATH,
     load_topology,
+    validate_lab_image_pins,
     validate_topology,
 )
 
@@ -32,6 +36,27 @@ def _run_make(*targets: str, env: dict[str, str] | None = None, check: bool = Tr
         env={**os.environ, **(env or {})},
         check=check,
     )
+
+
+def _makefile_recipe(target: str) -> str:
+    """Return one Makefile target's header and recipe lines (not neighbor-dependent)."""
+    collected: list[str] = []
+    capturing = False
+    for line in MAKEFILE.read_text(encoding="utf-8").splitlines():
+        if capturing:
+            if line.startswith("\t"):
+                collected.append(line)
+                continue
+            break
+        if not line.startswith(f"{target}:"):
+            continue
+        rest = line[len(target) :]
+        if rest.startswith(":") and (len(rest) == 1 or rest[1] in " \t#"):
+            capturing = True
+            collected.append(line)
+    if not capturing:
+        raise AssertionError(f"Makefile has no target {target!r}")
+    return "\n".join(collected)
 
 
 def test_makefile_exists() -> None:
@@ -51,12 +76,15 @@ def test_makefile_exists() -> None:
         "import-ceos-help",
         "download-ceos",
         "download-ceos-help",
-        "build-openssl",
         "build-lab-images",
         "build-radius",
         "build-syslog",
         "build-kme",
         "build-test-runner",
+        "test-radius-image",
+        "test-syslog-image",
+        "test-kme-image",
+        "verify-test-runner-image",
         "deploy-kme",
         "wait-kme-pool",
         "deploy",
@@ -96,6 +124,7 @@ def test_gen_topo_default_image() -> None:
     image = data["topology"]["kinds"]["arista_ceos"]["image"]
     assert image == DEFAULT_CEOS_IMAGE
     assert data["mgmt"]["ipv4-subnet"] == DEFAULT_MGMT_SUBNET
+    assert data["mgmt"]["ipv6-subnet"] == DEFAULT_MGMT_IPV6_SUBNET
 
 
 def test_gen_topo_custom_ceos_image() -> None:
@@ -117,21 +146,43 @@ def test_gen_topo_custom_mgmt_subnet() -> None:
     assert errors == []
 
 
+def test_gen_topo_custom_mgmt_ipv6_subnet() -> None:
+    custom = "2001:db8:99::/64"
+    _run_make(
+        "gen-topo",
+        f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}",
+        f"MGMT_IPV6_SUBNET={custom}",
+    )
+    data = load_topology(GEN_TOPOLOGY_PATH)
+    assert data["mgmt"]["ipv6-subnet"] == custom
+    assert data["topology"]["nodes"]["radius"]["mgmt-ipv6"] == "2001:db8:99::50"
+    errors = validate_topology(data, mgmt_ipv6_subnet=custom)
+    assert errors == []
+
+
 def test_gen_topo_substitutes_placeholders() -> None:
     _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
     src = TOPOLOGY_PATH.read_text(encoding="utf-8")
     gen = GEN_TOPOLOGY_PATH.read_text(encoding="utf-8")
     assert "${CEOS_IMAGE}" in src
     assert "${MGMT_SUBNET}" in src
+    assert "${MGMT_IPV6_SUBNET}" in src
     assert "${CEOS_IMAGE}" not in gen
     assert "${MGMT_SUBNET}" not in gen
+    assert "${MGMT_IPV6_SUBNET}" not in gen
     assert f"image: {DEFAULT_CEOS_IMAGE}" in gen
     assert f"ipv4-subnet: {DEFAULT_MGMT_SUBNET}" in gen
+    assert f"ipv6-subnet: {DEFAULT_MGMT_IPV6_SUBNET}" in gen
 
 
 def test_validate_topo_passes_via_make() -> None:
     _run_make("gen-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
-    result = _run_make("validate-topo", f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}", f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}")
+    result = _run_make(
+        "validate-topo",
+        f"CEOS_IMAGE={DEFAULT_CEOS_IMAGE}",
+        f"MGMT_SUBNET={DEFAULT_MGMT_SUBNET}",
+        f"MGMT_IPV6_SUBNET={DEFAULT_MGMT_IPV6_SUBNET}",
+    )
     assert result.returncode == 0
     assert GEN_TOPOLOGY_PATH.is_file()
 
@@ -249,80 +300,88 @@ def test_check_ceos_image_fails_when_missing() -> None:
     combined = result.stdout + result.stderr
     assert "not found" in combined.lower()
     assert "docker import download/cEOS64-lab-" in combined
-    assert "import-ceos" in MAKEFILE.read_text(encoding="utf-8").split("check-ceos-image:")[1].split("check-containerlab:")[0]
+    assert "import-ceos" in _makefile_recipe("check-ceos-image")
 
 
 def test_check_ceos_image_imports_when_missing() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    check = content.split("check-ceos-image:")[1].split("check-containerlab:")[0]
-    assert "importing from" in check
-    assert "SKIP_CEOS_IMPORT" in check
-    assert '$(MAKE) --no-print-directory import-ceos' in check
+    recipe = _makefile_recipe("check-ceos-image")
+    assert "importing from" in recipe
+    assert "SKIP_CEOS_IMPORT" in recipe
+    assert "import-ceos" in recipe
 
 
 def test_image_verify_targets_print_test_headers() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "PRINT_VERIFY_HEADER" in content
     assert "print_test_header" in content
-    recipes = [
-        ("check-ceos-image:", "check-containerlab:", "cEOS image verification"),
-        ("test-radius-image:", "build-syslog:", "radius image verification"),
-        ("test-syslog-image:", "build-kme:", "syslog image verification"),
-        ("test-kme-image:", "build-test-runner:", "kme image verification"),
-        ("verify-test-runner-image:", "DEPLOY_KME_NODES", "test-runner image verification"),
-    ]
-    for start, end, title in recipes:
-        recipe = content.split(start)[1].split(end)[0]
+    titles = {
+        "check-ceos-image": "cEOS image verification",
+        "test-radius-image": "radius image verification",
+        "test-syslog-image": "syslog image verification",
+        "test-kme-image": "kme image verification",
+        "verify-test-runner-image": "test-runner image verification",
+    }
+    for target, title in titles.items():
+        recipe = _makefile_recipe(target)
         assert "$(PRINT_VERIFY_HEADER)" in recipe
         assert title in recipe
 
 
 def test_deploy_verbose_enables_plain_docker_build_and_debug_containerlab() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "DOCKER_BUILD_FLAGS" in content
+    assert "BAKE_PROGRESS" in content
     assert "--progress=plain" in content
     assert "CLAB_DEPLOY_FLAGS" in content
-    deploy = content.split("deploy: gen-topo")[1].split("destroy:")[0]
+    assert "deploy: gen-topo check-containerlab build-lab-images check-ceos-image" in content
+    deploy = _makefile_recipe("deploy")
     assert "CLAB_DEPLOY_FLAGS" in deploy
     assert "deploy-kme $(MAKE_VERBOSE)" in deploy
     assert "wait-kme-pool $(MAKE_VERBOSE)" in deploy
-    assert "docker buildx build --load --platform linux/$(HOST_ARCH) $(DOCKER_BUILD_FLAGS)" in content
     assert "docker buildx bake" in content
     assert "BAKE" in content
+    assert "docker buildx build --load" not in content
 
 
-def test_use_source_openssl_flag_defaults_to_apk() -> None:
+def test_source_openssl_path_removed() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "USE_SOURCE_OPENSSL ?= 0" in content
-    assert "Dockerfile.source-openssl" in content
-    result = _run_make("-n", "build-openssl")
-    combined = result.stdout + result.stderr
-    assert "Skipping source OpenSSL" in combined
-    assert "docker/openssl/Dockerfile" not in combined
+    assert "USE_SOURCE_OPENSSL" not in content
+    assert "Dockerfile.source-openssl" not in content
+    assert "docker/openssl/Dockerfile" not in content
+    assert "quantum-safe-openssl" not in content
+    assert "build-openssl" not in content
+    assert "MGMT_IP_RADIUS" not in content
+    assert not (REPO_ROOT / "docker" / "openssl").exists()
+    assert not (REPO_ROOT / "docker" / "radius" / "Dockerfile.source-openssl").exists()
+    assert not (REPO_ROOT / "docker" / "syslog" / "Dockerfile.source-openssl").exists()
+    assert not (REPO_ROOT / "docker" / "test-runner" / "Dockerfile.source-openssl").exists()
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "USE_SOURCE_OPENSSL" not in env_example
+    assert validate_lab_image_pins(REPO_ROOT) == []
+    for doc in [REPO_ROOT / "README.md", *(REPO_ROOT / "docs").rglob("*.md")]:
+        text = doc.read_text(encoding="utf-8")
+        assert "USE_SOURCE_OPENSSL" not in text, doc
+        assert "build-openssl" not in text, doc
     result = _run_make("-n", "build-lab-images")
     combined = result.stdout + result.stderr
     assert "docker buildx bake" in combined
     assert "docker-bake.hcl" in combined
-    assert "docker/openssl/Dockerfile" not in combined
-    assert "-f docker/radius/Dockerfile.source-openssl" not in combined
+    assert f"ALPINE_VERSION={ALPINE_VERSION}" in combined
+    assert "--set '*.platform=linux/" in combined
+    result = _run_make("help")
+    assert "build-openssl" not in result.stdout
 
 
-def test_use_source_openssl_rollback_builds_source_images() -> None:
+def test_makefile_shares_openssl_pqc_group_verify() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
-    assert "docker/openssl/Dockerfile" in content
-    openssl_static = content.split("$(OPENSSL_STATIC_STAMP):")[1].split("build-openssl:")[0]
-    assert "OPENSSL_DOCKERFILE" in openssl_static
-    assert "-t $(OPENSSL_STATIC_IMAGE)" in openssl_static
-    result = _run_make("-n", "build-openssl", "USE_SOURCE_OPENSSL=1")
-    combined = result.stdout + result.stderr
-    assert "Skipping source OpenSSL" not in combined
-    result = _run_make("-n", "build-radius", "USE_SOURCE_OPENSSL=1")
-    combined = result.stdout + result.stderr
-    assert "-f docker/radius/Dockerfile.source-openssl" in combined
-    assert "docker buildx bake" not in combined
-    result = _run_make("-n", "build-lab-images", "USE_SOURCE_OPENSSL=1")
-    combined = result.stdout + result.stderr
-    assert "-f docker/radius/Dockerfile.source-openssl" in combined
+    expected = "OPENSSL_PQC_TLS_GROUPS := " + " ".join(OPENSSL_PQC_TLS_GROUPS)
+    assert expected in content
+    assert "verify_openssl_pqc_tls_groups" in content
+    for target in ("test-radius-image", "test-syslog-image", "verify-test-runner-image"):
+        result = _run_make("-n", target)
+        combined = result.stdout + result.stderr
+        assert "openssl list -tls-groups" in combined
+        for group in OPENSSL_PQC_TLS_GROUPS:
+            assert group in combined
 
 
 def test_makefile_defines_check_containerlab() -> None:
@@ -394,88 +453,53 @@ def test_validate_topo_uses_cli_module() -> None:
     assert "lab.render_topo" in result.stdout
     result = _run_make("-n", "validate-topo")
     assert "lab.validate_topo" in result.stdout
+    assert "--mgmt-ipv6-subnet" in result.stdout
 
 
 def test_makefile_defines_mgmt_subnet() -> None:
     content = MAKEFILE.read_text(encoding="utf-8")
     assert "MGMT_SUBNET   ?=" in content
     assert "172.20.127.0/24" in content
+    assert "MGMT_IPV6_SUBNET ?=" in content
+    assert "2001:db8:127::/64" in content
     assert "prepare-ceos-monitor" not in content
     assert "prepare-mgmt-net" not in content
 
 
-def test_test_radsec_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-radsec:" in content
-    radsec = content.split("test-radsec:")[1].split("test-kme:")[0]
-    assert "lab.test_radsec" in radsec
-    assert "VERBOSE" in radsec
-
-
-def test_test_kme_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-kme:" in content
-    kme = content.split("test-kme:")[1].split("test-eapi:")[0]
-    assert "lab.test_kme" in kme
-    assert "--section kme" not in kme
-
-
-def test_test_eapi_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-eapi:" in content
-    eapi = content.split("test-eapi:")[1].split("test-ssh:")[0]
-    assert "lab.test_eapi" in eapi
-    assert "VERBOSE" in eapi
-
-
-def test_test_ssh_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-ssh:" in content
-    ssh = content.split("test-ssh:")[1].split("test-openconfig:")[0]
-    assert "lab.test_ssh" in ssh
-    assert "VERBOSE" in ssh
-
-
-def test_test_openconfig_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-openconfig:" in content
-    openconfig = content.split("test-openconfig:")[1].split("test-syslog:")[0]
-    assert "lab.test_openconfig" in openconfig
-    assert "VERBOSE" in openconfig
-
-
-def test_test_macsec_dot1x_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-macsec-dot1x:" in content
-    macsec = content.split("test-macsec-dot1x:")[1].split("test-macsec-dot1x-reauth:")[0]
-    assert "lab.test_macsec_dot1x" in macsec
-
-
-def test_test_macsec_qkd_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-macsec-qkd:" in content
-    qkd = content.split("test-macsec-qkd:")[1].split("test-hosts:")[0]
-    assert "lab.test_macsec_qkd" in qkd
-
-
-def test_test_hosts_recipe_delegates_to_python_module() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    assert "test-hosts:" in content
-    hosts = content.split("test-hosts:")[1].split("# Export/publish")[0]
-    assert "lab.test_hosts" in hosts
-    assert "lab.test_lab" not in hosts
+@pytest.mark.parametrize(
+    ("target", "module", "forbidden"),
+    [
+        ("test-radsec", "lab.test_radsec", None),
+        ("test-kme", "lab.test_kme", "--section kme"),
+        ("test-eapi", "lab.test_eapi", None),
+        ("test-ssh", "lab.test_ssh", None),
+        ("test-openconfig", "lab.test_openconfig", None),
+        ("test-syslog", "lab.test_syslog", None),
+        ("test-macsec-dot1x", "lab.test_macsec_dot1x", None),
+        ("test-macsec-qkd", "lab.test_macsec_qkd", None),
+        ("test-hosts", "lab.test_hosts", "lab.test_lab"),
+    ],
+)
+def test_live_check_delegates_to_python_module(target: str, module: str, forbidden: str | None) -> None:
+    result = _run_make("-n", target)
+    combined = result.stdout + result.stderr
+    assert module in combined
+    assert "-u VERBOSE" in combined
+    if forbidden:
+        assert forbidden not in combined
+    verbose = _run_make("-n", "VERBOSE=1", target)
+    assert "VERBOSE=1" in verbose.stdout + verbose.stderr
 
 
 def test_clean_recipe_removes_artifacts_and_images() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    clean = content.split("clean:")[1].split("reset:")[0]
+    result = _run_make("-n", "clean")
+    clean = result.stdout + result.stderr
     assert "containerlab destroy" in clean
     assert "rm -rf lab/.gen lab/.gen.*" in clean
     assert 'rm -rf "$(CEOS_DOWNLOAD_DIR)"' not in clean
     assert "rm -rf .venv .pytest_cache" in clean
-    assert 'rm -rf ".stamp"' in clean or 'rm -rf "$(STAMP_DIR)"' in clean
     assert "docker images" in clean
-    assert "quantum-safe-openssl" in clean
+    assert "quantum-safe-openssl" not in clean
     assert "quantum-safe-builder" in clean
     assert "quantum-safe-runtime" in clean
     assert "quantum-safe-radius" in clean
@@ -484,7 +508,7 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
     assert "docker rmi" in clean
     assert "rm -f .env" not in clean
     assert "download/ and .env preserved" in clean
-    assert "CLAB_MGMT_NETWORK" in clean
+    assert "quantum-safe-mgmt" in clean
     assert "docker network rm" in clean
     assert "Cleaning lab logs" in clean
     assert "/logs/radius /logs/syslog" in clean
@@ -493,12 +517,10 @@ def test_clean_recipe_removes_artifacts_and_images() -> None:
 
 
 def test_reset_recipe_resets_git_worktree() -> None:
-    content = MAKEFILE.read_text(encoding="utf-8")
-    reset = content.split("reset:")[1].split("redeploy:")[0]
-    assert "clean" in reset
+    result = _run_make("-n", "reset")
+    reset = result.stdout + result.stderr
     assert "git reset --hard HEAD" in reset
     assert "git clean -fdx" in reset
-    assert "Cleaning lab logs" not in reset
     assert "buildx prune" in reset
 
 
@@ -524,6 +546,13 @@ def test_docker_bake_file_lists_apk_lab_images() -> None:
     assert 'group "default"' in content
     assert "docker/base/Dockerfile.builder" in content
     assert "docker/base/Dockerfile.runtime" in content
+    test_runner = content.split('target "test-runner"')[-1].split("group ")[0]
+    assert "ALPINE_VERSION = ALPINE_VERSION" in test_runner
+    makefile = MAKEFILE.read_text(encoding="utf-8")
+    assert f"ALPINE_VERSION ?= {ALPINE_VERSION}" in makefile
+    assert "HOST_ARCH" not in content
+    assert "platforms" not in content
+    assert "--set '*.platform=linux/$(HOST_ARCH)'" in makefile
 
 
 def test_root_makefile_has_no_export_targets() -> None:

@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Expected mgmt IPv4 subnet (default: value from topology)",
     )
+    parser.add_argument(
+        "--mgmt-ipv6-subnet",
+        default=None,
+        help="Expected mgmt IPv6 subnet (default: value from topology)",
+    )
     args = parser.parse_args(argv)
 
     topo_path = args.topology
@@ -46,7 +51,16 @@ def main(argv: list[str] | None = None) -> int:
     if mgmt_subnet is None:
         mgmt_subnet = data.get("mgmt", {}).get("ipv4-subnet")
 
-    errors = validate_topology(data, ceos_image=ceos_image, mgmt_subnet=mgmt_subnet)
+    mgmt_ipv6_subnet = args.mgmt_ipv6_subnet
+    if mgmt_ipv6_subnet is None:
+        mgmt_ipv6_subnet = data.get("mgmt", {}).get("ipv6-subnet")
+
+    errors = validate_topology(
+        data,
+        ceos_image=ceos_image,
+        mgmt_subnet=mgmt_subnet,
+        mgmt_ipv6_subnet=mgmt_ipv6_subnet,
+    )
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1

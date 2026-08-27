@@ -7,7 +7,6 @@ site/
 tmp/
 .venv
 .pytest_cache
-.stamp
 lab/logs/
 lab/clab-*
 clab-*

@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Literal
 
+from lab.errors import PqcConnectionError
 from lab.probe_client import run_openssl_s_client
 from lab.report import CheckStatus
 from lab.topology_contract import TLS_PQC_GROUP
@@ -190,8 +191,6 @@ def report_tls_wire_probe(
     error_label: str | None = None,
 ) -> TlsWireResult:
     """Report a TLS wire probe; raise PqcConnectionError on strict failure."""
-    from lab.test_pqc_connections import PqcConnectionError
-
     summary = format_tls_wire_summary(result, port=port)
     status = tls_wire_status(result, policy)
     detail = f"{label} ({family}), {summary}"

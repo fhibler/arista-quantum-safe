@@ -23,7 +23,8 @@ from lab.topology_contract import (
     quadra_swix_name,
 )
 from lab.kme_http import DOCKER_EXEC_TIMEOUT_SEC
-from lab.test_pqc_connections import PqcConnectionError, ceos_cli
+from lab.errors import PqcConnectionError
+from lab.test_pqc_connections import ceos_cli
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 MASTER = "ceos1-both"

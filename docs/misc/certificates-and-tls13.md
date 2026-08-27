@@ -133,7 +133,7 @@ openssl verify -CAfile ca.pem server.pem
 
 ### Test TLS 1.3 server handshake (PQC-hybrid group)
 
-Requires OpenSSL 3.5+ with ML-KEM support (lab **test-runner** image):
+Requires **OpenSSL 3.5.0 or newer** with built-in ML-KEM (lab **test-runner** image ships Alpine apk **3.5.7**):
 
 ```bash
 # Server auth only (eAPI-style)

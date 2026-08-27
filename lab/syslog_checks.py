@@ -15,10 +15,11 @@ from typing import Any, Callable
 
 from lab.ceos_json import json_tree_contains, json_truthy
 from lab.probe_client import probe_syslog_ca_path, run_openssl_s_client
-from lab.topology_contract import LAB_NAME, SYSLOG_PORT, SYSLOG_SSL_PROFILE, hostport
+from lab.topology_contract import LAB_NAME, SYSLOG_PORT, SYSLOG_SSL_PROFILE, TLS_PQC_GROUP, hostport
+from lab.tls_wire import negotiated_pqc_group
 from lab.verbose import echo_command, verbose_enabled
 
-PQC_GROUP = "X25519MLKEM768"
+PQC_GROUP = TLS_PQC_GROUP
 OPENSSL_PQC_CNF = "/etc/syslog-ng/openssl-pqc.cnf"
 SYSLOG_LOG_PATH = "/var/log/syslog/eos.log"
 PROBE_MESSAGE = "quantum-safe-syslog-probe"
@@ -364,10 +365,6 @@ def wait_for_syslog_healthy(container: str, *, timeout_sec: int = 90) -> None:
 def tcpdump_captured_packet(output: str) -> bool:
     """Return True only when tcpdump stderr confirms a packet was captured."""
     return bool(re.search(r"\b1 packet captured\b", output))
-
-
-def negotiated_pqc_group(output: str) -> bool:
-    return PQC_GROUP in output
 
 
 def tls_handshake_incomplete(output: str) -> bool:

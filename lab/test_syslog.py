@@ -17,8 +17,8 @@ from lab.syslog_checks import (
     check_syslog_collector_listeners,
     wait_for_syslog_healthy,
 )
+from lab.errors import PqcConnectionError
 from lab.test_pqc_connections import (
-    PqcConnectionError,
     check_syslog_collector_config,
     lab_targets_for_subnet,
     probe_syslog_delivery,

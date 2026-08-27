@@ -38,6 +38,17 @@ def test_validate_topo_cli_with_ceos_image_flag() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_validate_topo_cli_with_mgmt_ipv6_subnet_flag() -> None:
+    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--mgmt-ipv6-subnet", "2001:db8:127::/64")
+    assert result.returncode == 0, result.stderr
+
+
+def test_validate_topo_cli_fails_on_ipv6_subnet_mismatch() -> None:
+    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--mgmt-ipv6-subnet", "2001:db8:99::/64")
+    assert result.returncode == 1
+    assert "mgmt.ipv6-subnet" in result.stderr
+
+
 def test_validate_topo_cli_fails_on_contract_violation(tmp_path: Path) -> None:
     broken = tmp_path / "broken.clab.yml"
     data = yaml.safe_load(GEN_TOPOLOGY_PATH.read_text(encoding="utf-8"))

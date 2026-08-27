@@ -8,9 +8,9 @@ import subprocess
 import sys
 
 from lab.report import CheckStatus, print_check_group, print_device, print_test_header, report_ok, report_check_summary, report_summary, reset_check_stats
+from lab.errors import PqcConnectionError
 from lab.test_pqc_connections import (
     CEOS_NODES,
-    PqcConnectionError,
     check_radsec_config,
     check_radius_config,
     lab_targets_for_subnet,

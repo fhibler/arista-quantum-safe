@@ -12,7 +12,7 @@ from lab.test_openconfig_grpc import (
     probe_gribi_tls,
     probe_gnpsi_tls,
 )
-from lab.test_pqc_connections import PqcConnectionError
+from lab.errors import PqcConnectionError
 from lab.tls_wire import TlsWireResult, parse_tls_wire_output
 from lab.topology_contract import GRIBI_PORT, GNPSI_PORT, TLS_PQC_GROUP
 

@@ -14,8 +14,6 @@ from lab.topology_contract import (
     PROBE_CLIENT_CERT_TEST_RUNNER,
     PROBE_CLIENT_KEY,
     PROBE_CLIENT_KEY_TEST_RUNNER,
-    PROBE_GNMI_CERT_TEST_RUNNER,
-    PROBE_GNMI_KEY_TEST_RUNNER,
     PROBE_SYSLOG_CA_TEST_RUNNER,
     SSH_PQC_KEX,
     TLS_PQC_GROUP,
@@ -130,22 +128,6 @@ def probe_client_key_path(node: str, mode: ProbeClientMode | None = None) -> str
     if resolved == PROBE_RADIUS_NODE:
         return PROBE_CLIENT_KEY.format(node=node)
     return PROBE_CLIENT_KEY_TEST_RUNNER.format(node=node)
-
-
-def probe_gnmi_cert_path(node: str, mode: ProbeClientMode | None = None) -> str:
-    """Return the gNMI client certificate path for the given switch node."""
-    resolved = mode or probe_client_mode()
-    if resolved == PROBE_RADIUS_NODE:
-        return PROBE_CLIENT_CERT.format(node=node)
-    return PROBE_GNMI_CERT_TEST_RUNNER.format(node=node)
-
-
-def probe_gnmi_key_path(node: str, mode: ProbeClientMode | None = None) -> str:
-    """Return the gNMI client key path for the given switch node."""
-    resolved = mode or probe_client_mode()
-    if resolved == PROBE_RADIUS_NODE:
-        return PROBE_CLIENT_KEY.format(node=node)
-    return PROBE_GNMI_KEY_TEST_RUNNER.format(node=node)
 
 
 def _openssl_env_prefix(mode: ProbeClientMode, *, use_pqc_conf: bool) -> str:
@@ -276,11 +258,6 @@ def curl_eapi_argv(
     ]
 
 
-# Backward-compatible aliases (JSON-RPC terminology).
-curl_jsonrpc_command = curl_eapi_command
-curl_jsonrpc_argv = curl_eapi_argv
-
-
 def run_curl_eapi(
     *,
     node: str,
@@ -314,9 +291,6 @@ def run_curl_eapi(
         verbose=verbose,
         title=f"{node} eAPI command-api ({probe_node_name(resolved)})",
     )
-
-
-run_curl_jsonrpc = run_curl_eapi
 
 
 def gnmi_get_command(

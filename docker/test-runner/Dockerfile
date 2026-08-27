@@ -2,7 +2,6 @@
 #
 # Used by the test-runner Containerlab node and the optional test-lab-runner harness.
 # Alpine 3.24 apk OpenSSL 3.5.7, curl, and openssh-client provide PQC-hybrid TLS/SSH.
-# Rollback to source OpenSSL: make build-test-runner USE_SOURCE_OPENSSL=1
 
 ARG ALPINE_VERSION=3.24
 ARG GNMIC_VERSION=0.47.0
@@ -29,7 +28,7 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnmic /usr/local/bin/gnmic \
  && gnmic version
 
-FROM golang:${GO_VERSION}-alpine3.24 AS grpcurl-build
+FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS grpcurl-build
 ARG GRPCURL_VERSION
 ARG GO_VERSION=1.27.0
 
@@ -64,7 +63,7 @@ RUN apk add --no-cache wget tar ca-certificates \
  && install -m 755 /tmp/gnoic /usr/local/bin/gnoic \
  && gnoic version
 
-FROM golang:${GO_VERSION}-alpine3.24 AS gribic-build
+FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS gribic-build
 ARG GRIBIC_VERSION
 ARG GO_VERSION=1.27.0
 

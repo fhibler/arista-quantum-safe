@@ -13,6 +13,7 @@ from lab.ceos_json import (
     json_tree_contains,
     json_truthy,
 )
+from lab.errors import PqcConnectionError
 from lab.grpc_probe import (
     gnoic_ping_command,
     gnoic_services_command,
@@ -139,7 +140,7 @@ def _service_port(api_json: object, default: int | None = None) -> int:
 
 
 def check_gnoi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, check_switch_ssl_profile, ceos_show_json
+    from lab.test_pqc_connections import check_switch_ssl_profile, ceos_show_json
 
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, GNMI_SSL_PROFILE, verbose=verbose)
@@ -180,8 +181,6 @@ def probe_gnoi_ping(
     tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import PqcConnectionError
-
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GNMI_PORT)
     command = gnoic_ping_command(target, node=node)
@@ -223,8 +222,6 @@ def probe_gnoi_reflection(
     tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import PqcConnectionError
-
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GNMI_PORT)
     command = gnoic_services_command(target, node=node)
@@ -249,7 +246,7 @@ def probe_gnoi_reflection(
 
 
 def check_gribi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, check_switch_ssl_profile, ceos_show_json
+    from lab.test_pqc_connections import check_switch_ssl_profile, ceos_show_json
 
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, GRIBI_SSL_PROFILE, verbose=verbose)
@@ -307,7 +304,6 @@ def probe_gribi_mtls(
     verbose: bool | None = None,
 ) -> None:
     """Verify gRIBI Get RPC over mTLS (WARN when TLS probe did not confirm PQC-hybrid KEX)."""
-    from lab.test_pqc_connections import PqcConnectionError
 
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GRIBI_PORT)
@@ -350,7 +346,7 @@ def check_gribi_ipv6_binding(
     *,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, ceos_cli, ceos_show_json
+    from lab.test_pqc_connections import ceos_cli, ceos_show_json
 
     container = targets.ceos_container(node)
     gribi = ceos_show_json(container, "show management api gribi", verbose=verbose)
@@ -366,7 +362,7 @@ def check_gribi_ipv6_binding(
 
 
 def check_gnsi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, check_switch_ssl_profile, ceos_show_json
+    from lab.test_pqc_connections import check_switch_ssl_profile, ceos_show_json
 
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, GNSI_SSL_PROFILE, verbose=verbose)
@@ -434,7 +430,6 @@ def probe_gnsi_certz_profilelist(
     verbose: bool | None = None,
 ) -> None:
     """Certz.GetProfileList over gNSI transport gnmi default (Certz omitted from gRPC reflection)."""
-    from lab.test_pqc_connections import PqcConnectionError
 
     ip = targets.ceos_mgmt_ip(node, family)
     port = _gnsi_port(targets, node, verbose=verbose)
@@ -497,7 +492,7 @@ def probe_gnpsi_ceos_support(
 
 
 def check_gnpsi_config(targets: LabTargets, node: str, *, verbose: bool | None = None) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, check_switch_ssl_profile, ceos_show_json
+    from lab.test_pqc_connections import check_switch_ssl_profile, ceos_show_json
 
     container = targets.ceos_container(node)
     check_switch_ssl_profile(targets, node, GNPSI_SSL_PROFILE, verbose=verbose)
@@ -526,7 +521,7 @@ def check_gnpsi_ipv6_binding(
     *,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import PqcConnectionError, ceos_show_json
+    from lab.test_pqc_connections import ceos_show_json
 
     container = targets.ceos_container(node)
     gnpsi = ceos_show_json(container, "show management api gnpsi", verbose=verbose)
@@ -582,8 +577,6 @@ def probe_gnpsi_services(
     tls_wire: TlsWireResult | None = None,
     verbose: bool | None = None,
 ) -> None:
-    from lab.test_pqc_connections import PqcConnectionError
-
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GNPSI_PORT)
     command = gnoic_services_command(target, node=node)

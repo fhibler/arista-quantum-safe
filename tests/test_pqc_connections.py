@@ -32,6 +32,16 @@ from lab.test_pqc_connections import (
 from lab.report import CheckStatus
 
 
+def test_pqc_connection_error_lives_in_lab_errors() -> None:
+    import inspect
+
+    from lab import errors
+    from lab.errors import PqcConnectionError
+
+    assert inspect.getmodule(PqcConnectionError) is errors
+    assert issubclass(PqcConnectionError, RuntimeError)
+
+
 def _ssl_profile_json() -> dict:
     return {
         "state": "valid",
@@ -66,13 +76,6 @@ def _pqc_config_json() -> dict:
         },
         "radius": {"transport": "tls ssl-profile RADSEC"},
     }
-
-
-def test_extract_negotiated_tls_group_maps_prime256v1() -> None:
-    from lab.test_pqc_connections import extract_negotiated_tls_group
-
-    output = "Protocol version: TLSv1.3\nPeer Temp Key: ECDH, prime256v1, 256 bits\n"
-    assert extract_negotiated_tls_group(output) == "secp256r1"
 
 
 def test_tls13_handshake_detects_tlsv13() -> None:

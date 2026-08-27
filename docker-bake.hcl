@@ -1,7 +1,3 @@
-variable "HOST_ARCH" {
-  default = "arm64"
-}
-
 variable "GO_VERSION" {
   default = "1.27.0"
 }
@@ -16,7 +12,6 @@ target "builder" {
     ALPINE_VERSION = ALPINE_VERSION
   }
   tags = ["quantum-safe-builder:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 
@@ -26,7 +21,6 @@ target "runtime" {
     ALPINE_VERSION = ALPINE_VERSION
   }
   tags = ["quantum-safe-runtime:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 
@@ -37,7 +31,6 @@ target "radius" {
     runtime = "target:runtime"
   }
   tags = ["quantum-safe-radius:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 
@@ -48,7 +41,6 @@ target "syslog" {
     runtime = "target:runtime"
   }
   tags = ["quantum-safe-syslog:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 
@@ -58,7 +50,6 @@ target "kme" {
     runtime = "target:runtime"
   }
   tags = ["quantum-safe-kme:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 
@@ -69,9 +60,9 @@ target "test-runner" {
   }
   args = {
     GO_VERSION = GO_VERSION
+    ALPINE_VERSION = ALPINE_VERSION
   }
   tags = ["quantum-safe-test-runner:latest"]
-  platforms = ["linux/${HOST_ARCH}"]
   output = ["type=docker"]
 }
 

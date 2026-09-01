@@ -4,9 +4,6 @@ FROM mcr.microsoft.com/devcontainers/python:3-trixie
 
 ARG GNMIC_VERSION=0.47.0
 
-RUN echo "deb [trusted=yes] https://netdevops.fury.site/apt/ /" | \
-    tee -a /etc/apt/sources.list.d/netdevops.list
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     direnv \
     btop \

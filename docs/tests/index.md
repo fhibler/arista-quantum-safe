@@ -126,15 +126,15 @@ Results reflect the default **EOS 4.37.0F** (`CEOS_IMAGE=ceos:4.37.0F`; see [Set
 | Syslog | 15 passed |
 | OpenConfig | 105 passed, 15 warnings, 3 skipped |
 | KME | 9 passed |
-| Dynamic MACsec | 17 passed |
-| QuaDRA / QKD | 15 passed |
-| QuaDRA with passive TLS measurement (`test-quadra-tls`) | 17 passed (IPv4 client paths) |
-| Extended MACsec reauthentication | 22 passed |
+| Dynamic MACsec | 9 passed |
+| QuaDRA / QKD | 19 passed |
+| QuaDRA with passive TLS measurement (`test-quadra-tls`) | 21 passed (includes functional checks; both IPv4 client paths) |
+| Extended MACsec reauthentication | 13 passed (includes baseline) |
 | Settled host routing | 12 routes passed |
 
-The recorded MACsec/QuaDRA counts predate moving static MACsec configuration, convergence, and ping checks out of `test-macsec-dot1x` into `test-macsec-qkd`. Current suite counts differ; the recorded TLS measurements are unchanged.
+The four MACsec/QuaDRA runs have no warnings, failures, or skips. The TLS total includes **19 functional checks** and **two wire checks**. QuaDRA startup/recovery log checks can produce warnings when those messages are absent from recent syslog; see [expected warnings](macsec-qkd.md#expected-skip-warn).
 
-The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **three skips** are eos-sdk-rpc IPv6 without a listener. The six gNPSI Subscribe probes now pass after correcting the sFlow source and shortening counter polling. Warnings and skips do not establish PQC-safe application operation. Historical comparisons and test changes are recorded in the [Changelog](../changelog.md).
+The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **three skips** are eos-sdk-rpc IPv6 without a listener. The six gNPSI Subscribe probes pass with `sflow source-interface Ethernet8` and two-second counter polling. Warnings and skips do not establish PQC-safe application operation. Release comparisons are recorded in the [Changelog](../changelog.md).
 
 ## Result summary
 
@@ -171,7 +171,7 @@ Recorded **live** behavior on **EOS 4.37.0F** (3 switches, IPv4 + IPv6 unless no
 **Notes**
 
 - **Syslog:** All six EOS-to-collector connections selected hybrid group **4588**, with delivery verified using unique per-run markers. Classical fallback remains configured; hybrid-only enforcement was not tested.
-- **gNPSI:** Hybrid mTLS and reflection pass. Classical TLS 1.3 and TLS 1.2 are rejected. Subscribe receives sFlow datagrams on all six endpoints after configuring the sFlow source on Ethernet8. Idle probes receive counter samples; controlled traffic with temporary 1:1 sampling also verified flow samples. Actual Subscribe ServerHellos select hybrid KEX.
+- **gNPSI:** Hybrid mTLS and reflection pass. Classical TLS 1.3 and TLS 1.2 are rejected. Subscribe receives sFlow datagrams on all six endpoints with the sFlow source on Ethernet8 and two-second counter polling. Idle probes receive counter samples; controlled traffic with temporary 1:1 sampling also verified flow samples. Actual Subscribe ServerHellos select hybrid KEX.
 - **gRIBI:** Hybrid-only mTLS fails; `secp256r1` TLS 1.3 and Get RPC work. Separate TLS 1.2 probes also complete despite the strict profile.
 - **eos-sdk-rpc (IPv4):** Hybrid-only probe gets EOF; explicit `secp256r1` completes TLS 1.3. TLS 1.2 negotiates then ends with EOF, which is not a verified application session.
 - **eos-sdk-rpc (IPv6):** Native IPv6 connections refuse on 9543 with `local interface Management0`. Socket inspection shows an IPv4-mapped bind; IPv4 mTLS and IPv6 eAPI controls succeed on all three switches. Alternative binding configurations were not evaluated.

@@ -2,6 +2,8 @@
 
 Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista EOS: PQC-hybrid management-plane TLS and SSH (RadSec, eAPI, gNMI, gNPSI, syslog, SSH), **dynamic MACsec** on an inter-switch link, and supporting services (FreeRADIUS, syslog-ng) built with OpenSSL 3.5.
 
+**Tested EOS version: 4.37.0F.** The guides describe this lab version; release comparisons are in the [Changelog](https://fhibler.github.io/arista-quantum-safe/changelog/).
+
 Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
 
 <!-- site-config:begin -->

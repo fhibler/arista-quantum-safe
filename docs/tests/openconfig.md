@@ -50,7 +50,7 @@ The standard suite probes positive TLS support. Separate policy probes confirm t
 | Check | When |
 |-------|------|
 | gNPSI mTLS / reflection (IPv4/IPv6) | **PASS** with hybrid KEX on 4.37.0F; a classical wire result produces **WARN** |
-| gNPSI Subscribe (IPv4/IPv6) | **PASS** on all six endpoints after setting `sflow source-interface Ethernet8`; absence of a packet now **fails** |
+| gNPSI Subscribe (IPv4/IPv6) | **PASS** on all six endpoints with `sflow source-interface Ethernet8` and two-second counter polling; absence of a packet **fails** |
 | gRIBI IPv4/IPv6 | **WARN** when wire accepts classical KEX (`secp256r1`); PQC-only OpenSSL mTLS gets handshake failure |
 | eos-sdk-rpc IPv4 | **WARN** when wire KEX is classical (`secp256r1`) despite PQC-only profile |
 | eos-sdk-rpc IPv6 | **SKIP** - `local interface Management0` binds primary IPv4 only |
@@ -75,7 +75,7 @@ docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030
 
 ## Result summary (EOS 4.37.0F)
 
-**105 passed, 15 warnings, 3 skipped** on 4.37.0F after the sFlow configuration correction. Warnings: gRIBI TLS/Get (12), eos-sdk-rpc IPv4 (3). Skips: eos-sdk-rpc IPv6 (3).
+**105 passed, 15 warnings, 3 skipped** on 4.37.0F with the documented sFlow source and two-second counter polling. Warnings: gRIBI TLS/Get (12), eos-sdk-rpc IPv4 (3). Skips: eos-sdk-rpc IPv6 (3).
 
 Same PQC-safe values as [Test suite overview - Result summary](index.md#result-summary) for OpenConfig services:
 
@@ -90,7 +90,7 @@ Same PQC-safe values as [Test suite overview - Result summary](index.md#result-s
 | RESTCONF | 6020 | `X25519MLKEM768` | Yes | Positive HTTPS probe; classical TLS 1.3 / TLS 1.2 also accepted |
 | eos-sdk-rpc (IPv4) | 9543 | classical (`secp256r1`) | No | Suite **WARN**s; IPv4 only |
 
-A separate controlled check used temporary **1:1 sampling**, **500 routed pings from each of three hosts**, and six concurrent **8 s** Subscribe windows. All six streams contained sFlow v5 flow samples as well as counter samples. Actual Subscribe ServerHellos selected **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`** in both the normal-rate and controlled checks. The normal **1:4096** rate was restored afterward. This fixes a lab source configuration gap on the same build; the corrected configuration was **not tested** on the previous image.
+A separate controlled check used temporary **1:1 sampling**, **500 routed pings from each of three hosts**, and six concurrent **8 s** Subscribe windows. All six streams contained sFlow v5 flow samples as well as counter samples. Actual Subscribe ServerHellos selected **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`** in both the normal-rate and controlled checks. The default configuration uses **1:4096** sampling.
 
 Configuration reference: [OpenConfig & gRPC](../services/openconfig.md).
 

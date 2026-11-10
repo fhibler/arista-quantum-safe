@@ -30,9 +30,9 @@ ETSI QKD 014 API checks (KME simulators) are separate: **`make test-kme`**.
 - KME log lines show key fetch/delivery activity (when QuaDRA active)
 - With `test-quadra-tls`, both clients must have a complete TLS sample and successful key delivery within the capture window; every observed final ServerHello must select TLS 1.3 and **`X25519MLKEM768`** (4588 / `0x11ec`). Client offers and HelloRetryRequest do not satisfy this check.
 
-Measured on **EOS 4.37.0F / QuaDRA 1.0.10.rel1**, ARM64, on **2026-11-10**: **`make test-quadra-tls` passed all 17 checks**. Both IPv4 QuaDRA-to-KME connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_256_GCM_SHA384`**. The clients also advertise classical groups. Hybrid-only enforcement remains **unverified**; this measurement does not qualify simulator peer TLS or alternate KME configurations.
+Measured on **EOS 4.37.0F / QuaDRA 1.0.10.rel1**, ARM64: `make test-macsec-qkd` reports **19 passed**; `make test-quadra-tls` reports **21 passed**, including the 19 functional checks and two wire checks. Both runs have no warnings, failures, or skips.
 
-That recorded count predates moving the static MACsec configuration and convergence checks from `test-macsec-dot1x` into this suite.
+Both IPv4 QuaDRA-to-KME connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_256_GCM_SHA384`**, with fresh successful key delivery. The clients also advertise classical groups. Hybrid-only enforcement remains **unverified**; this measurement does not qualify simulator peer TLS or alternate KME configurations.
 
 ## Expected SKIP / WARN
 

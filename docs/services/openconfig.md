@@ -59,7 +59,7 @@ gNOI shares the same gRPC endpoint and **`GNMI`** ssl profile as gNMI.
 | Live wire | **PQC-safe** - TLS 1.3 + `X25519MLKEM768` |
 | Live mTLS | **PQC-safe** with lab client cert |
 | gNOI | Same transport and PQC policy as gNMI; separate **`make test-openconfig`** check lines |
-| SA-0146 | **Safe** - lab already had mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
+| SA-0146 | **Safe** - lab uses mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
 
 ### Verification
 
@@ -240,7 +240,7 @@ gNMI on the same **`GNMI`** ssl profile listens on **`::`** (IPv4 + IPv6) when c
 | Config | Profile lists `X25519MLKEM768` |
 | Live wire (IPv4) | **Not PQC-safe** - PQC-only probe EOF; explicit `secp256r1` client completes TLS 1.3 |
 | Live wire (IPv6) | **No listener** - `local interface Management0` binds IPv4 only; `make test-openconfig` **SKIP**s IPv6 |
-| SA-0146 | **Safe** - already reused `GNMI` mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
+| SA-0146 | **Safe** - uses `GNMI` mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
 
 !!! note "IPv6 limitation (binding model)"
     Verified directly on all three switches: `ip netns exec ns-MGMT ss -lntp` shows EosSdkRpcAgent bound to an IPv4-mapped address such as **`[::ffff:172.20.127.11]:9543`**. An IPv4-mapped socket is not a native IPv6 listener. TCP and mTLS work on IPv4; native IPv6 port 9543 refuses connections while IPv6 eAPI works as a connectivity control. This finding applies to the current binding configuration; alternative binding configurations were not evaluated.
@@ -338,7 +338,7 @@ management api gribi
 | Live wire | **Not PQC-safe** on 4.37.0F - wire accepts classical KEX (`secp256r1`); PQC-only clients get `handshake failure` |
 | TLS version enforcement | TLS 1.2 also completes despite the strict profile on 4.37.0F |
 | Probe client | **gribic** rebuilt with Go **1.24+** in the test-runner image ([Tool chain](../misc/toolchain.md#gnoic-gribic-gnsic)) |
-| SA-0146 | **Safe** - lab already had mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
+| SA-0146 | **Safe** - lab uses mTLS (`trust certificate`) ([details](#security-advisory-0146)) |
 
 !!! warning "Known EOS gap - gRIBI"
     Configuration lists `X25519MLKEM768`, but live handshakes on port **9340** negotiate classical KEX (`secp256r1`) on EOS 4.37.0F. PQC-only clients get `handshake failure`.
@@ -417,7 +417,7 @@ Certz/Authz RPCs register on the shared gNMI listener (**:6030**). Wire TLS on t
 | Live wire | **PQC-safe** on shared gNMI listener (`GNMI` profile on :6030) |
 | Transport | Use **`transport gnmi default`** - validated binding on 4.37.0F |
 | RPC access | Certz not in gRPC reflection; use **`gnsic -u admin`** |
-| SA-0146 | **Safe** - already shared gNMI `:6030` mTLS ([details](#security-advisory-0146)) |
+| SA-0146 | **Safe** - shares gNMI `:6030` mTLS ([details](#security-advisory-0146)) |
 
 !!! note "Transport binding"
     Use **`transport gnmi default`**, the binding validated on 4.37.0F. Alternative transport bindings were not evaluated.
@@ -498,7 +498,7 @@ sflow interface egress enable default Ethernet8
 
 gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least one interface. Unlike gRIBI/gNMI (which use `vrf MGMT` on the transport), gNPSI binds the listen socket with **`listen-address vrf MGMT`** - `vrf MGMT` alone is not accepted under `management api gnpsi transport grpc`. Only **one** `listen-address` is permitted; **`listen-address vrf MGMT ::`** dual-stacks IPv4 and IPv6 on MGMT.
 
-Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the routed port towards each Alpine host. Egress sampling is also configured. Set **`sflow source-interface Ethernet8`** so the agent has usable IPv4/IPv6 addresses. On this cEOS build, the previous unspecified source left both sampling and gNPSI datagram counters at zero despite working routed traffic. **`sflow polling-interval 2`** supplies counter samples within the eight-second Subscribe window even when the lab is idle; the normal flow sampling rate remains **1:4096**.
+Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the routed port towards each Alpine host. Egress sampling is also configured. Set **`sflow source-interface Ethernet8`** so the agent has usable IPv4/IPv6 addresses. **`sflow polling-interval 2`** supplies counter samples within the eight-second Subscribe window even when the lab is idle; the normal flow sampling rate is **1:4096**.
 
 ### Caveats
 
@@ -508,10 +508,10 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the ro
 | Live TLS / reflection | **PQC-safe** on 4.37.0F - `X25519MLKEM768` on all three switches over IPv4 + IPv6 |
 | Policy enforcement | Classical TLS 1.3 and TLS 1.2 offers rejected on all six endpoints |
 | Subscribe live | **PASS**, all six endpoints; counter samples at 1:4096, flow samples also verified with temporary 1:1 sampling |
-| SA-0146 | **Safe** - lab already had mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
+| SA-0146 | **Safe** - lab uses mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
 
-!!! note "Subscribe delivery verified after correcting the sFlow source"
-    All three switches now deliver nonempty JSON `Sample.packet` over IPv4 and IPv6. Captures of the actual Subscribe connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. Idle probes decode as sFlow v5 **counter samples**; a separate controlled run with temporary **1:1 sampling** and **500 routed pings per host** also delivers **flow samples** on all six endpoints. The normal suite proves datagram delivery and does not require a sampled user packet. The earlier empty eight-second probes and 75-second traffic run used no explicit sFlow source; this is a configuration correction on the same 4.37.0F build, not an EOS upgrade fix.
+!!! note "Subscribe delivery on EOS 4.37.0F"
+    With the configuration above, all three switches deliver nonempty JSON `Sample.packet` over IPv4 and IPv6. Captures of the actual Subscribe connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. Idle probes decode as sFlow v5 **counter samples**; a separate controlled run with temporary **1:1 sampling** and **500 routed pings per host** also delivers **flow samples** on all six endpoints. The normal suite proves datagram delivery and does not require a sampled user packet.
 
 ### Verification
 
@@ -559,7 +559,7 @@ Automated: **`make test-openconfig`** - hybrid mTLS and reflection **PASS** on I
 
 Arista [Security Advisory 0146](https://www.arista.com/en/support/advisories-notices/security-advisory/24500-security-advisory-0146) (19 August 2026) is an HTTP/2 Rapid Reset DoS in gRPC-go. Exploitation requires a **non-default gRPC server** such as gNMI or gRIBI.
 
-This lab **already contained** Arista's published **mTLS** mitigation (`trust certificate` on the gRPC ssl profiles). No extra ssl-profile or transport knobs are required beyond `configs/ceos/ceos*.cfg.in`. The configuration is **considered safe** against SA-0146.
+This lab **uses** Arista's published **mTLS** mitigation (`trust certificate` on the gRPC ssl profiles). No extra ssl-profile or transport knobs are required beyond `configs/ceos/ceos*.cfg.in`. The configuration is **considered safe** against SA-0146.
 
 | Item | Lab status |
 |------|------------|

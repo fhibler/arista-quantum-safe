@@ -2,7 +2,7 @@
 
 This page explains **terminology**, **algorithms used in the lab**, and **how lab containers get PQC-hybrid TLS** from Alpine 3.24 OpenSSL **3.5.x** (minimum PQC-safe OpenSSL: **3.5.0**) plus `OPENSSL_CONF`.
 
-PQC in Arista EOS 4.35+ applies primarily to **key establishment** - how two peers agree on session keys. **Certificates and signatures** in this lab remain **classical** (RSA/ECDSA). Record-layer **AEAD ciphers** (for example `TLS_AES_256_GCM_SHA384`) are unchanged; security against harvest-now-decrypt-later attacks comes from **PQC-hybrid key exchange**, not from renaming those ciphers.
+PQC in this Arista EOS **4.37.0F** lab applies to **key establishment** - how two peers agree on session keys. **Certificates and signatures** in this lab are **classical** (RSA/ECDSA). Record-layer **AEAD ciphers** (for example `TLS_AES_256_GCM_SHA384`) provide symmetric encryption; security against harvest-now-decrypt-later attacks comes from **PQC-hybrid key exchange**, not from renaming those ciphers.
 
 ## Terminology
 
@@ -93,7 +93,7 @@ On **4.37.0F**, syslog and gNPSI TLS/reflection/Subscribe negotiate hybrid on al
 
 ## OpenSSL 3.5 (minimum for PQC-safe lab containers)
 
-**OpenSSL 3.5.0** is the first OpenSSL release with **built-in** ML-KEM (FIPS 203) and the hybrid TLS groups this lab requires (`X25519MLKEM768`, `SecP256r1MLKEM768`). Earlier OpenSSL **3.2–3.4** lines do **not** advertise those groups without a third-party provider. This lab therefore treats **3.5.0** as the minimum OpenSSL version that is PQC-safe for TLS peers and probes.
+TLS peers and probes require **OpenSSL 3.5.0 or newer** with built-in ML-KEM (FIPS 203) and the hybrid TLS groups `X25519MLKEM768` / `SecP256r1MLKEM768`. A successful wire check is required to establish PQC safety.
 
 EOS implements switch-side TLS natively. **Peer containers use Alpine 3.24 apk OpenSSL 3.5.x** (3.5 LTS; EOL 2030-04-08), which advertises `X25519MLKEM768`. Alpine **3.24** is pinned; apk patch versions float (**3.5.9** observed in the 4.37.0F verification). EOS **4.37.0F** bundles OpenSSL **3.5.5**, a separate stack. Runtime policy is `OPENSSL_CONF` (hybrid-only for strict peers; syslog permits fallback) - not a custom OpenSSL compile. See [Tool chain](misc/toolchain.md#probe-and-peer-client-summary) for per-client status, and [Setup](setup.md) for build targets (`make images-build`, `make images-build IMAGE=test-runner`, etc.).
 

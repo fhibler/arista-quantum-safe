@@ -2,7 +2,7 @@
 
 The lab configures **PQC-hybrid-only** TLS on most EOS ssl profiles (`X25519MLKEM768` only - no classical ECDH fallback). Probe clients and peer containers must therefore negotiate hybrid key exchange on the wire, not merely “TLS 1.3 with classical groups.”
 
-Stock Linux packages and upstream release binaries often **fail that requirement**. This page documents why the lab **rebuilds or pins** specific tool versions in [`docker/test-runner/Dockerfile`](https://github.com/fhibler/arista-quantum-safe/blob/main/docker/test-runner/Dockerfile) and the service Dockerfiles, and which clients are **[PQC-safe (live)](../pqc-overview.md#terminology)** against strict EOS profiles after those changes.
+Stock Linux packages and upstream release binaries often **fail that requirement**. This page documents why the lab **rebuilds or pins** specific tool versions in [`docker/test-runner/Dockerfile`](https://github.com/fhibler/arista-quantum-safe/blob/main/docker/test-runner/Dockerfile) and the service Dockerfiles, and which clients are **[PQC-safe (live)](../pqc-overview.md#terminology)** against the strict EOS profiles in this lab.
 
 ## Probe and peer client summary
 
@@ -12,7 +12,7 @@ Stock Linux packages and upstream release binaries often **fail that requirement
 |--------------------|-----------|-----------|----------------------|-----------|---------------|
 | **OpenSSL** (`openssl s_client`) | test-runner, radius, syslog | OpenSSL | **Yes** - Alpine **3.24** apk **3.5.x** | apk **3.5.x** + `OPENSSL_CONF` | **Yes** (with `OPENSSL_CONF`) |
 | **curl** | test-runner | OpenSSL (linked) | **Yes** - Alpine 3.24 OpenSSL backend | apk `curl` | **Yes** |
-| **OpenSSH** client | test-runner | OpenSSL (linked) | **Yes** - `mlkem768x25519-sha256` since OpenSSH 9.9 | apk `openssh-client` | **Yes** |
+| **OpenSSH** client | test-runner | OpenSSL (linked) | **Yes** - Alpine 3.24 client supports `mlkem768x25519-sha256` | apk `openssh-client` | **Yes** |
 | **FreeRADIUS** (RadSec) | radius | OpenSSL (dynamic) | **No** - apk `freeradius` is **3.0.27** | Source **3.2.6** + apk OpenSSL | **Yes** |
 | **syslog-ng** (collector) | syslog | OpenSSL (dynamic) | **No** - distro package not used | Source **4.8.1** + apk OpenSSL | **Yes** (collector-side probe) |
 | **gnmic** | test-runner | Go `crypto/tls` | **Yes** - release **0.47.0** (Go **1.25+**) | Upstream tarball | **Yes** |
@@ -35,10 +35,10 @@ EOS **4.37.0F** wire gaps remain for [gRIBI](../services/openconfig.md#gribi-grp
 
 ## Build summary
 
-| Component | Stock problem | Lab approach |
+| Component | Build requirement | Lab approach |
 |-----------|---------------|--------------|
-| **OpenSSL** (radius, syslog, probes) | Older Alpine (3.20) shipped OpenSSL **3.3.x** - no `X25519MLKEM768` | Pin **Alpine 3.24**; apk **OpenSSL 3.5.x** + `OPENSSL_CONF` |
-| **curl / OpenSSH** | Same older distro OpenSSL | apk `curl` and `openssh-client` on Alpine 3.24 |
+| **OpenSSL** (radius, syslog, probes) | OpenSSL **3.5.0+** with built-in hybrid groups | Pin **Alpine 3.24**; apk **OpenSSL 3.5.x** + `OPENSSL_CONF` |
+| **curl / OpenSSH** | OpenSSL-linked curl and hybrid-capable SSH | apk `curl` and `openssh-client` on Alpine 3.24 |
 | **FreeRADIUS / syslog-ng** | apk FreeRADIUS is **3.0.x**; syslog-ng not used from distro | Source **3.2.6** / **4.8.1**, linked to **apk OpenSSL** |
 | **grpcurl** | Upstream **`go 1.21`** in `go.mod` - linked binary offers classical KEX only (`tlsmlkem=0`) | Source-build **1.9.3** with Go **1.27.0**; **`go mod edit -go=1.27`** before compile |
 | **gribic** | Upstream **`go 1.21`** in `go.mod` - same `tlsmlkem=0` default | Source-build **0.0.14** with Go **1.27.0**; **`go mod edit -go=1.27`** before compile |
@@ -48,13 +48,13 @@ Build images with `make images-build` and verify existing images with `make imag
 
 ## OpenSSL 3.5 (peer containers)
 
-**OpenSSL 3.5.0** is the minimum version this lab treats as PQC-safe: it is the first OpenSSL release with built-in ML-KEM (FIPS 203) and the hybrid TLS groups `X25519MLKEM768` / `SecP256r1MLKEM768`. OpenSSL **3.2–3.4** do not advertise those groups without a third-party provider.
+The lab requires **OpenSSL 3.5.0 or newer** with built-in ML-KEM (FIPS 203) and the hybrid TLS groups `X25519MLKEM768` / `SecP256r1MLKEM768`. Confirm the negotiated group with a wire check.
 
 The EOS **4.37.0F** verification observed apk OpenSSL **3.5.9** in peer/probe containers. Alpine **3.24** is pinned; the OpenSSL patch release is **not** pinned. EOS **4.37.0F** bundles OpenSSL **3.5.5** separately, and each service still needs wire verification.
 
 EOS implements PQC-hybrid TLS on the switch. **Alpine 3.24 apk OpenSSL 3.5.x** (3.5 LTS) advertises `X25519MLKEM768`, so lab images use distro OpenSSL, curl, and OpenSSH - they do not compile those from source.
 
-Runtime policy is still `OPENSSL_CONF` pointing at PQC-only group lists (for example `Groups = X25519MLKEM768` in `docker/radius/openssl-pqc.cnf`). That file is **policy**, not a compile workaround.
+Runtime policy is `OPENSSL_CONF` pointing at PQC-only group lists (for example `Groups = X25519MLKEM768` in `docker/radius/openssl-pqc.cnf`). That file is **policy**, not a compile workaround.
 
 See also [PQC overview - OpenSSL 3.5](../pqc-overview.md#openssl-35-minimum-for-pqc-safe-lab-containers).
 
@@ -62,7 +62,7 @@ See also [PQC overview - OpenSSL 3.5](../pqc-overview.md#openssl-35-minimum-for-
 
 Go **1.24+** enables hybrid post-quantum key exchange **`X25519MLKEM768`** in `crypto/tls` when **`tlsmlkem=1`** (the default for modules declaring **`go 1.24`** or newer). Go programs **ignore** `OPENSSL_CONF` - they use the Go runtime’s TLS stack only.
 
-Upstream **grpcurl** and **gribic** tarballs still declare **`go 1.21`** in `go.mod`. Compiling them with a Go **1.27** toolchain alone is not enough: the linked binary inherits GODEBUG defaults from that directive, so **`tlsmlkem=0`** unless the build runs **`go mod edit -go=1.27`** (matching the Dockerfile **`GO_VERSION=1.27.0`** pin) before **`go build`**.
+Upstream **grpcurl** and **gribic** tarballs declare **`go 1.21`** in `go.mod`. Compiling them with a Go **1.27** toolchain alone is not enough: the linked binary inherits GODEBUG defaults from that directive, so **`tlsmlkem=0`** unless the build runs **`go mod edit -go=1.27`** (matching the Dockerfile **`GO_VERSION=1.27.0`** pin) before **`go build`**.
 
 ### grpcurl
 
@@ -70,7 +70,7 @@ Upstream **grpcurl** and **gribic** tarballs still declare **`go 1.21`** in `go.
 
 The test-runner image **source-builds grpcurl v1.9.3** with Go **1.27.0** and **`go mod edit -go=1.27`** before compile, and stamps **`main.version=v1.9.3`** via ldflags (same as upstream goreleaser) so `grpcurl --version` reports the tag. grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go **1.27** defaults apply.
 
-**Verified against deployed EOS 4.37.0F:** the source-built client completes mTLS and gNPSI reflection `list` on **:6031**. That listener negotiates **`X25519MLKEM768`**, and separate classical TLS 1.3 / TLS 1.2 probes are rejected. **Subscribe sample delivery is verified** on all six endpoints after setting the sFlow source interface and polling counters every two seconds. Captured Subscribe ServerHellos select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. The probe requires a nonempty base64-decoded `Sample.packet` and fails when none arrives within eight seconds.
+**Verified against deployed EOS 4.37.0F:** the source-built client completes mTLS and gNPSI reflection `list` on **:6031**. That listener negotiates **`X25519MLKEM768`**, and separate classical TLS 1.3 / TLS 1.2 probes are rejected. **Subscribe sample delivery is verified** on all six endpoints with `sflow source-interface Ethernet8` and two-second counter polling. Captured Subscribe ServerHellos select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. The probe requires a nonempty base64-decoded `Sample.packet` and fails when none arrives within eight seconds.
 
 For the shared **gNMI/gNOI listener (:6030)**, use the validated primary clients **gnoic**, **gnmic**, and **gnsic**. grpcurl support on that port was **not revalidated** on 4.37.0F. grpcurl remains an RPC fallback in the test code and the primary client for the bounded gNPSI Subscribe probe.
 

@@ -1,91 +1,49 @@
 # Changelog
 
-Each changelog entry describes the verified lab changes from the **previous EOS version** to the **target EOS version**, newest first. This comparison frames the whole entry, including behavior changes, test results, and remaining limitations. Each entry uses the same sections: **Versions**, **Behavior changes**, **Test results**, **Known limitations**, **Test and tooling changes**, and **Verification scope**.
-
-For a future upgrade, add a new `## EOS <version>` entry above the existing entries and reuse those six sections. Compare against the previous default using the same configuration, tools, and assertions; explain any changes that prevent a direct comparison. Keep historical results here and replace the results in service and test guides with the latest verified values. Entries record observed lab behavior, not a vendor release-note changelog.
-
-Report verified improvements and remaining limitations observed in the comparison. Identify configuration corrections and current-only measurements explicitly so they do not imply version-to-version fixes. Distinguish successful hybrid negotiation from policy enforcement. Use **unverified** for outcomes not established, **not measured** for missing measurements, and **not tested** for configurations not exercised.
+Entries record measured lab results by target EOS version, newest first. Keep release comparisons here; service and test guides describe only the tested version on the main page. These observations do not establish vendor bug closure or hardware qualification.
 
 ## EOS 4.37.0F
 
 ### Versions
 
-Upgrade from **EOS 4.36.2F** to **EOS 4.37.0F**.
+| Component | Comparison baseline | Target |
+|-----------|---------------------|--------|
+| cEOS ARM64 | `ceos:4.36.2F` | `ceos:4.37.0F` |
+| EOS OpenSSL | 3.2.2 | 3.5.5 |
 
-| Component | Previous | Current |
-|-----------|----------|---------|
-| Default cEOS image | `ceos:4.36.2F` | `ceos:4.37.0F` |
-| EOS bundled OpenSSL | 3.2.2 | **3.5.5** |
-| Peer/probe OpenSSL | 3.5.9 | 3.5.9 (same images) |
-| QuaDRA | 1.0.10.rel1 | 1.0.10.rel1 (same extension) |
-
-Both EOS images are ARM64. Peer/probe containers pin Alpine **3.24**; apk OpenSSL patch releases float independently of the EOS bundled library.
+Peer/probe OpenSSL **3.5.9** and QuaDRA **1.0.10.rel1** were the same for both images.
 
 ### Behavior changes
 
-| Finding | 4.36.2F | 4.37.0F |
-|---------|---------|---------|
-| EOS → syslog selected KEX | Classical `x25519` | **`X25519MLKEM768`** |
-| gNPSI TLS / reflection KEX | Classical `secp256r1` | **`X25519MLKEM768`**, all six endpoints |
-| gNPSI classical TLS 1.3 offer | Accepted | **Rejected** |
-| gNPSI TLS 1.2 offer | Negotiates, then EOF | **Rejected before handshake** |
+| Measurement | 4.36.2F | 4.37.0F |
+|-------------|---------|---------|
+| EOS → syslog selected KEX | `x25519` | `X25519MLKEM768` |
+| gNPSI TLS / reflection KEX | `secp256r1` | `X25519MLKEM768` |
+| gNPSI classical TLS 1.3 offer | Accepted | Rejected |
+| gNPSI TLS 1.2 offer | Parameters negotiated, then EOF | Rejected before handshake |
 
-Syslog hybrid KEX and gNPSI hybrid TLS/reflection were verified on all three switches over IPv4 and IPv6 without changing their profiles. gNPSI Subscribe also delivers samples after correcting the sFlow source configuration on 4.37.0F; the corrected configuration was **not tested** on 4.36.2F. Policy enforcement results are recorded under [Known limitations](#known-limitations).
-
-SSH, eAPI JSON-RPC, gNMI GET/mTLS, gNOI Ping/reflection, gNSI Certz, RadSec, and EAP-TLS continued to negotiate hybrid KEX. Dynamic MACsec encryption and reauthentication, KME round trips and certificate-chain checks, QuaDRA roles/SAK cross-mapping/key delivery, and settled host routing continued to pass.
-
-Both QuaDRA master/slave IPv4 TLS connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_256_GCM_SHA384`** during normal key rotation. QuaDRA KEX was not measured on the previous image.
+These measurements cover three switches over IPv4 and IPv6 with unchanged TLS profiles. Syslog explicitly permits classical fallback.
 
 ### Test results
 
-The original same-configuration OpenConfig upgrade comparison was **87 passed, 27 warnings, 9 skipped → 99 passed, 15 warnings, 9 skipped**. The current 4.37.0F result below includes the additional sFlow source/polling correction; that configuration was **not tested** on the previous image. Other upgrade results use the corrected assertions on both versions. Passing functional checks do not establish unmeasured TLS KEX or untested policy enforcement; the remaining gaps are recorded under [Known limitations](#known-limitations).
-
 | Suite | 4.36.2F | 4.37.0F |
 |-------|---------|---------|
-| SSH | 9 passed | 9 passed |
-| eAPI | 15 passed | 15 passed |
-| RadSec | 23 passed | 23 passed |
-| Syslog | 9 passed, 6 warnings | **15 passed** |
-| OpenConfig | 87 passed, 27 warnings, 9 skipped | **105 passed, 15 warnings, 3 skipped** after sFlow source/polling correction |
-| KME | 9 passed | 9 passed |
-| Dynamic MACsec | 17 passed | 17 passed |
-| QuaDRA / QKD | 15 passed | 15 passed |
-| QuaDRA with passive TLS measurement | Not measured | **17 passed**, both IPv4 clients hybrid |
-| Extended MACsec reauthentication | 22 passed | 22 passed |
-| Settled host routing | 12 routes passed | 12 routes passed |
+| Syslog | 9 passed, 6 warnings | 15 passed |
+| OpenConfig, same configuration | 87 passed, 27 warnings, 9 skipped | 99 passed, 15 warnings, 9 skipped |
+| OpenConfig, Ethernet8 sFlow source and two-second polling | **Not tested** | 105 passed, 15 warnings, 3 skipped |
 
-The MACsec/QuaDRA counts in this comparison predate moving static MACsec configuration, convergence, and ping checks from `test-macsec-dot1x` into `test-macsec-qkd`.
-
-Offline upgrade verification also passed **588 pytest tests**, including Containerlab checks.
+Subscribe delivers datagrams on all six endpoints with the explicit source and polling settings. Actual Subscribe connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. Both QuaDRA IPv4 client paths select hybrid TLS with fresh key delivery; previous-image QuaDRA KEX was **not measured**.
 
 ### Known limitations
 
-The following service failures and verification gaps remain after the upgrade:
-
-- **gRIBI:** Classical `secp256r1` TLS 1.3 and Get RPC succeed; hybrid-only mTLS fails. Hybrid-only and TLS 1.3-only policy enforcement **fails**: classical TLS 1.3 and TLS 1.2 complete despite the strict profile.
-- **eos-sdk-rpc:** Classical `secp256r1` TLS 1.3 succeeds over IPv4; hybrid-only mTLS fails. TLS 1.2 negotiates parameters then ends with EOF, leaving application operation over TLS 1.2 **unverified**. The current `local interface Management0` binding has no native IPv6 listener (three SKIPs). Direct socket inspection and TCP/mTLS probes confirmed the IPv4-mapped bind on all three upgraded switches; IPv6 eAPI succeeded as a connectivity control. Alternative bindings were **not tested**.
-- **RESTCONF:** Hybrid TLS 1.3 succeeds. Hybrid-only and TLS 1.3-only policy enforcement **fails**: separate probes confirm that classical TLS 1.3 and TLS 1.2 also complete despite the strict profile.
-- **Syslog:** Hybrid TLS 1.3 succeeds. Hybrid-only policy enforcement with a changed configuration was **not tested**.
-- **QuaDRA:** Both actual client paths now have measured hybrid TLS KEX. Classical groups are also advertised; hybrid-only enforcement remains **unverified**. Simulator peer TLS KEX was **not measured**.
-- **Routing:** Settled reruns pass all 12 directed IPv4/IPv6 routes. Both versions show temporary loss during initialization.
-
-The remaining **15 OpenConfig warnings** on 4.37.0F are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). Its **three skips** are eos-sdk-rpc IPv6.
+- **gRIBI / eos-sdk-rpc:** Hybrid-only mTLS fails; classical TLS 1.3 succeeds. gRIBI also accepts TLS 1.2. eos-sdk-rpc TLS 1.2 ends in EOF; application operation is **unverified**. Its Management0 binding has no native IPv6 listener.
+- **RESTCONF:** Accepts hybrid and classical TLS 1.3, plus TLS 1.2, despite the strict profile.
+- **Syslog / QuaDRA:** Hybrid negotiation is measured; hybrid-only enforcement is **not tested** for syslog and **unverified** for QuaDRA. Simulator peer TLS KEX was **not measured**.
 
 ### Test and tooling changes
 
-- `make test-quadra-tls` adds passive capture of both actual QuaDRA clients, checks final ServerHello selection and fresh successful key delivery, and retains packet/decoded evidence. Missing evidence and non-hybrid selection fail the check.
-- Syslog checks now verify negotiated hybrid KEX and delivery of fresh messages.
-- gNPSI Subscribe now passes on all six endpoints after setting **`sflow source-interface Ethernet8`** and **`sflow polling-interval 2`**. Normal 1:4096 sampling produces counter datagrams in the eight-second windows; a controlled run with temporary 1:1 sampling and 500 successful routed pings per host also delivered flow samples with matching IPv4/ICMP headers on every stream. Actual Subscribe ServerHellos select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. The old empty eight-second and 75-second runs lacked an explicit source; this is a configuration correction on the same build. The probe requires a nonempty base64-decoded `Sample.packet` and now fails on empty streams or RPC/JSON/base64 errors. Earlier claims based on stderr `Terminated` remain withdrawn.
-- Reauthentication recognizes RADIUS request IDs such as `Auth: (59) Login OK`. MKA extraction prefers the successful `principalActor` when retained participants coexist.
-- The eAPI failure-test mock intercepts the actual TLS helper, avoiding unintended live connections.
-- The devcontainer Python image is pinned to **`3.14-trixie`** to avoid the autopep8 extension crash under Python 3.15.
+Subscribe requires a nonempty decoded `Sample.packet`; empty streams and RPC/JSON/base64 errors fail. Earlier success claims based on stderr `Terminated` are withdrawn. Static MACsec checks are assigned to `test-macsec-qkd`. Counts predating that assignment were MACsec **17 / 22** (baseline / reauthentication) and QuaDRA **15 / 17** (functional / TLS); current runs report **9 / 13** and **19 / 21** passed, respectively. Wait notices are excluded from check counts.
 
 ### Verification scope
 
-Both images were initially compared on three ARM64 cEOS switches with the same templates, peer images, probe tools, and QuaDRA extension. The subsequent sFlow source/polling correction and successful Subscribe delivery were measured only on 4.37.0F. Both archive SHA-512 checks passed. This is a lab comparison, not a hardware qualification.
-
-A separate TLS matrix exercised **108 probes per image**. All **18 changed outcomes** in that matrix were gNPSI. EOS-originated syslog was verified separately.
-
-Image smoke checks, Containerlab dry-run, topology validation, public export, site configuration synchronization, and strict documentation build also passed. Remaining service failures and verification gaps are recorded under [Known limitations](#known-limitations).
-
-Current operational references: [Services](services/index.md) and [Test results](tests/index.md#result-summary).
+Three ARM64 cEOS switches, both IP families unless noted; **108 TLS diagnostics per image**, with all **18 changed outcomes** on gNPSI. The explicit sFlow source/polling configuration was tested only on 4.37.0F. Current operational references: [Services](services/index.md) and [Test results](tests/index.md#result-summary).

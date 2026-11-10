@@ -2,6 +2,8 @@
 
 Post-quantum cryptography (PQC) demonstration lab for **Arista EOS** using Containerlab.
 
+**Tested EOS version: 4.37.0F.** The guides describe this lab version; release comparisons are in the [Changelog](changelog.md).
+
 ## What this lab demonstrates
 
 - **PQC-hybrid TLS 1.3** verified on eAPI, gNMI/gNOI, gNSI, gNPSI TLS/reflection/Subscribe, RESTCONF, RadSec, and remote syslog on EOS **4.37.0F**

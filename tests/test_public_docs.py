@@ -361,13 +361,11 @@ def test_openconfig_documents_sa0146_as_safe() -> None:
     assert "## Other remarks" in openconfig
     assert "### Security Advisory 0146" in openconfig
     assert re.search(r"^## Security Advisory 0146$", openconfig, re.M) is None
-    assert "already contained" in openconfig.lower()
     assert "considered safe" in openconfig.lower()
     assert "trust certificate" in openconfig
     assert "24500-security-advisory-0146" in openconfig
     index = (PUBLIC_DOCS / "services/index.md").read_text(encoding="utf-8")
     assert "openconfig.md#security-advisory-0146" in index
-    assert "already contained" in index.lower()
     assert "considered safe" in index.lower()
 
 

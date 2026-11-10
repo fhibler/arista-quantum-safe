@@ -245,7 +245,7 @@ ping 10.255.0.6 source 10.255.0.5
 
 Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
-Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**, QuaDRA/QKD **15 passed**, including master/slave roles, matching SAK cross-mapping, and key delivery. Passive captures confirm hybrid TLS on both actual QuaDRA-to-KME IPv4 connections; `make test-quadra-tls` passes **17 checks**. This does not establish simulator peer TLS or rejection of classical fallback.
+Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**; `make test-macsec-qkd` **19 passed**; `make test-quadra-tls` **21 passed**, including the functional checks and two passive TLS wire checks. Both QuaDRA runs have no warnings, failures, or skips. The checks verify master/slave roles, SAK cross-mapping, key delivery, and hybrid TLS on both actual QuaDRA-to-KME IPv4 connections. This does not establish simulator peer TLS or rejection of classical fallback.
 
 Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (static MACsec always; QuaDRA daemon/KME checks when the extension is installed on both switches).
 

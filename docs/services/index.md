@@ -39,11 +39,11 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `GRIBI`, `GNSI`, `GNPSI`, `RESTCONF`,
 
 **Syslog:** Both sides retain classical fallback for compatibility. Packet captures on 4.37.0F confirm **`X25519MLKEM768`** on all six EOS-to-collector connections. Hybrid-only enforcement has not been tested with a changed configuration. See [Syslog caveats](syslog.md#caveats).
 
-**gNPSI:** TLS and reflection negotiate **`X25519MLKEM768`** on all six endpoints; classical TLS 1.3 and TLS 1.2 offers are rejected. **Subscribe delivers sFlow datagrams on all six endpoints** after correcting the sFlow source; actual Subscribe ServerHellos also select hybrid KEX.
+**gNPSI:** TLS and reflection negotiate **`X25519MLKEM768`** on all six endpoints; classical TLS 1.3 and TLS 1.2 offers are rejected. **Subscribe delivers sFlow datagrams on all six endpoints** with `sflow source-interface Ethernet8` and two-second counter polling; actual Subscribe ServerHellos also select hybrid KEX.
 
 **Remaining EOS gaps (4.37.0F):** [gRIBI](openconfig.md#gribi-grpc) and [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) remain classical despite their hybrid-only profiles. [RESTCONF](openconfig.md#restconf-https) supports hybrid but accepts classical TLS 1.3 and TLS 1.2; gRIBI also accepts TLS 1.2. eos-sdk-rpc remains IPv4-only with the current Management0 binding. See the [current test results](../tests/index.md#result-summary).
 
-**Security Advisory 0146:** OpenConfig gRPC listeners **already contained** Arista's published **mTLS** mitigation (`trust certificate` on ssl profiles `GNMI`, `GRIBI`, and `GNPSI`; eos-sdk-rpc reuses `GNMI`). The configuration is **considered safe** - see [OpenConfig & gRPC - SA-0146](openconfig.md#security-advisory-0146).
+**Security Advisory 0146:** OpenConfig gRPC listeners **use** Arista's published **mTLS** mitigation (`trust certificate` on ssl profiles `GNMI`, `GRIBI`, and `GNPSI`; eos-sdk-rpc reuses `GNMI`). The configuration is **considered safe** - see [OpenConfig & gRPC - SA-0146](openconfig.md#security-advisory-0146).
 
 ## Service guides
 

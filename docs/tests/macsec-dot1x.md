@@ -46,6 +46,10 @@ Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1
 
 ## Pass criteria
 
+Recorded on **EOS 4.37.0F**, ARM64: `make test-macsec-dot1x` reports **9 passed**;
+`make test-macsec-dot1x-reauth` reports **13 passed**, including the baseline checks.
+Both runs have no warnings, failures, or skips.
+
 - 802.1X authenticated on both sides
 - MKA live peers with **matching CKN**
 - MACsec interface reports traffic **protected**

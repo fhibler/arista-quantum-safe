@@ -1,10 +1,10 @@
 # Changelog
 
-Verified lab changes are summarized by **target EOS version**, newest first. Each entry identifies the previous version and uses the same sections: **Versions**, **Behavior changes**, **Test results**, **Known limitations**, **Test and tooling changes**, and **Verification scope**.
+Each changelog entry describes the verified lab changes from the **previous EOS version** to the **target EOS version**, newest first. This comparison frames the whole entry, including behavior changes, test results, and remaining limitations. Each entry uses the same sections: **Versions**, **Behavior changes**, **Test results**, **Known limitations**, **Test and tooling changes**, and **Verification scope**.
 
 For a future upgrade, add a new `## EOS <version>` entry above the existing entries and reuse those six sections. Compare against the previous default using the same configuration, tools, and assertions; explain any changes that prevent a direct comparison. Keep historical results here and replace the results in service and test guides with the latest verified values. Entries record observed lab behavior, not a vendor release-note changelog.
 
-For each limitation, state the verified behavior followed by the remaining failure or verification gap. Distinguish successful hybrid negotiation from policy enforcement. Use **unverified** for outcomes not established, **not measured** for missing measurements, **not tested** for configurations not exercised, and **not revalidated** for earlier findings not checked again.
+Report verified improvements and remaining limitations observed in the comparison. Identify configuration corrections and current-only measurements explicitly so they do not imply version-to-version fixes. Distinguish successful hybrid negotiation from policy enforcement. Use **unverified** for outcomes not established, **not measured** for missing measurements, and **not tested** for configurations not exercised.
 
 ## EOS 4.37.0F
 
@@ -68,8 +68,6 @@ The following service failures and verification gaps remain after the upgrade:
 - **Syslog:** Hybrid TLS 1.3 succeeds. Hybrid-only policy enforcement with a changed configuration was **not tested**.
 - **QuaDRA:** Both actual client paths now have measured hybrid TLS KEX. Classical groups are also advertised; hybrid-only enforcement remains **unverified**. Simulator peer TLS KEX was **not measured**.
 - **Routing:** Settled reruns pass all 12 directed IPv4/IPv6 routes. Both versions show temporary loss during initialization.
-- **gNSI / shared-port clients:** The `transport gnmi default` binding and the gnoic, gnmic, and gnsic clients on port 6030 are verified. Earlier 4.36.2F rejection of `transport grpc default` and the grpcurl handshake failure on port 6030 were **not revalidated** on 4.37.0F. grpcurl reflection and Subscribe sample delivery on gNPSI port 6031 succeed.
-- **Other cryptographic capabilities:** Standalone ML-KEM and post-quantum certificate/signature capabilities were **not revalidated**.
 
 The remaining **15 OpenConfig warnings** on 4.37.0F are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). Its **three skips** are eos-sdk-rpc IPv6.
 
@@ -88,6 +86,6 @@ Both images were initially compared on three ARM64 cEOS switches with the same t
 
 A separate TLS matrix exercised **108 probes per image**. All **18 changed outcomes** in that matrix were gNPSI. EOS-originated syslog was verified separately.
 
-Image smoke checks, Containerlab dry-run, topology validation, public export, site configuration synchronization, and strict documentation build also passed. Service failures, verification gaps, and earlier findings that were **not revalidated** are recorded under [Known limitations](#known-limitations).
+Image smoke checks, Containerlab dry-run, topology validation, public export, site configuration synchronization, and strict documentation build also passed. Remaining service failures and verification gaps are recorded under [Known limitations](#known-limitations).
 
 Current operational references: [Services](services/index.md) and [Test results](tests/index.md#result-summary).

@@ -37,7 +37,7 @@ RUN bash -c 'ARCH=$(uname -m | sed "s/x86_64/x86_64/" | sed "s/aarch64/aarch64/"
     gnmic version'
 
 # Inner DinD: skip credential helpers for Docker Hub (avoids macOS Keychain prompts on
-# anonymous base-image pulls during make deploy; see docs/devcontainer.md).
+# anonymous base-image pulls during make containerlab-deploy; see internal/docs/devcontainer.md).
 RUN mkdir -p /root/.docker && cat > /root/.docker/config.json <<'EOF'
 {
   "credHelpers": {

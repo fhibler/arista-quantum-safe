@@ -44,7 +44,7 @@ EOS **4.37.0F** wire gaps remain for [gRIBI](../services/openconfig.md#gribi-grp
 | **gribic** | Upstream **`go 1.21`** in `go.mod` - same `tlsmlkem=0` default | Source-build **0.0.14** with Go **1.27.0**; **`go mod edit -go=1.27`** before compile |
 | **gnoic / gnsic / gnmic** | Go **1.25+** prebuilt tarballs OK | Pin upstream release tarballs |
 
-Build entry points: `make build-lab-images`, `make build-radius`, `make build-syslog`, `make build-test-runner`. Smoke checks: `make verify-test-runner-image`, plus the radius and syslog image test Makefile targets.
+Build images with `make images-build` and verify existing images with `make images-check`. Both accept `IMAGE=radius`, `IMAGE=syslog`, `IMAGE=kme`, or `IMAGE=test-runner`; omitting `IMAGE` selects all four. Builds automatically verify the selected images.
 
 ## OpenSSL 3.5 (peer containers)
 
@@ -108,7 +108,7 @@ Expect `gnpsi.gNPSI` and `grpc.reflection.v1.ServerReflection`. Transport PQC on
 
 - **`GODEBUG=tlsmlkem=0`** disables PQ hybrids in Go - do not set this in the test-runner environment. For **grpcurl** and **gribic**, the Dockerfile avoids that default by running **`go mod edit -go=1.27`** before compile (see [Go `crypto/tls`](#go-cryptotls-grpc-clients)).
 - **`OPENSSL_CONF`** affects OpenSSL binaries only (`curl`, `openssl s_client`), not Go gRPC clients.
-- After changing Dockerfile pins, run `make build-test-runner` and `make verify-test-runner-image`, then spot-check live handshakes with `make test-openconfig VERBOSE=1`.
+- After changing Dockerfile pins, run `make images-build IMAGE=test-runner` and `make images-check IMAGE=test-runner`, then spot-check live handshakes with `make test-openconfig VERBOSE=1`.
 
 ## Related
 

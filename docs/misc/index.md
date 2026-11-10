@@ -11,4 +11,4 @@ Reference material that applies across multiple services in the lab.
 
 - [PQC overview](../pqc-overview.md) - hybrid vs pure PQC, algorithms, OpenSSL 3.5 minimum
 - [Services](../services/index.md) - per-service ssl profiles and bindings
-- [Setup](../setup.md) - `make gen-topo`, deploy, and PKI generation
+- [Setup](../setup.md) - `make containerlab-gentopo`, deploy, and PKI generation

@@ -11,6 +11,10 @@ CEOS_IMAGE ?= ceos:4.37.0F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download
+IMAGE ?=
+NODE ?=
+LAB_IMAGES := radius syslog kme test-runner
+SELECTED_IMAGES = $(if $(strip $(IMAGE)),$(strip $(IMAGE)),$(LAB_IMAGES))
 QUADRA_SWIX ?=
 CLAB_TOPO_SRC := lab/quantum-safe.clab.yml
 CLAB_TOPO_ANN := lab/quantum-safe.clab.yml.annotations.json
@@ -34,78 +38,32 @@ BAKE_PROGRESS := $(if $(filter 1,$(VERBOSE)),--progress=plain,)
 BAKE          := GO_VERSION=$(GO_VERSION) ALPINE_VERSION=$(ALPINE_VERSION) docker buildx bake -f $(BAKE_FILE) $(BAKE_PROGRESS) --set '*.platform=linux/$(HOST_ARCH)'
 OPENSSL_PQC_TLS_GROUPS := X25519MLKEM768 MLKEM768 SecP256r1MLKEM768
 verify_openssl_pqc_tls_groups = groups=$$(docker run --rm $(1) openssl list -tls-groups); for g in $(OPENSSL_PQC_TLS_GROUPS); do echo "$$groups" | grep -q "$$g" || { echo "missing PQC group: $$g"; exit 1; }; echo "PQC group:  $$g present"; done
-# VERBOSE=1 in .env or on the command line, e.g. make deploy VERBOSE=1.
+# VERBOSE=1 in .env or on the command line, e.g. make containerlab-deploy VERBOSE=1.
 # VERBOSE=1 → plain Docker build output and debug containerlab deploy logs.
+DEPLOY_KME_NODES := kme-a,kme-b
 CLAB_DEPLOY_FLAGS := $(if $(filter 1,$(VERBOSE)),-d,)
 MAKE_VERBOSE := $(if $(filter 1,$(VERBOSE)),VERBOSE=1,)
 PYTHON        := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
 PRINT_VERIFY_HEADER := $(PYTHON) -c 'from lab.report import print_test_header; print_test_header(*__import__("sys").argv[1:])'
 
-.PHONY: help gen-topo validate-topo sync-site-config test check-ceos-image check-containerlab import-ceos import-ceos-help \
-        download-ceos download-ceos-help build-lab-images build-radius build-syslog build-kme deploy-kme wait-kme-pool deploy destroy redeploy \
-        clean reset inspect ssh-ceos1-both ssh-ceos2-pqc ssh-ceos3-qkd shell-test-runner install-quadra test-lab test-lab-runner test-radsec test-syslog test-kme test-eapi test-ssh test-openconfig test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts \
-        test-radius-image test-syslog-image test-kme-image verify-test-runner-image
+##@ General
 
-help: ## Show available targets
-	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'
+.PHONY: help
+
+help: ## Show available targets by category
+	@awk 'BEGIN {FS = ":.*## "} \
+		/^##@ / { section=substr($$0, 5); if (!(section in seen)) {order[++n]=section; seen[section]=1}; next } \
+		/^[a-zA-Z0-9_-]+:.*## / { entries[section]=entries[section] sprintf("  %-30s %s\n", $$1, $$2) } \
+		END { for (i=1; i<=n; i++) {if (i>1) printf "\n"; print order[i]; printf "%s", entries[order[i]]} }' $(MAKEFILE_LIST)
+
+##@ Containerlab
+
+.PHONY: containerlab-check containerlab-gentopo containerlab-validate containerlab-deploy containerlab-destroy containerlab-redeploy containerlab-inspect
 
 $(CLAB_TOPO_GEN) $(GEN_CONFIGS): $(CLAB_TOPO_SRC) $(CLAB_TOPO_ANN) configs/ceos/ceos1-both.cfg.in configs/ceos/ceos2-pqc.cfg.in configs/ceos/ceos3-qkd.cfg.in configs/ceos/quadra-daemon-master.cfg.in configs/ceos/quadra-daemon-slave.cfg.in configs/ceos/quadra-macsec-master.cfg.in configs/ceos/quadra-macsec-slave.cfg.in configs/radius/raddb/clients.conf.in configs/radius/raddb/clients-radsec.conf.in
 	@$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
 
-gen-topo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET / MGMT_IPV6_SUBNET overrides (VERBOSE=1 echoes commands)
-	@if [ "$(VERBOSE)" = "1" ]; then set -x; fi; \
-	env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
-		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
-	@$(MAKE) --no-print-directory validate-topo $(MAKE_VERBOSE)
-
-sync-site-config: ## Sync README.md and mkdocs.yml site blocks from site.yaml
-	@$(PYTHON) scripts/site_config.py --sync-readme
-	@$(PYTHON) scripts/site_config.py --sync-mkdocs
-
-validate-topo: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
-	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
-
-test: ## Run offline pytest (scaffold + contract validation)
-	$(PYTHON) -m pytest
-
-check-ceos-image: ## Fail if cEOS image missing or architecture mismatches host
-	@set -euo pipefail; \
-	$(PRINT_VERIFY_HEADER) \
-		"cEOS image verification" \
-		"  $(CEOS_IMAGE)"; \
-	if ! docker image inspect "$(CEOS_IMAGE)" >/dev/null 2>&1; then \
-		if [ "$(SKIP_CEOS_IMPORT)" = 1 ]; then \
-			echo "cEOS image '$(CEOS_IMAGE)' not found locally."; \
-			echo ""; \
-			$(MAKE) --no-print-directory import-ceos-help; \
-			exit 1; \
-		fi; \
-		echo "cEOS image '$(CEOS_IMAGE)' not found locally; importing from $(CEOS_DOWNLOAD_DIR)/ if present."; \
-		$(MAKE) --no-print-directory import-ceos; \
-		exit 0; \
-	fi; \
-	img_arch=$$(docker image inspect "$(CEOS_IMAGE)" -f '{{.Architecture}}'); \
-	host_arch=$$(uname -m); \
-	case "$$host_arch" in \
-		x86_64|amd64) host_arch=amd64 ;; \
-		aarch64|arm64) host_arch=arm64 ;; \
-	esac; \
-	if [ "$$img_arch" != "$$host_arch" ]; then \
-		echo "cEOS image architecture mismatch for '$(CEOS_IMAGE)'."; \
-		echo "  image: $$img_arch"; \
-		echo "  host:  $$host_arch"; \
-		echo ""; \
-		echo "Re-import the correct tarball for your platform:"; \
-		echo "  amd64  → $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz"; \
-		echo "  arm64  → $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz (EFT suffix OK)"; \
-		echo ""; \
-		$(MAKE) --no-print-directory import-ceos-help; \
-		exit 1; \
-	fi; \
-	echo "cEOS image '$(CEOS_IMAGE)' present ($$img_arch)"
-
-check-containerlab: ## Fail if containerlab is not installed or older than CLAB_MIN_VERSION
+containerlab-check: ## Fail if containerlab is not installed or older than CLAB_MIN_VERSION
 	@set -euo pipefail; \
 	clab=$$(command -v containerlab 2>/dev/null || true); \
 	if [ -z "$$clab" ]; then \
@@ -135,7 +93,76 @@ check-containerlab: ## Fail if containerlab is not installed or older than CLAB_
 	fi; \
 	echo "Containerlab $$installed installed ($$clab, >= $(CLAB_MIN_VERSION))"
 
-import-ceos: ## Import cEOS tarball from download/ (no API token)
+containerlab-gentopo: ## Generate topology YAML with CEOS_IMAGE / MGMT_SUBNET / MGMT_IPV6_SUBNET overrides (VERBOSE=1 echoes commands)
+	@if [ "$(VERBOSE)" = "1" ]; then set -x; fi; \
+	env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
+		$(PYTHON) -m lab.render_topo --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
+	@$(MAKE) --no-print-directory containerlab-validate $(MAKE_VERBOSE)
+
+containerlab-validate: $(CLAB_TOPO_GEN) ## Validate generated topology against contract
+	@$(PYTHON) -m lab.validate_topo $(CLAB_TOPO_GEN) --ceos-image '$(CEOS_IMAGE)' --mgmt-subnet '$(MGMT_SUBNET)' --mgmt-ipv6-subnet '$(MGMT_IPV6_SUBNET)'
+
+containerlab-deploy: ## Build images and deploy lab (VERBOSE=1: plain Docker logs + containerlab debug)
+	@$(MAKE) --no-print-directory containerlab-gentopo $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory containerlab-check $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory images-build IMAGE= $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory ceos-image-check $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory images-kme-deploy $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory images-kme-pool-wait $(MAKE_VERBOSE)
+	containerlab deploy -t $(CLAB_TOPO_GEN) $(CLAB_DEPLOY_FLAGS)
+
+containerlab-destroy: containerlab-check $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
+	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
+
+containerlab-redeploy: ## Generate topology, destroy lab, then run the full deployment
+	@$(MAKE) --no-print-directory containerlab-gentopo $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory containerlab-destroy $(MAKE_VERBOSE)
+	@$(MAKE) --no-print-directory containerlab-deploy $(MAKE_VERBOSE)
+
+containerlab-inspect: containerlab-check ## Inspect lab node status
+	containerlab inspect -t $(CLAB_TOPO_GEN)
+
+##@ cEOS image management
+
+.PHONY: ceos-image-check ceos-image-import ceos-image-download ceos-image-help ceos-quadra-install
+
+ceos-image-check: ## Fail if cEOS image missing or architecture mismatches host
+	@set -euo pipefail; \
+	$(PRINT_VERIFY_HEADER) \
+		"cEOS image verification" \
+		"  $(CEOS_IMAGE)"; \
+	if ! docker image inspect "$(CEOS_IMAGE)" >/dev/null 2>&1; then \
+		if [ "$(SKIP_CEOS_IMPORT)" = 1 ]; then \
+			echo "cEOS image '$(CEOS_IMAGE)' not found locally."; \
+			echo ""; \
+			$(MAKE) --no-print-directory ceos-image-help; \
+			exit 1; \
+		fi; \
+		echo "cEOS image '$(CEOS_IMAGE)' not found locally; importing from $(CEOS_DOWNLOAD_DIR)/ if present."; \
+		$(MAKE) --no-print-directory ceos-image-import; \
+		exit 0; \
+	fi; \
+	img_arch=$$(docker image inspect "$(CEOS_IMAGE)" -f '{{.Architecture}}'); \
+	host_arch=$$(uname -m); \
+	case "$$host_arch" in \
+		x86_64|amd64) host_arch=amd64 ;; \
+		aarch64|arm64) host_arch=arm64 ;; \
+	esac; \
+	if [ "$$img_arch" != "$$host_arch" ]; then \
+		echo "cEOS image architecture mismatch for '$(CEOS_IMAGE)'."; \
+		echo "  image: $$img_arch"; \
+		echo "  host:  $$host_arch"; \
+		echo ""; \
+		echo "Re-import the correct tarball for your platform:"; \
+		echo "  amd64  → $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz"; \
+		echo "  arm64  → $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz (EFT suffix OK)"; \
+		echo ""; \
+		$(MAKE) --no-print-directory ceos-image-help; \
+		exit 1; \
+	fi; \
+	echo "cEOS image '$(CEOS_IMAGE)' present ($$img_arch)"
+
+ceos-image-import: ## Import cEOS tarball from download/ (no API token)
 	@set -euo pipefail; \
 	case "$$(uname -m)" in \
 		x86_64|amd64)  CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz" ;; \
@@ -148,40 +175,14 @@ import-ceos: ## Import cEOS tarball from download/ (no API token)
 	esac; \
 	if [ -z "$${CEOS_TAR:-}" ] || [ ! -f "$$CEOS_TAR" ]; then \
 		echo "cEOS tarball not found under $(CEOS_DOWNLOAD_DIR)/"; \
-		$(MAKE) --no-print-directory import-ceos-help; \
+		$(MAKE) --no-print-directory ceos-image-help; \
 		exit 1; \
 	fi; \
 	echo "Importing $$CEOS_TAR → $(CEOS_IMAGE)"; \
 	docker import "$$CEOS_TAR" "$(CEOS_IMAGE)"; \
-	$(MAKE) --no-print-directory check-ceos-image SKIP_CEOS_IMPORT=1
+	$(MAKE) --no-print-directory ceos-image-check SKIP_CEOS_IMPORT=1
 
-import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
-	@echo "# Manual import (no API token required):"
-	@echo ""
-	@echo "# amd64:"
-	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
-	@echo ""
-	@echo "# aarch64:"
-	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
-	@echo ""
-	@echo "# Or use the arch-aware helper:"
-	@echo "make import-ceos"
-	@echo ""
-	@echo "# Optional auto-download (requires ARISTA_TOKEN - see make download-ceos-help):"
-	@echo "make download-ceos"
-
-download-ceos-help: ## Print Arista token setup and ardl usage
-	@echo "# 1. Get Arista portal token: https://www.arista.com/en/users/profile"
-	@echo "# 2. export ARISTA_TOKEN=<token>   # or copy .env.example → .env"
-	@echo "# 3. make download-ceos            # arch-aware cEOS64/cEOSarm + docker import"
-	@echo "# 4. make check-ceos-image"
-	@echo "#"
-	@echo "# Equivalent ardl one-liner (amd64 example):"
-	@echo "#   ARISTA_TOKEN=... ardl get eos --version $(CEOS_VERSION) --format cEOS64 \\"
-	@echo "#     --output $(CEOS_DOWNLOAD_DIR) --import-docker \\"
-	@echo "#     --docker-name $(CEOS_DOCKER_NAME) --docker-tag $(CEOS_VERSION)"
-
-download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_TOKEN)
+ceos-image-download: ## Download and import cEOS via eos-downloader (requires ARISTA_TOKEN)
 	@set -euo pipefail; \
 	case "$$(uname -m)" in \
 		x86_64|amd64)  CEOS_FORMAT=cEOS64; CEOS_TAR="$(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz" ;; \
@@ -195,13 +196,13 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 	esac; \
 	if [ -n "$${CEOS_TAR:-}" ] && [ -f "$$CEOS_TAR" ]; then \
 		echo "Tarball already present ($$CEOS_TAR); importing without Arista API."; \
-		$(MAKE) --no-print-directory import-ceos; \
+		$(MAKE) --no-print-directory ceos-image-import; \
 		exit 0; \
 	fi; \
 	if [ -z "$(ARISTA_TOKEN)" ]; then \
 		echo "ARISTA_TOKEN not set. Copy .env.example → .env or export token."; \
 		echo "Get token: https://www.arista.com/en/users/profile"; \
-		echo "Manual fallback: make import-ceos-help"; \
+		echo "Manual fallback: make ceos-image-help"; \
 		exit 1; \
 	fi; \
 	if [ ! -x .venv/bin/python3 ] || ! .venv/bin/python3 -m pip --version >/dev/null 2>&1; then \
@@ -223,122 +224,281 @@ download-ceos: ## Download and import cEOS via eos-downloader (requires ARISTA_T
 		--docker-tag "$(CEOS_VERSION)" || { \
 		echo ""; \
 		echo "ardl failed contacting the Arista portal (often transient)."; \
-		echo "If download/$(CEOS_FORMAT)-lab-$(CEOS_VERSION)*.tar.xz already exists, run: make import-ceos"; \
+		echo "If download/$(CEOS_FORMAT)-lab-$(CEOS_VERSION)*.tar.xz already exists, run: make ceos-image-import"; \
 		exit 1; \
 	}
 
-build-lab-images: $(GEN_CONFIGS) ## Build all lab Docker images (Alpine 3.24 apk OpenSSL 3.5+)
-	$(BAKE)
-	@$(MAKE) --no-print-directory test-radius-image test-syslog-image test-kme-image verify-test-runner-image $(MAKE_VERBOSE)
+ceos-image-help: ## Show image import, download, and token instructions
+	@echo "# Manual import (no API token required):"
+	@echo ""
+	@echo "# amd64:"
+	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOS64-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
+	@echo ""
+	@echo "# aarch64:"
+	@echo "docker import $(CEOS_DOWNLOAD_DIR)/cEOSarm-lab-$(CEOS_VERSION).tar.xz $(CEOS_IMAGE)"
+	@echo ""
+	@echo "# Or use the arch-aware helper:"
+	@echo "make ceos-image-import"
+	@echo ""
+	@echo "# Optional auto-download (requires ARISTA_TOKEN):"
+	@echo "make ceos-image-download"
+	@echo ""
+	@echo "# 1. Get Arista portal token: https://www.arista.com/en/users/profile"
+	@echo "# 2. export ARISTA_TOKEN=<token>   # or copy .env.example → .env"
+	@echo "# 3. make ceos-image-download            # arch-aware cEOS64/cEOSarm + docker import"
+	@echo "# 4. make ceos-image-check"
+	@echo "#"
+	@echo "# Equivalent ardl one-liner (amd64 example):"
+	@echo "#   ARISTA_TOKEN=... ardl get eos --version $(CEOS_VERSION) --format cEOS64 \\"
+	@echo "#     --output $(CEOS_DOWNLOAD_DIR) --import-docker \\"
+	@echo "#     --docker-name $(CEOS_DOCKER_NAME) --docker-tag $(CEOS_VERSION)"
 
-build-radius: $(GEN_CONFIGS) ## Build quantum-safe-radius:latest for the host architecture
-	$(BAKE) radius
-	@$(MAKE) --no-print-directory test-radius-image $(MAKE_VERBOSE)
+ceos-quadra-install: ## Install QuaDRA swix on ceos1-both and ceos3-qkd (swix in download/quadra/ or QUADRA_SWIX=)
+	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
+		$(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-radius-image: ## Verify quantum-safe-radius:latest (FreeRADIUS 3.2.x + OpenSSL 3.5 PQC + RadSec)
-	@set -euo pipefail; \
-	$(PRINT_VERIFY_HEADER) \
-		"radius image verification (FreeRADIUS 3.2.6 + OpenSSL 3.5 PQC)" \
-		"  $(RADIUS_IMAGE)" \
-		"  OpenSSL groups, RadSec tls site, radiusd -C"; \
-	echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
-	echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
-	$(call verify_openssl_pqc_tls_groups,$(RADIUS_IMAGE)); \
-	docker run --rm $(RADIUS_IMAGE) test -L /etc/raddb/sites-enabled/tls; \
-	echo "RadSec:     tls site enabled"; \
-	docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
-	echo "RadSec:     radiusd config OK"
+##@ Lab images
 
-build-syslog: $(GEN_CONFIGS) ## Build quantum-safe-syslog:latest for the host architecture
-	$(BAKE) syslog
-	@$(MAKE) --no-print-directory test-syslog-image $(MAKE_VERBOSE)
+.PHONY: images-build images-check images-kme-deploy images-kme-pool-wait
 
-test-syslog-image: ## Verify quantum-safe-syslog:latest (syslog-ng + OpenSSL 3.5 PQC + TLS listener)
-	@set -euo pipefail; \
-	$(PRINT_VERIFY_HEADER) \
-		"syslog image verification (syslog-ng + OpenSSL 3.5 PQC)" \
-		"  $(SYSLOG_IMAGE)" \
-		"  OpenSSL groups, config syntax, TLS healthcheck"; \
-	echo "OpenSSL:    $$(docker run --rm $(SYSLOG_IMAGE) openssl version)"; \
-	$(call verify_openssl_pqc_tls_groups,$(SYSLOG_IMAGE)); \
-	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -f /etc/syslog-ng/syslog-ng.conf; \
-	docker run --rm --entrypoint /opt/syslog-ng/sbin/syslog-ng $(SYSLOG_IMAGE) -s -f /etc/syslog-ng/syslog-ng.conf; \
-	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /entrypoint.sh; \
-	docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /usr/local/bin/syslog-healthcheck.sh; \
-	cid=$$(docker run -d --name quantum-safe-syslog-image-test $(SYSLOG_IMAGE)); \
-	trap 'docker rm -f quantum-safe-syslog-image-test >/dev/null 2>&1 || true' EXIT; \
-	echo "Syslog:     waiting for TLS healthcheck..."; \
-	for i in $$(seq 1 30); do \
-		status=$$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $$cid 2>/dev/null || echo missing); \
-		if [ "$$status" = healthy ]; then \
-			echo "Syslog:     TLS healthcheck passed"; \
-			exit 0; \
-		fi; \
-		sleep 2; \
-	done; \
-	echo "syslog image healthcheck did not become healthy (last status: $$status)"; \
-	docker logs $$cid 2>&1 | tail -20; \
-	exit 1
+# Pass selectors through the environment so invalid values are never shell code.
+images-build images-check: export SELECTED_IMAGE := $(strip $(IMAGE))
 
-build-kme: $(GEN_CONFIGS) ## Build quantum-safe-kme:latest for the host architecture
-	$(BAKE) kme
-	@$(MAKE) --no-print-directory test-kme-image $(MAKE_VERBOSE)
+define validate_image_selection
+case "$$SELECTED_IMAGE" in \
+    ''|radius|syslog|kme|test-runner) ;; \
+    *) printf 'Invalid IMAGE: %s. Choose radius, syslog, kme, test-runner, or omit IMAGE for all.\n' "$$SELECTED_IMAGE" >&2; exit 2 ;; \
+esac
+endef
 
-test-kme-image: ## Verify quantum-safe-kme:latest (ETSI QKD 014 simulator)
-	@set -euo pipefail; \
-	$(PRINT_VERIFY_HEADER) \
-		"kme image verification (ETSI QKD 014 simulator)" \
-		"  $(KME_IMAGE)" \
-		"  Flask import + entrypoint"; \
-	echo "KME:        $$(docker run --rm --entrypoint python3 $(KME_IMAGE) -c 'from server.app import App; import flask; print("import ok")')"; \
-	docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
-	echo "KME:        entrypoint present"
+define check_radius_image
+set -euo pipefail; \
+$(PRINT_VERIFY_HEADER) \
+	"radius image verification (FreeRADIUS 3.2.6 + OpenSSL 3.5 PQC)" \
+	"  $(RADIUS_IMAGE)" \
+	"  OpenSSL groups, RadSec tls site, radiusd -C"; \
+echo "FreeRADIUS: $$(docker run --rm $(RADIUS_IMAGE) radiusd -v 2>&1 | head -1)"; \
+echo "OpenSSL:    $$(docker run --rm $(RADIUS_IMAGE) openssl version)"; \
+$(call verify_openssl_pqc_tls_groups,$(RADIUS_IMAGE)); \
+docker run --rm $(RADIUS_IMAGE) test -L /etc/raddb/sites-enabled/tls; \
+echo "RadSec:     tls site enabled"; \
+docker run --rm $(RADIUS_IMAGE) radiusd -C >/dev/null; \
+echo "RadSec:     radiusd config OK"
+endef
 
-build-test-runner: ## Build quantum-safe-test-runner:latest for the host architecture
-	$(BAKE) test-runner
-	@$(MAKE) --no-print-directory verify-test-runner-image $(MAKE_VERBOSE)
+define check_syslog_image
+set -euo pipefail; \
+$(PRINT_VERIFY_HEADER) \
+	"syslog image verification (syslog-ng + OpenSSL 3.5 PQC)" \
+	"  $(SYSLOG_IMAGE)" \
+	"  OpenSSL groups, config syntax, TLS healthcheck"; \
+echo "OpenSSL:    $$(docker run --rm $(SYSLOG_IMAGE) openssl version)"; \
+$(call verify_openssl_pqc_tls_groups,$(SYSLOG_IMAGE)); \
+docker run --rm --entrypoint test $(SYSLOG_IMAGE) -f /etc/syslog-ng/syslog-ng.conf; \
+docker run --rm --entrypoint /opt/syslog-ng/sbin/syslog-ng $(SYSLOG_IMAGE) -s -f /etc/syslog-ng/syslog-ng.conf; \
+docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /entrypoint.sh; \
+docker run --rm --entrypoint test $(SYSLOG_IMAGE) -x /usr/local/bin/syslog-healthcheck.sh; \
+cid=$$(docker run -d --name quantum-safe-syslog-image-test $(SYSLOG_IMAGE)); \
+trap 'docker rm -f quantum-safe-syslog-image-test >/dev/null 2>&1 || true' EXIT; \
+echo "Syslog:     waiting for TLS healthcheck..."; \
+for i in $$(seq 1 30); do \
+	status=$$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $$cid 2>/dev/null || echo missing); \
+	if [ "$$status" = healthy ]; then \
+		echo "Syslog:     TLS healthcheck passed"; \
+		exit 0; \
+	fi; \
+	sleep 2; \
+done; \
+echo "syslog image healthcheck did not become healthy (last status: $$status)"; \
+docker logs $$cid 2>&1 | tail -20; \
+exit 1
+endef
 
-verify-test-runner-image: ## Verify quantum-safe-test-runner:latest (OpenSSL 3.5 PQC + curl)
-	@set -euo pipefail; \
-	$(PRINT_VERIFY_HEADER) \
-		"test-runner image verification (OpenSSL 3.5 PQC + probes)" \
-		"  $(TEST_RUNNER_IMAGE)" \
-		"  curl/OpenSSH PQC, gnmic/grpcurl/gnoic/gribic/gnsic"; \
-	echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
-	$(call verify_openssl_pqc_tls_groups,$(TEST_RUNNER_IMAGE)); \
-	echo "curl:       $$(docker run --rm $(TEST_RUNNER_IMAGE) curl --version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'curl --version | grep -qi openssl'; \
-	echo "Probe:      curl linked to OpenSSL"; \
-	echo "OpenSSH:    $$(docker run --rm $(TEST_RUNNER_IMAGE) ssh -V 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'ssh -Q kex | grep -q mlkem768x25519-sha256'; \
-	echo "Probe:      ssh supports mlkem768x25519-sha256"; \
-	echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
-	echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'grpcurl --version 2>&1 | grep -qE "^grpcurl v[0-9]" && strings /usr/local/bin/grpcurl | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
-	echo "Probe:      grpcurl built with Go 1.24+ (PQC-hybrid TLS client)"; \
-	echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
-	echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
-	docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'gribic version 2>&1 | grep -qE "[0-9]+\\.[0-9]+" && (go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -qE "go1\\.(2[4-9]|[3-9][0-9])")'; \
-	echo "Probe:      gribic built with Go 1.24+ (PQC-hybrid TLS client)"; \
-	echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
-	echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"
+define check_kme_image
+set -euo pipefail; \
+$(PRINT_VERIFY_HEADER) \
+	"kme image verification (ETSI QKD 014 simulator)" \
+	"  $(KME_IMAGE)" \
+	"  Flask import + entrypoint"; \
+echo "KME:        $$(docker run --rm --entrypoint python3 $(KME_IMAGE) -c 'from server.app import App; import flask; print("import ok")')"; \
+docker run --rm --entrypoint test $(KME_IMAGE) -x /entrypoint.sh; \
+echo "KME:        entrypoint present"
+endef
 
-DEPLOY_KME_NODES := kme-a,kme-b
+define check_test_runner_image
+set -euo pipefail; \
+$(PRINT_VERIFY_HEADER) \
+	"test-runner image verification (OpenSSL 3.5 PQC + probes)" \
+	"  $(TEST_RUNNER_IMAGE)" \
+	"  curl/OpenSSH PQC, gnmic/grpcurl/gnoic/gribic/gnsic"; \
+echo "OpenSSL:    $$(docker run --rm $(TEST_RUNNER_IMAGE) openssl version)"; \
+$(call verify_openssl_pqc_tls_groups,$(TEST_RUNNER_IMAGE)); \
+echo "curl:       $$(docker run --rm $(TEST_RUNNER_IMAGE) curl --version 2>&1 | sed -n '1p')"; \
+docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'curl --version | grep -qi openssl'; \
+echo "Probe:      curl linked to OpenSSL"; \
+echo "OpenSSH:    $$(docker run --rm $(TEST_RUNNER_IMAGE) ssh -V 2>&1 | sed -n '1p')"; \
+docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'ssh -Q kex | grep -q mlkem768x25519-sha256'; \
+echo "Probe:      ssh supports mlkem768x25519-sha256"; \
+echo "gnmic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnmic version 2>&1 | sed -n '1p')"; \
+echo "grpcurl:    $$(docker run --rm $(TEST_RUNNER_IMAGE) grpcurl --version 2>&1 | sed -n '1p')"; \
+docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'grpcurl --version 2>&1 | grep -qE "^grpcurl v[0-9]" && strings /usr/local/bin/grpcurl | grep -qE "go1\\.(2[4-9]|[3-9][0-9])"'; \
+echo "Probe:      grpcurl built with Go 1.24+ (PQC-hybrid TLS client)"; \
+echo "gnoic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnoic version 2>&1 | sed -n '1p')"; \
+echo "gribic:     $$(docker run --rm $(TEST_RUNNER_IMAGE) gribic version 2>&1 | sed -n '1p')"; \
+docker run --rm $(TEST_RUNNER_IMAGE) sh -c 'gribic version 2>&1 | grep -qE "[0-9]+\\.[0-9]+" && (go version -m /usr/local/bin/gribic 2>/dev/null | grep -qE "go1\\.(2[4-9]|[3-9][0-9])" || strings /usr/local/bin/gribic | grep -qE "go1\\.(2[4-9]|[3-9][0-9])")'; \
+echo "Probe:      gribic built with Go 1.24+ (PQC-hybrid TLS client)"; \
+echo "gnsic:      $$(docker run --rm $(TEST_RUNNER_IMAGE) gnsic version 2>&1 | sed -n '1p')"; \
+echo "docker:     $$(docker run --rm $(TEST_RUNNER_IMAGE) docker --version 2>&1 | sed -n '1p')"
+endef
 
-deploy-kme: check-containerlab $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
+images-build: ## Build and verify images [IMAGE=radius|syslog|kme|test-runner; default: all]
+	@$(validate_image_selection)
+	@if [ "$$SELECTED_IMAGE" != test-runner ]; then \
+		$(MAKE) --no-print-directory containerlab-gentopo $(MAKE_VERBOSE); \
+	fi
+	$(BAKE) $(if $(strip $(IMAGE)),$(strip $(IMAGE)),)
+	@$(MAKE) --no-print-directory images-check $(MAKE_VERBOSE)
+
+images-check: ## Verify existing images [IMAGE=radius|syslog|kme|test-runner; default: all]
+	@$(validate_image_selection)
+	@$(if $(filter radius,$(SELECTED_IMAGES)),$(check_radius_image),:)
+	@$(if $(filter syslog,$(SELECTED_IMAGES)),$(check_syslog_image),:)
+	@$(if $(filter kme,$(SELECTED_IMAGES)),$(check_kme_image),:)
+	@$(if $(filter test-runner,$(SELECTED_IMAGES)),$(check_test_runner_image),:)
+
+images-kme-deploy: containerlab-check $(CLAB_TOPO_GEN) ## Deploy KME nodes first (staged; keys need ~30s to generate)
 	containerlab deploy -t $(CLAB_TOPO_GEN) --node-filter $(DEPLOY_KME_NODES) $(CLAB_DEPLOY_FLAGS)
 
-wait-kme-pool: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
+images-kme-pool-wait: ## Wait for KME key pool after staged deploy (default min 15s, poll 90s)
 	@$(PYTHON) -m lab.wait_kme_pool --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-deploy: gen-topo check-containerlab build-lab-images check-ceos-image ## Deploy lab (VERBOSE=1: plain Docker build logs + debug containerlab)
-	@$(MAKE) --no-print-directory deploy-kme $(MAKE_VERBOSE)
-	@$(MAKE) --no-print-directory wait-kme-pool $(MAKE_VERBOSE)
-	containerlab deploy -t $(CLAB_TOPO_GEN) $(CLAB_DEPLOY_FLAGS)
+##@ Node access
 
-destroy: check-containerlab $(CLAB_TOPO_GEN) ## Destroy lab and cleanup runtime artifacts
-	containerlab destroy -t $(CLAB_TOPO_GEN) --cleanup
+.PHONY: ceos-cli test-runner-shell
+
+ceos-cli: export CEOS_CLI_NODE := $(NODE)
+ceos-cli: ## Open EOS CLI; requires NODE=ceos1-both|ceos2-pqc|ceos3-qkd
+	@case "$$CEOS_CLI_NODE" in \
+		ceos1-both|ceos2-pqc|ceos3-qkd) ;; \
+		*) echo "Set NODE=ceos1-both, NODE=ceos2-pqc, or NODE=ceos3-qkd." >&2; exit 2 ;; \
+	esac; \
+	docker exec -it "$(CLAB_PREFIX)-$(CLAB_NAME)-$$CEOS_CLI_NODE" Cli
+
+test-runner-shell: ## Open interactive shell on test-runner probe node
+	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-test-runner sh
+
+##@ Tests
+
+.PHONY: test-offline test-lab test-lab-runner test-ssh test-eapi test-radsec test-syslog test-openconfig test-kme test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
+
+test-offline: ## Run offline pytest (scaffold + contract validation)
+	$(PYTHON) -m pytest
+
+test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-ssh
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-eapi
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radsec
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-openconfig
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-dot1x
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-qkd
+	@echo
+	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
+	@echo
+	@echo "✓ All lab checks passed."
+
+test-lab-runner: ## All live lab checks from mgmt-network harness (docker + deployed lab only)
+	@set -euo pipefail; \
+	if ! docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
+		echo "Lab mgmt network $(CLAB_MGMT_NETWORK) not found - run make containerlab-deploy first" >&2; \
+		exit 1; \
+	fi; \
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v "$(CURDIR):/workspace" \
+		-w /workspace \
+		--network "$(CLAB_MGMT_NETWORK)" \
+		-e CLAB_NAME="$(CLAB_NAME)" \
+		-e CLAB_PREFIX="$(CLAB_PREFIX)" \
+		-e MGMT_SUBNET="$(MGMT_SUBNET)" \
+		$(if $(filter 1,$(VERBOSE)),-e VERBOSE=1,) \
+		$(TEST_RUNNER_IMAGE) \
+		sh /workspace/docker/test-runner/harness-entrypoint.sh test-lab VERBOSE=$(VERBOSE)
+
+test-ssh: ## SSH PQC KEX checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_ssh --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-eapi: ## eAPI HTTPS + command-api PQC checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_eapi --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-radsec: ## RadSec reachability, AAA, and collector PQC TLS (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_radsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-openconfig: ## OpenConfig gRPC + RESTCONF PQC checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_openconfig --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-macsec-dot1x: ## Dynamic MACsec (802.1X EAP-TLS + MKA) checks (requires deployed lab; VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_dot1x --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,) \
+		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
+
+test-macsec-dot1x-reauth: ## 802.1X MACsec + periodic reauth wait (~75s; requires deployed lab)
+	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec-dot1x
+
+test-macsec-qkd: ## QuaDRA static SAK / QKD rotation checks (requires deployed lab; skips when swix absent)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_hosts --clab-name '$(CLAB_NAME)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+##@ Documentation
+
+.PHONY: docs-config-sync
+
+docs-config-sync: ## Sync README.md and mkdocs.yml site blocks from site.yaml
+	@$(PYTHON) scripts/site_config.py --sync-readme
+	@$(PYTHON) scripts/site_config.py --sync-mkdocs
+
+# Export/publish targets are optional and absent from the public mirror.
+ifneq ($(wildcard internal/export.mk),)
+include internal/export.mk
+endif
+
+##@ Workspace
+
+.PHONY: deploy redeploy destroy inspect clean reset
+
+deploy: containerlab-deploy ## Alias for containerlab-deploy
+
+redeploy: containerlab-redeploy ## Alias for containerlab-redeploy
+
+destroy: containerlab-destroy ## Alias for containerlab-destroy
+
+inspect: containerlab-inspect ## Alias for containerlab-inspect
 
 clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 	@set -uo pipefail; \
@@ -401,109 +561,3 @@ reset: clean ## Reset repo to latest commit: discard local edits and remove all 
 		docker buildx prune -af 2>/dev/null || true; \
 	fi; \
 	echo "=== Reset complete ==="
-
-redeploy: gen-topo destroy deploy ## Destroy then deploy (gen-topo first so destroy has a local topology file)
-
-inspect: check-containerlab ## Inspect lab node status
-	containerlab inspect -t $(CLAB_TOPO_GEN)
-
-ssh-ceos1-both: ## Open cEOS CLI on ceos1-both
-	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos1-both Cli
-
-ssh-ceos2-pqc: ## Open cEOS CLI on ceos2-pqc
-	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos2-pqc Cli
-
-ssh-ceos3-qkd: ## Open cEOS CLI on ceos3-qkd
-	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-ceos3-qkd Cli
-
-shell-test-runner: ## Open interactive shell on test-runner probe node
-	docker exec -it $(CLAB_PREFIX)-$(CLAB_NAME)-test-runner sh
-
-install-quadra: ## Install QuaDRA swix on ceos1-both and ceos3-qkd (swix in download/quadra/ or QUADRA_SWIX=)
-	@env $(if $(QUADRA_SWIX),QUADRA_SWIX='$(QUADRA_SWIX)',) \
-		$(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.install_quadra --clab-name '$(CLAB_NAME)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-lab-runner: ## All live lab checks from mgmt-network harness (docker + deployed lab only)
-	@set -euo pipefail; \
-	if ! docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
-		echo "Lab mgmt network $(CLAB_MGMT_NETWORK) not found - run make deploy first" >&2; \
-		exit 1; \
-	fi; \
-	docker run --rm \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v "$(CURDIR):/workspace" \
-		-w /workspace \
-		--network "$(CLAB_MGMT_NETWORK)" \
-		-e CLAB_NAME="$(CLAB_NAME)" \
-		-e CLAB_PREFIX="$(CLAB_PREFIX)" \
-		-e MGMT_SUBNET="$(MGMT_SUBNET)" \
-		$(if $(filter 1,$(VERBOSE)),-e VERBOSE=1,) \
-		$(TEST_RUNNER_IMAGE) \
-		sh /workspace/docker/test-runner/harness-entrypoint.sh test-lab VERBOSE=$(VERBOSE)
-
-test-lab: ## All live lab checks (requires deployed lab; VERBOSE=1 for command echo)
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-ssh
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-eapi
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-radsec
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-syslog
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-openconfig
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-kme
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-dot1x
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-macsec-qkd
-	@echo
-	@$(MAKE) --no-print-directory VERBOSE=$(VERBOSE) test-hosts
-	@echo
-	@echo "✓ All lab checks passed."
-
-test-radsec: ## RadSec reachability, AAA, and collector PQC TLS (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_radsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-eapi: ## eAPI HTTPS + command-api PQC checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_eapi --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-ssh: ## SSH PQC KEX checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_ssh --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-openconfig: ## OpenConfig gRPC + RESTCONF PQC checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_openconfig --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-macsec-dot1x: ## Dynamic MACsec (802.1X EAP-TLS + MKA) checks (requires deployed lab; VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_dot1x --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,) \
-		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
-
-test-macsec-dot1x-reauth: ## 802.1X MACsec + periodic reauth wait (~75s; requires deployed lab)
-	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec-dot1x
-
-test-macsec-qkd: ## QuaDRA static SAK / QKD rotation checks (requires deployed lab; skips when swix absent)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
-	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_hosts --clab-name '$(CLAB_NAME)' \
-		$(if $(filter 1,$(VERBOSE)),--verbose,)
-
-# Export/publish targets live in internal/export.mk (not present in the public mirror).
-ifneq ($(wildcard internal/export.mk),)
-include internal/export.mk
-endif

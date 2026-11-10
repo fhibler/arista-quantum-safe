@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 from lab.topology_contract import (
     CEOS_QUADRA_NODES,
@@ -18,6 +21,8 @@ from lab.topology_contract import (
 )
 
 DOCKER_EXEC_TIMEOUT_SEC = 120
+DAEMON_POLL_ATTEMPTS = 15
+DAEMON_POLL_INTERVAL_SEC = 2
 INSTALLED_RE = re.compile(r"\bI\b")
 
 
@@ -61,6 +66,36 @@ def extension_installed(stdout: str, swix: str) -> bool:
     return False
 
 
+def stage_swix(container: str, node: str, swix_path: str, *, verbose: bool) -> None:
+    """Reuse identical flash contents, including read-only Containerlab mounts."""
+    swix = Path(swix_path).name
+    destination = f"/mnt/flash/{swix}"
+    with Path(swix_path).open("rb") as source:
+        checksum = hashlib.file_digest(source, "sha256").hexdigest()
+    existing = subprocess.run(
+        ["docker", "exec", container, "sha256sum", destination],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=DOCKER_EXEC_TIMEOUT_SEC,
+    )
+    if existing.returncode == 0 and existing.stdout.split()[:1] == [checksum]:
+        log(f"{node}: reusing matching {swix} on flash", force=True, verbose=verbose)
+        return
+
+    log(f"{node}: copying {swix} to flash", force=True, verbose=verbose)
+    cp = subprocess.run(
+        ["docker", "cp", swix_path, f"{container}:{destination}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=DOCKER_EXEC_TIMEOUT_SEC,
+    )
+    if cp.returncode != 0:
+        detail = cp.stderr.strip() or cp.stdout.strip()
+        raise InstallQuadraError(f"{node}: docker cp failed: {detail}")
+
+
 def install_on_node(
     node: str,
     *,
@@ -84,17 +119,7 @@ def install_on_node(
         enable_daemon(container, node, verbose=verbose)
         return
 
-    log(f"{node}: copying {swix} to flash", verbose=verbose, force=True)
-    cp = subprocess.run(
-        ["docker", "cp", swix_path, f"{container}:/mnt/flash/{swix}"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=DOCKER_EXEC_TIMEOUT_SEC,
-    )
-    if cp.returncode != 0:
-        detail = cp.stderr.strip() or cp.stdout.strip()
-        raise InstallQuadraError(f"{node}: docker cp failed: {detail}")
+    stage_swix(container, node, swix_path, verbose=verbose)
 
     install = run_cli(
         container,
@@ -150,6 +175,14 @@ def enable_daemon(container: str, node: str, *, verbose: bool) -> None:
     if start.returncode != 0:
         detail = start.stderr.strip() or start.stdout.strip()
         raise InstallQuadraError(f"{node}: daemon quadra start failed: {detail}")
+    for _ in range(DAEMON_POLL_ATTEMPTS):
+        if "running with PID" in start.stdout:
+            break
+        time.sleep(DAEMON_POLL_INTERVAL_SEC)
+        start = run_cli(container, "enable\nshow daemon quadra\n")
+        if start.returncode != 0:
+            detail = start.stderr.strip() or start.stdout.strip()
+            raise InstallQuadraError(f"{node}: show daemon quadra failed: {detail}")
     if "running with PID" not in start.stdout:
         raise InstallQuadraError(
             f"{node}: daemon quadra not running after no shutdown:\n{start.stdout.strip()}"

@@ -8,7 +8,7 @@ Live checks: **`make test-openconfig`** ([test matrix](../tests/openconfig.md)).
 |------|-------|
 | Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
 | Configured policy | TLS **1.3 only**, PQC-hybrid group **`X25519MLKEM768`**, AEAD ciphers |
-| Certificates | Classical RSA with SANs for each switch MGMT address (`make gen-topo`) |
+| Certificates | Classical RSA with SANs for each switch MGMT address (`make containerlab-gentopo`) |
 
 See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 

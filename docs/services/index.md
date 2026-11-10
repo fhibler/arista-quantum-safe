@@ -2,7 +2,7 @@
 
 PQC-hybrid configuration for each management-plane and data-plane security service in the lab. All services use **VRF MGMT** unless noted.
 
-Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make gen-topo`.
+Templates: `configs/ceos/ceos*.cfg.in` -> rendered to `lab/.gen/` via `make containerlab-gentopo`.
 
 ## Summary
 

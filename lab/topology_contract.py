@@ -778,7 +778,7 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
     kme_pki_dir = root / "lab" / ".gen" / "kme-pki"
     for name in KME_PKI_FILES:
         if not (kme_pki_dir / name).is_file():
-            errors.append(f"missing lab/.gen/kme-pki/{name} (run make gen-topo)")
+            errors.append(f"missing lab/.gen/kme-pki/{name} (run make containerlab-gentopo)")
 
     for ceos, binds in CEOS_BINDS.items():
         for bind in binds:
@@ -789,7 +789,7 @@ def validate_topo_host_paths(repo_root: Path | None = None) -> list[str]:
     pki_dir = root / "lab" / ".gen" / "pki"
     for name in PKI_FILES:
         if not (pki_dir / name).is_file():
-            errors.append(f"missing lab/.gen/pki/{name} (run make gen-topo)")
+            errors.append(f"missing lab/.gen/pki/{name} (run make containerlab-gentopo)")
 
     return errors
 
@@ -886,7 +886,7 @@ def validate_ceos_configs(
     for ceos, expected in expected_plane.items():
         path = root / "lab" / ".gen" / f"{ceos}.cfg"
         if not path.is_file():
-            errors.append(f"missing {path.relative_to(root)} (run make gen-topo)")
+            errors.append(f"missing {path.relative_to(root)} (run make containerlab-gentopo)")
             continue
 
         text = path.read_text(encoding="utf-8")
@@ -1406,7 +1406,7 @@ def validate_syslog_configs(repo_root: Path | None = None) -> list[str]:
     pki_dir = root / "lab" / ".gen" / "pki"
     for name in ("syslog-server.pem", "syslog-server.key", "ca.pem"):
         if not (pki_dir / name).is_file():
-            errors.append(f"missing lab/.gen/pki/{name} (run make gen-topo)")
+            errors.append(f"missing lab/.gen/pki/{name} (run make containerlab-gentopo)")
 
     return errors
 
@@ -1429,7 +1429,7 @@ def validate_radius_configs(
     dockerfile_path = root / "docker" / "radius" / "Dockerfile"
 
     if not clients_radsec_path.is_file():
-        errors.append("missing lab/.gen/clients-radsec.conf (run make gen-topo)")
+        errors.append("missing lab/.gen/clients-radsec.conf (run make containerlab-gentopo)")
     else:
         clients_radsec = clients_radsec_path.read_text(encoding="utf-8")
         for ceos, ip in (
@@ -1524,7 +1524,7 @@ def validate_radius_configs(
             errors.append("tls site must require client certificates")
 
     if not clients_path.is_file():
-        errors.append("missing lab/.gen/clients.conf (run make gen-topo)")
+        errors.append("missing lab/.gen/clients.conf (run make containerlab-gentopo)")
     else:
         clients = clients_path.read_text(encoding="utf-8")
         if "172.17.0.0/16" not in clients:

@@ -24,7 +24,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture(autouse=True)
 def ensure_generated_topo() -> None:
-    subprocess.run(["make", "gen-topo"], cwd=REPO_ROOT, check=True, capture_output=True)
+    subprocess.run(["make", "containerlab-gentopo"], cwd=REPO_ROOT, check=True, capture_output=True)
     yield
 
 

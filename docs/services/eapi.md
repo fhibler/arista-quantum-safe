@@ -9,7 +9,7 @@ eAPI is served over **HTTPS / TLS 1.3** on port **443** in VRF MGMT, bound to ss
 | KEX group | `X25519MLKEM768` only (no classical fallback) |
 | Template | `configs/ceos/ceos*.cfg.in` → `lab/.gen/` |
 | JSON-RPC | `https://<mgmt-ip>:443/command-api` |
-| Certificates | Per-switch server cert (`*-eapi.pem` / `*-eapi.key`) from `make gen-topo` |
+| Certificates | Per-switch server cert (`*-eapi.pem` / `*-eapi.key`) from `make containerlab-gentopo` |
 
 See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 

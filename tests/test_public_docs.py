@@ -64,7 +64,7 @@ STALE_TEST_MODULE_PATTERNS = (
     r"make test-macsec(?!-(?:dot1x|qkd))",
     r"make test-qkd\b",
     r"make test-pqc\b",
-    r"make test-radius\b",
+    r"make test-radius(?![\w-])",
     r"lab\.test_lab\b.*host",
 )
 
@@ -231,8 +231,8 @@ def test_public_readme_has_no_todo_placeholders() -> None:
 
 INTERNAL_ONLY_MAKE_TARGETS = (
     "docs-build",
-    "export-public",
-    "publish-public",
+    "docs-export",
+    "docs-publish",
     "make graph",
 )
 
@@ -283,9 +283,9 @@ def test_public_readme_covers_required_sections() -> None:
         "## purpose",
         "## prerequisites",
         "## quick start",
-        "make deploy",
+        "make containerlab-deploy",
         "make test-lab",
-        "make download-ceos",
+        "make ceos-image-download",
     ):
         assert fragment in content, f"README missing {fragment!r}"
 

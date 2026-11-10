@@ -84,7 +84,7 @@ class KmeRadiusConfig:
 
 
 def load_radius_config(path: Path | None = None) -> KmeRadiusConfig:
-    """Load key=value settings written by make gen-topo."""
+    """Load key=value settings written by make containerlab-gentopo."""
     config_path = path or DEFAULT_CONFIG_PATH
     if not config_path.is_file():
         raise KmeSaeError(f"KME config not found: {config_path}")

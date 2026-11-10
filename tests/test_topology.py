@@ -42,7 +42,7 @@ from tests.scaffold_contract import REPO_ROOT as SCAFFOLD_ROOT
 
 @pytest.fixture(autouse=True)
 def ensure_generated_topo() -> None:
-    subprocess.run(["make", "gen-topo"], cwd=SCAFFOLD_ROOT, check=True, capture_output=True)
+    subprocess.run(["make", "containerlab-gentopo"], cwd=SCAFFOLD_ROOT, check=True, capture_output=True)
 
 
 @pytest.fixture

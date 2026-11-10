@@ -1,6 +1,6 @@
 # Test suite overview
 
-Live checks require a **deployed lab** (`make deploy`). Offline unit tests run via `make test` (pytest, no deployed lab).
+Live checks require a **deployed lab** (`make containerlab-deploy`). Offline unit tests run via `make test-offline` (pytest, no deployed lab).
 
 ## `make test-lab`
 
@@ -80,11 +80,16 @@ Only non-zero buckets are shown. On failure the summary is printed to stderr, e.
 | ceos1-both | 172.20.127.11 | 2001:db8:127::11 |
 | ceos2-pqc | 172.20.127.12 | 2001:db8:127::12 |
 | ceos3-qkd | 172.20.127.13 | 2001:db8:127::13 |
+| host1 | 172.20.127.21 | 2001:db8:127::21 |
+| host2 | 172.20.127.22 | 2001:db8:127::22 |
+| host3 | 172.20.127.23 | 2001:db8:127::23 |
 | radius | 172.20.127.50 | 2001:db8:127::50 |
+| kme-a | 172.20.127.51 | 2001:db8:127::51 |
+| kme-b | 172.20.127.52 | 2001:db8:127::52 |
 | syslog | 172.20.127.53 | 2001:db8:127::53 |
 | test-runner | 172.20.127.54 | 2001:db8:127::54 |
 
-Override subnet with `MGMT_SUBNET=… make test-lab`.
+Override the IPv4 subnet with `make test-lab MGMT_SUBNET=…`.
 
 ## Recorded test results
 
@@ -167,10 +172,10 @@ Configuration reference: [Services overview](../services/index.md).
 
 ```bash
 pip install -r requirements-dev.txt
-make test
+make test-offline
 ```
 
-Validates topology contract, template rendering, helper parsers, and Docker image smoke tests without Containerlab deploy.
+Validates topology contracts, template rendering, helper parsers, and Makefile image-selection/verification recipes using stubs. It does not run live lab suites or smoke-test built images. Run `make images-check` for actual image smoke checks. The default pytest selection excludes Containerlab integration tests; `python3 -m pytest -o addopts=` includes them when Containerlab is available.
 
 ## Documentation site (local build)
 

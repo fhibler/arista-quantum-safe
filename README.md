@@ -26,10 +26,10 @@ Automated checks (`make test-lab`) validate configuration and live handshakes on
 | Requirement | Notes |
 |-------------|-------|
 | **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three EOS nodes |
-| **Containerlab** 0.78.0+ | `make check-containerlab`; devcontainer installs latest at image build |
+| **Containerlab** 0.78.0+ | `make containerlab-check`; devcontainer installs latest at image build |
 | **cEOS-lab image** | Tagged `ceos:4.37.0F` matching your host architecture - **required before deploy** |
-| **Arista portal token** | **Optional** - only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
-| **Python 3.11+** | For offline tests (`make test`) and lab check scripts |
+| **Arista portal token** | **Optional** - only for `make ceos-image-download` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
+| **Python 3.11+** | For offline tests (`make test-offline`) and lab check scripts |
 
 ### cEOS-lab image
 
@@ -38,12 +38,12 @@ Obtain cEOS-lab from the [Arista software portal](https://www.arista.com/en/supp
 ```bash
 # Optional: auto-download (requires ARISTA_TOKEN in .env)
 cp .env.example .env    # add ARISTA_TOKEN
-make download-ceos
-make check-ceos-image
+make ceos-image-download
+make ceos-image-check
 
 # Or manual import
 docker import download/cEOS64-lab-4.37.0F.tar.xz ceos:4.37.0F
-make check-ceos-image
+make ceos-image-check
 ```
 
 On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.37.0F.tar.xz`) but tag as `ceos:4.37.0F`.
@@ -52,14 +52,14 @@ On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.37.0F.tar.xz`) but ta
 
 ```bash
 # Generate topology, PKI, and configs
-make gen-topo
+make containerlab-gentopo
 
 # Verify prerequisites
-make check-containerlab
-make check-ceos-image
+make containerlab-check
+make ceos-image-check
 
 # Build service images and deploy (KME nodes first, then full topo)
-make deploy
+make containerlab-deploy
 
 # Run all live acceptance checks
 make test-lab
@@ -68,13 +68,15 @@ make test-lab
 make test-lab-runner
 ```
 
-Individual test targets: `make test-radsec`, `make test-eapi`, `make test-ssh`, `make test-openconfig`, `make test-syslog`, `make test-kme`, `make test-macsec-dot1x`, `make test-macsec-qkd`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make shell-test-runner`.
+Individual test targets: `make test-radsec`, `make test-eapi`, `make test-ssh`, `make test-openconfig`, `make test-syslog`, `make test-kme`, `make test-macsec-dot1x`, `make test-macsec-qkd`, `make test-hosts`. Use `VERBOSE=1` to echo commands. Manual PQC probes: `make test-runner-shell`.
+
+Workspace shortcuts: `make deploy`, `make redeploy`, `make destroy`, and `make inspect` alias the corresponding `containerlab-*` targets.
 
 Offline validation (no deployed lab required):
 
 ```bash
 pip install -r requirements-dev.txt
-make test
+make test-offline
 ```
 
 ## Topology overview

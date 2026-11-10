@@ -106,7 +106,7 @@ def mkdocs_site_config_block(config: SiteConfig) -> str:
     return "\n".join(
         (
             MKDOCS_BEGIN,
-            "# Generated from site.yaml - run: make sync-site-config",
+            "# Generated from site.yaml - run: make docs-config-sync",
             f"site_name: {config.site_name}",
             f"site_description: {config.site_description}",
             f"site_url: {config.pages_base_url_normalized}",
@@ -235,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         if errors:
             print(
                 f"{', '.join(errors)} out of sync with site.yaml "
-                "(run: make sync-site-config)",
+                "(run: make docs-config-sync)",
                 file=sys.stderr,
             )
             return 1

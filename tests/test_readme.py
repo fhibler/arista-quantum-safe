@@ -29,7 +29,7 @@ def test_readme_covers_required_sections() -> None:
         "## purpose",
         "## prerequisites",
         "## quick start",
-        "make deploy",
+        "make containerlab-deploy",
         "make test-lab",
     ):
         assert fragment in content, f"README missing section containing {fragment!r}"
@@ -41,7 +41,7 @@ def test_internal_verification_doc_exists() -> None:
 
 def test_internal_verification_doc_lists_checklist() -> None:
     content = INTERNAL_VERIFICATION_DOC.read_text(encoding="utf-8")
-    assert "make inspect" in content
+    assert "make containerlab-inspect" in content
     assert "make test-radsec" in content
     assert "make test-eapi" in content
     assert "make test-ssh" in content

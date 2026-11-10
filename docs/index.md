@@ -42,4 +42,4 @@ Three EOS switches on a management network (`172.20.127.0/24` default) plus Free
 
 Dual-stack IPv6 uses `2001:db8:127::/64` (documentation prefix).
 
-Startup templates live under `configs/ceos/*.cfg.in` and render to `lab/.gen/` via `make gen-topo`.
+Startup templates live under `configs/ceos/*.cfg.in` and render to `lab/.gen/` via `make containerlab-gentopo`.

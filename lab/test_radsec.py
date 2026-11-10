@@ -34,7 +34,7 @@ def run_radsec_checks(
     radius_ipv6 = targets.mgmt_ips6["radius"]
 
     print_test_header(
-        "RadSec verification (TLS 1.3, PQC-hybrid only — no classical fallback)",
+        "RadSec verification (TLS 1.3, PQC-hybrid only - no classical fallback)",
         "  [config] FreeRADIUS listener + OpenSSL groups; per-switch RADSEC ssl profile",
         "  [live]   MGMT ping + test aaa from each switch",
         "  [live / test-runner]  RadSec collector TLS handshake with switch client cert",

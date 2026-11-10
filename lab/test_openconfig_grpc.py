@@ -489,7 +489,7 @@ def probe_gnpsi_ceos_support(
     if gnpsi_supported_on_ceos(targets, node, verbose=verbose):
         _report_config("gNPSI management api available on cEOS")
         return True
-    report_skip("[config]", "gNPSI not supported on cEOS — remaining gNPSI checks skipped")
+    report_skip("[config]", "gNPSI not supported on cEOS - remaining gNPSI checks skipped")
     return False
 
 
@@ -555,7 +555,7 @@ def probe_gnpsi_tls(
         raw = run_openssl_s_client(**common)
         if "connection refused" in raw.lower():
             _report_live(
-                f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped — "
+                f"gNPSI gRPC mTLS handshake ({family_label(family)}), skipped - "
                 f"port {GNPSI_PORT} not listening on vrf MGMT despite enabled transport",
                 status=CheckStatus.SKIP,
                 probe_client=True,
@@ -647,7 +647,7 @@ def probe_gnpsi_subscribe(
         )
         return
     _report_live(
-        f"gNPSI subscribe ({family_label(family)}), skipped — "
+        f"gNPSI subscribe ({family_label(family)}), skipped - "
         f"no sFlow datagrams on cEOS within probe window",
         status=CheckStatus.SKIP,
         probe_client=True,

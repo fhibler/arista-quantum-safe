@@ -14,7 +14,7 @@ INTERNAL_VERIFICATION_DOC = REPO_ROOT / "internal" / "docs" / "verification.md"
 def test_readme_has_no_todo_placeholders() -> None:
     content = README.read_text(encoding="utf-8")
     assert "TODO:" not in content
-    assert "TODO —" not in content
+    assert "TODO -" not in content
 
 
 def test_readme_does_not_mention_cnsa() -> None:

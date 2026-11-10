@@ -422,7 +422,7 @@ def cleartext_capture_filter(switch_ip: str) -> str:
 
 
 def check_syslog_collector_listeners(netstat_udp: str, netstat_tcp: str) -> None:
-    """Collector must listen on TLS 6514 only — no cleartext syslog UDP/TCP listeners."""
+    """Collector must listen on TLS 6514 only - no cleartext syslog UDP/TCP listeners."""
     for port in CLEARTEXT_SYSLOG_UDP_PORTS:
         if re.search(rf":{port}\s", netstat_udp):
             raise SyslogCheckError(f"syslog collector must not listen on UDP {port}")
@@ -501,7 +501,7 @@ def probe_syslog_tls_pqc(
         health_hint = ""
         if syslog_container:
             health_hint = (
-                f"collector may still be starting — retry or check "
+                f"collector may still be starting - retry or check "
                 f"'docker inspect --format={{.State.Health.Status}} {syslog_container}'"
             )
         raise SyslogCheckError(

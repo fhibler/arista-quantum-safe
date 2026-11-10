@@ -39,7 +39,7 @@ Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1
 | Check | Type | Method |
 |-------|------|--------|
 | Port still authorized | `[live]` | Wait ~75 s; `show dot1x` still Authorized |
-| Matching CKN | `[live]` | Peers still agree (CKN may rotate — new EAP-TLS MSK) |
+| Matching CKN | `[live]` | Peers still agree (CKN may rotate - new EAP-TLS MSK) |
 | RADIUS Login OK | `[live]` | Extra `Auth: Login OK` in radius log |
 
 ## Pass criteria

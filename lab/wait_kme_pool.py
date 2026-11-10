@@ -99,7 +99,7 @@ def fetch_slave_status(*, kme_a_container: str, kme_a_ip: str, slave_sae_id: str
 
 
 def probe_enc_keys(kme_a_container: str, kme_a_ip: str, slave_sae_id: str) -> tuple[str | None, str | None]:
-    """Return (key_id, error_detail) — key_id set when enc_keys succeeds."""
+    """Return (key_id, error_detail) - key_id set when enc_keys succeeds."""
     url = f"https://{kme_a_ip}:8010/api/v1/keys/{slave_sae_id}/enc_keys"
     body = json.dumps({"number": 1, "size": KME_KEY_SIZE_BITS})
     result = _docker_curl(
@@ -172,7 +172,7 @@ def wait_for_kme_pool(
         log(
             f"  poll {attempt}: enc_keys not ready"
             + (f" (stored_key_count={last_count})" if last_count is not None else "")
-            + (f" — {enc_error}" if verbose and enc_error else ""),
+            + (f" - {enc_error}" if verbose and enc_error else ""),
             force=True,
         )
         time.sleep(POLL_INTERVAL_SEC)

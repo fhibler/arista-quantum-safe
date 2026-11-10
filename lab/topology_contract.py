@@ -356,7 +356,7 @@ SOURCE_OPENSSL_DOCKERFILE_FORBIDDEN = (
     "quantum-safe-openssl",
     "OPENSSL_IMAGE",
 )
-# Syslog-over-TLS: hybrid first, classical fallback (cEOS 4.36.2F syslog client gap on PQC-only).
+# Syslog-over-TLS: hybrid first, fallback retained for older clients; 4.37.0F selects hybrid.
 SYSLOG_TLS_PQC_SAFE_EOS_GROUPS = "X25519MLKEM768:ecdh_x25519:secp256r1"
 SYSLOG_TLS_PQC_SAFE_OPENSSL_GROUPS = "X25519MLKEM768:secp256r1:X25519:ffdhe2048"
 # 3 cEOS × dual-stack TLS logging hosts hold long-lived sessions; default max-connections(10) is too low.
@@ -1036,7 +1036,7 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg gNSI must enable service certz")
         if "transport grpc" in gnsi:
             errors.append(
-                f"{ceos}.cfg gNSI must not use transport grpc on EOS 4.36.2F "
+                f"{ceos}.cfg gNSI must not use transport grpc in this lab "
                 f"(use transport gnmi default to attach Certz/Authz to gNMI :6030)"
             )
         if "transport gnmi default" not in gnsi:

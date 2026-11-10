@@ -186,9 +186,9 @@ def report_skip(prefix: str, detail: str) -> None:
 
 def format_summary(name: str, detail: str, status: CheckStatus) -> str:
     if status is CheckStatus.FAIL:
-        body = f"{name} FAILED: {ICON_FAIL} — {detail}"
+        body = f"{name} FAILED: {ICON_FAIL} - {detail}"
         return _emphasize(body, CheckStatus.FAIL)
-    return f"{name}: {status_marker(CheckStatus.OK)} — {detail}"
+    return f"{name}: {status_marker(CheckStatus.OK)} - {detail}"
 
 
 def report_summary(

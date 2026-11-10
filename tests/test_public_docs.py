@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from lab.topology_contract import DEFAULT_CEOS_IMAGE
 from tests.scaffold_contract import REPO_ROOT
 
 README = REPO_ROOT / "README.md"
@@ -30,6 +31,7 @@ PUBLIC_SERVICE_DOCS = (
 
 PUBLIC_REFERENCE_DOCS = (
     "pqc-overview.md",
+    "changelog.md",
 )
 
 PUBLIC_MISC_DOCS = (
@@ -67,11 +69,11 @@ STALE_TEST_MODULE_PATTERNS = (
 )
 
 
-CLASSICAL_WIRE_KEX_ROWS = (
+WIRE_KEX_ROWS = (
     ("gRIBI", "classical (`secp256r1`)", "No"),
-    ("gNPSI (TLS)", "classical (`secp256r1`)", "No"),
-    ("gNPSI (Subscribe)", "classical (`secp256r1`)", "No"),
-    ("Syslog (EOS to collector)", "classical (`x25519`)", "No"),
+    ("gNPSI (TLS)", "`X25519MLKEM768`", "Yes"),
+    ("gNPSI (Subscribe)", "- (no packet received)", "Unverified"),
+    ("Syslog (EOS to collector)", "`X25519MLKEM768`", "Yes"),
     ("eos-sdk-rpc (IPv4)", "classical (`secp256r1`)", "No"),
 )
 
@@ -97,10 +99,10 @@ def _parse_result_summary_table(text: str) -> dict[str, dict[str, str]]:
     return rows
 
 
-def test_result_summary_classical_kex_rows_are_consistent() -> None:
+def test_result_summary_wire_kex_rows_are_consistent() -> None:
     text = (PUBLIC_DOCS / "tests/index.md").read_text(encoding="utf-8")
     rows = _parse_result_summary_table(text)
-    for service, expected_used, expected_pqc_safe in CLASSICAL_WIRE_KEX_ROWS:
+    for service, expected_used, expected_pqc_safe in WIRE_KEX_ROWS:
         assert service in rows, f"missing result-summary row for {service!r}"
         row = rows[service]
         assert row["used"] == expected_used, service
@@ -108,23 +110,73 @@ def test_result_summary_classical_kex_rows_are_consistent() -> None:
         assert "WARN" not in row["pqc_safe"], f"{service} must not use WARN in PQC-safe column"
 
 
-def test_openconfig_result_summary_matches_classical_kex_contract() -> None:
+def test_openconfig_result_summary_matches_wire_kex_contract() -> None:
     text = (PUBLIC_DOCS / "tests/openconfig.md").read_text(encoding="utf-8")
-    start = text.index("## Result summary (EOS 4.36.2F)")
+    version = DEFAULT_CEOS_IMAGE.removeprefix("ceos:")
+    start = text.index(f"## Result summary (EOS {version})")
     end = text.index("See also", start)
     section = text[start:end]
-    for service, expected_used, expected_pqc_safe in (
-        ("gRIBI", "classical (`secp256r1`)", "No"),
-        ("gNPSI (TLS)", "classical (`secp256r1`)", "No"),
-        ("gNPSI (Subscribe)", "classical (`secp256r1`)", "No"),
-        ("eos-sdk-rpc (IPv4)", "classical (`secp256r1`)", "No"),
-    ):
+    for service, expected_used, expected_pqc_safe in WIRE_KEX_ROWS:
+        if service == "Syslog (EOS to collector)":
+            continue
         line = next(
             ln for ln in section.splitlines() if ln.startswith(f"| {service} |")
         )
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         assert cells[2] == expected_used, service
         assert cells[3] == expected_pqc_safe, service
+
+
+@pytest.mark.parametrize(
+    "rel_path",
+    ("README.md", "docs/setup.md", "docs/tests/index.md", "internal/docs/makefile.md"),
+)
+def test_documented_image_defaults_match_topology(rel_path: str) -> None:
+    text = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+    assert re.search(r"`(?:CEOS_IMAGE=)?" + re.escape(DEFAULT_CEOS_IMAGE) + r"`", text)
+
+
+def test_services_summary_distinguishes_hybrid_and_unverified_results() -> None:
+    text = (PUBLIC_DOCS / "services/index.md").read_text(encoding="utf-8")
+    section = text.split("## Summary", 1)[1].split("!!! note", 1)[0]
+    for service, expected in (
+        ("gNPSI", "**Yes** (TLS/reflection; Subscribe unverified)"),
+        ("Syslog-over-TLS", "**Yes** (fallback configured)"),
+        ("gRIBI", "**No** (wire)"),
+        ("eos-sdk-rpc", "**No** (wire)"),
+    ):
+        line = next(ln for ln in section.splitlines() if ln.startswith(f"| [{service}]"))
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert cells[4] == expected, service
+
+
+def test_changelog_entries_use_eos_versions_and_consistent_sections() -> None:
+    text = (PUBLIC_DOCS / "changelog.md").read_text(encoding="utf-8")
+    entries = re.split(r"^## (.+)$", text, flags=re.M)
+    version = DEFAULT_CEOS_IMAGE.removeprefix("ceos:")
+    assert entries[1] == f"EOS {version}", "latest default must be the first entry"
+    for heading, body in zip(entries[1::2], entries[2::2]):
+        assert re.fullmatch(r"EOS \d+\.\d+\.\d+[A-Z]+", heading), heading
+        assert re.findall(r"^### (.+)$", body, re.M) == [
+            "Versions",
+            "Behavior changes",
+            "Test results",
+            "Known limitations",
+            "Test and tooling changes",
+            "Verification scope",
+        ], heading
+
+
+def test_operational_guides_only_report_current_eos_version() -> None:
+    version = DEFAULT_CEOS_IMAGE.removeprefix("ceos:")
+    paths = (
+        README,
+        *(p for p in PUBLIC_DOCS.rglob("*.md") if p.name != "changelog.md"),
+        *sorted((INTERNAL_ROOT / "docs").glob("*.md")),
+    )
+    for path in paths:
+        versions = set(re.findall(r"\b\d+\.\d+\.\d+[FM]\b", path.read_text(encoding="utf-8")))
+        assert versions <= {version}, f"historical EOS results belong in the changelog: {path}"
 
 
 TEST_PAGE_CHAPTERS = (
@@ -174,7 +226,7 @@ def test_public_docs_exclude_stale_test_module_refs() -> None:
 def test_public_readme_has_no_todo_placeholders() -> None:
     content = README.read_text(encoding="utf-8")
     assert "TODO:" not in content
-    assert "TODO —" not in content
+    assert "TODO -" not in content
 
 
 INTERNAL_ONLY_MAKE_TARGETS = (
@@ -270,6 +322,18 @@ def test_services_index_documents_chapter_order() -> None:
 @pytest.mark.parametrize("rel_path", SERVICE_GUIDES)
 def test_service_page_chapter_order(rel_path: str) -> None:
     text = (PUBLIC_DOCS / rel_path).read_text(encoding="utf-8")
+    if rel_path.endswith("openconfig.md"):
+        protocols = text.split("## Other remarks", 1)[0]
+        sections = re.findall(r"^## ([^\n]+)\n(.*?)(?=^## |\Z)", protocols, re.M | re.S)
+        assert sections, rel_path
+        for protocol, body in sections:
+            assert re.findall(r"^### (.+)$", body, re.M) == [
+                "Configuration", "Caveats", "Verification"
+            ], protocol
+    else:
+        assert re.findall(r"^## (.+)$", text, re.M) == [
+            "Configuration", "Caveats", "Verification", "Other remarks"
+        ], rel_path
     assert "## Other remarks" in text, rel_path
     remarks = text.split("## Other remarks", 1)[1]
     if "## Verification" in text:

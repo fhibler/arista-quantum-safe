@@ -49,7 +49,7 @@ management api netconf
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Hybrid KEX listed and preferred |
-| Live wire | **PQC-safe** — negotiates `mlkem768x25519-sha256` |
+| Live wire | **PQC-safe** - negotiates `mlkem768x25519-sha256` |
 | Certificates | Classical host keys (unchanged by PQC policy) |
 
 ## Verification

@@ -4,7 +4,7 @@ Dynamic **802.1X EAP-TLS + MKA** MACsec protects the **ceos1-both ↔ ceos2-pqc*
 
 | Item | Value |
 |------|-------|
-| Port | — (L2 link; no TCP/UDP port) |
+| Port | - (L2 link; no TCP/UDP port) |
 | Profile | `DOT1X` (EAP-TLS supplicant ssl profile) |
 | KEX | `X25519MLKEM768` in EAP-TLS tunnel |
 | Template | `configs/ceos/ceos1-both.cfg.in`, `configs/ceos/ceos2-pqc.cfg.in` → `lab/.gen/` |
@@ -98,12 +98,12 @@ Profile **`dynamic`** derives MACsec keys from the EAP-TLS session (FreeRADIUS p
 |-------|------------------------|
 | Config | `DOT1X` profile lists `X25519MLKEM768` |
 | Live wire (EAP-TLS) | **PQC-safe** (`X25519MLKEM768` in supplicant detail) |
-| MACsec keys | Derived from EAP — not direct PQC wire protocol on MACsec frames |
-| Reauthentication | Period **60 s** — optional extended check via `make test-macsec-dot1x-reauth` |
-| Static SAK / QKD paths | Out of scope for this page — see [QKD / ETSI 014](qkd-etsi014.md) |
+| MACsec keys | Derived from EAP - not direct PQC wire protocol on MACsec frames |
+| Reauthentication | Period **60 s** - optional extended check via `make test-macsec-dot1x-reauth` |
+| Static SAK / QKD paths | Out of scope for this page - see [QKD / ETSI 014](qkd-etsi014.md) |
 
 !!! note "Layer distinction"
-    PQC applies to the **EAP-TLS tunnel** between supplicant and RADIUS server. MACsec encrypts the Ethernet link with keys derived from that exchange — verify EAP-TLS PQC separately from MACsec frame encryption.
+    PQC applies to the **EAP-TLS tunnel** between supplicant and RADIUS server. MACsec encrypts the Ethernet link with keys derived from that exchange - verify EAP-TLS PQC separately from MACsec frame encryption.
 
 ## Verification
 

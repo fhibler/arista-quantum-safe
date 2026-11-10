@@ -1,5 +1,5 @@
 # Compile toolchain for FreeRADIUS and syslog-ng build stages only.
-# Not a runtime base — do not add python, tshark, docker-cli, or -dev packages here.
+# Not a runtime base - do not add python, tshark, docker-cli, or -dev packages here.
 
 ARG ALPINE_VERSION=3.24
 

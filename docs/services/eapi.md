@@ -46,7 +46,7 @@ management api http-commands
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile valid; hybrid group only |
-| Live wire | **PQC-safe** — TLS 1.3 + `X25519MLKEM768` |
+| Live wire | **PQC-safe** - TLS 1.3 + `X25519MLKEM768` |
 | Client certs | Not required for eAPI in this lab (`admin` local auth) |
 
 ## Verification

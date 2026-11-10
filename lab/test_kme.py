@@ -108,7 +108,7 @@ def run_kme_curl(
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
         if not detail and result.returncode == 22:
-            detail = "HTTP error (empty key pool — try again later)"
+            detail = "HTTP error (empty key pool - try again later)"
         if not detail:
             detail = f"exit {result.returncode}"
         raise KmeCheckError(f"{title}: {detail}")

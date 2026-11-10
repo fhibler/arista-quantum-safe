@@ -15,7 +15,7 @@ This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the ma
 | Transport | HTTPS mTLS, TLS 1.3 |
 | Template | `configs/ceos/quadra-*.cfg.in`, `configs/ceos/ceos3-qkd.cfg.in` → `lab/.gen/` |
 | PKI | `lab/gen_kme_pki.py` → `lab/.gen/kme-pki/` |
-| MACsec link | Static SAK (QuaDRA) — separate from [802.1X MACsec](macsec.md) |
+| MACsec link | Static SAK (QuaDRA) - separate from [802.1X MACsec](macsec.md) |
 
 See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 
@@ -30,7 +30,7 @@ See also [Certificates and TLS 1.3](../misc/certificates-and-tls13.md).
 | **QuaDRA master** | ceos1-both | Calls `enc_keys` on `kme-a`; rotates static SAK on Ethernet2 |
 | **QuaDRA slave** | ceos3-qkd | Calls `dec_keys` on `kme-b`; applies keys on Ethernet1 |
 
-KME simulators use the open-source [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) (lab use only — **not for production**).
+KME simulators use the open-source [next-door-key-simulator](https://github.com/CreepPork/next-door-key-simulator) (lab use only - **not for production**).
 
 Default management addresses (override with `MGMT_SUBNET=`):
 
@@ -56,7 +56,7 @@ Built from `docker/kme/Dockerfile` as `quantum-safe-kme:latest`. Deploy stages K
 | `sae-b.crt.pem`, `sae-b.key.pem` | Slave SAE client |
 | `kme-sae-bundle.pem`, `kme-sae-b-bundle.pem` | Concatenated key+cert for QuaDRA `option cert` |
 
-Locked SAE IDs (certificate CN — see `lab/topology_contract.py`):
+Locked SAE IDs (certificate CN - see `lab/topology_contract.py`):
 
 | Role | SAE ID |
 |------|--------|
@@ -113,7 +113,7 @@ mac security
          an 0 key <placeholder-tx-key>
 ```
 
-RX/TX secure-channel IDs and keys are **mirrored** on the slave relative to the master. This link is separate from **dynamic 802.1X MACsec** on Ethernet1 between ceos1-both and ceos2-pqc — see [MACsec](macsec.md).
+RX/TX secure-channel IDs and keys are **mirrored** on the slave relative to the master. This link is separate from **dynamic 802.1X MACsec** on Ethernet1 between ceos1-both and ceos2-pqc - see [MACsec](macsec.md).
 
 #### QuaDRA daemon service binding (master example)
 
@@ -124,7 +124,7 @@ daemon quadra
    exec /usr/bin/quadra
    option macsec-intf value Ethernet2
    option peer value 10.255.0.6
-   option peer-mode value slave          ! CLI value is inverted — "slave" = master role
+   option peer-mode value slave          ! CLI value is inverted - "slave" = master role
    option key-rotation value 120s
    option kme value 172.20.127.51:8010
    option kme-vrf value MGMT
@@ -153,10 +153,10 @@ After obtaining the `.swix` from your Arista account team, place it on the **lab
 
 | Location | Purpose |
 |----------|---------|
-| `download/quadra/` | **Recommended** — gitignored directory (same area as cEOS-lab tarballs) |
+| `download/quadra/` | **Recommended** - gitignored directory (same area as cEOS-lab tarballs) |
 | `QUADRA_SWIX=` | Makefile override when the file lives elsewhere |
 
-**Filename:** keep Arista's delivered name — `QuaDRA-<version>-<arch>.swix`. The lab discovers any version matching that pattern; **do not rename** the file to match a pinned lab version.
+**Filename:** keep Arista's delivered name - `QuaDRA-<version>-<arch>.swix`. The lab discovers any version matching that pattern; **do not rename** the file to match a pinned lab version.
 
 | Host architecture | `<arch>` in filename |
 |-------------------|----------------------|
@@ -199,9 +199,10 @@ show daemon quadra
 
 | Topic | Status on EOS |
 |-------|------------------------|
-| QuaDRA availability | **Not public** — contact Arista account team for the extension and user guide |
+| QuaDRA availability | **Not public** - contact Arista account team for the extension and user guide |
 | MACsec license | Static SAK MACsec requires a MACsec license on EOS |
 | KME simulator | Open-source lab stand-in; not a production QKD system |
+| TLS KEX | **Unverified** - strict certificate-chain checks and ETSI round trips do not establish hybrid KEX for KME/QuaDRA |
 | Startup default | `daemon quadra` **shutdown** in startup-config until extension is installed |
 | Dynamic vs static MACsec | Ethernet1 (ceos1 ↔ ceos2) uses 802.1X; Ethernet2/1 (ceos1 ↔ ceos3) uses QuaDRA static SAK |
 | Key rotation interval | Lab default **120 s** on master (`option key-rotation value 120s`) |
@@ -244,7 +245,9 @@ ping 10.255.0.6 source 10.255.0.5
 
 Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
-Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static SAK — skips when extension not installed).
+Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**, QuaDRA/QKD **15 passed**, including master/slave roles, matching SAK cross-mapping, and key delivery. TLS group negotiation on the KME/QuaDRA path was not measured.
+
+Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static SAK - skips when extension not installed).
 
 See [KME tests](../tests/kme.md) and [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 

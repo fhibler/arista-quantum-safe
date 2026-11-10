@@ -70,7 +70,7 @@ def host_ping_groups() -> tuple[tuple[str, str, tuple[tuple[str, str], ...]], ..
 
 def _dual_family_cell(v4_ok: bool | None, v6_ok: bool | None) -> str:
     if v4_ok is None:
-        return "—"
+        return "-"
     v4_mark = status_marker(CheckStatus.OK if v4_ok else CheckStatus.FAIL)
     v6_mark = status_marker(CheckStatus.OK if v6_ok else CheckStatus.FAIL)
     return f"{v4_mark} {v6_mark}"
@@ -92,7 +92,7 @@ def format_host_connectivity_matrix(
         visible_len(ok_cell),
         visible_len(fail_cell),
         visible_len(dual_cell),
-        len("—"),
+        len("-"),
         max(len(ip) for ip in ips_v4.values()),
         max(len(ip) for ip in ips_v6.values()),
     )
@@ -111,7 +111,7 @@ def format_host_connectivity_matrix(
         row = f"{src} →".ljust(label_width)
         for dst in hosts:
             if src == dst:
-                cell = "—"
+                cell = "-"
             else:
                 cell = _dual_family_cell(
                     results_v4.get((src, dst)),

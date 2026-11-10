@@ -2,7 +2,7 @@
 
 `make test-eapi` runs `python -m lab.test_eapi` against all three EOS nodes (**ceos1-both**, **ceos2-pqc**, **ceos3-qkd**) on **IPv4 and IPv6**.
 
-**Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** — no classical fallback on the `EAPI` ssl profile.
+**Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** - no classical fallback on the `EAPI` ssl profile.
 
 OpenSSL and curl probes run **inside `arista-quantum-safe-test-runner`** (default `PROBE_CLIENT`) with `OPENSSL_CONF=/etc/probe/openssl-pqc.cnf`. Override with `PROBE_CLIENT=radius` or `PROBE_CLIENT=host` when debugging.
 
@@ -47,6 +47,6 @@ Set `PROBE_CLIENT=host` to use host curl (devcontainer only) or `PROBE_CLIENT=ra
 
 Configuration reference: [eAPI service](../services/eapi.md).
 
-See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.37.0F**.
 
 <- [Test suite overview](index.md)

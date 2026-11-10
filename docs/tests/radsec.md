@@ -1,6 +1,6 @@
 # RadSec tests
 
-`make test-radsec` runs `python -m lab.test_radsec` — FreeRADIUS collector checks, per-switch reachability, RadSec AAA, and collector TLS PQC handshakes (IPv4 and IPv6).
+`make test-radsec` runs `python -m lab.test_radsec` - FreeRADIUS collector checks, per-switch reachability, RadSec AAA, and collector TLS PQC handshakes (IPv4 and IPv6).
 
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** on the `RADSEC` ssl profile.
 
@@ -60,6 +60,6 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 Configuration reference: [RADIUS / RadSec service](../services/radius-radsec.md).
 
-See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.37.0F**.
 
 <- [Test suite overview](index.md)

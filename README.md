@@ -1,6 +1,6 @@
 # Quantum Safe Lab
 
-Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista EOS: PQC-hybrid management-plane TLS with **no classical fallback** on most services (RadSec, eAPI, gNMI, RESTCONF, SSH), **dynamic MACsec** on an inter-switch link, and supporting services (FreeRADIUS, syslog-ng) built with OpenSSL 3.5.
+Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista EOS: PQC-hybrid management-plane TLS and SSH (RadSec, eAPI, gNMI, gNPSI, syslog, SSH), **dynamic MACsec** on an inter-switch link, and supporting services (FreeRADIUS, syslog-ng) built with OpenSSL 3.5.
 
 Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
 
@@ -19,7 +19,7 @@ Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed 
 
 The lab shows how to configure and verify **PQC-hybrid key establishment** (`X25519MLKEM768` for TLS 1.3, `mlkem768x25519-sha256` for SSH) across common EOS management interfaces, plus **802.1X EAP-TLS + MKA dynamic MACsec** protected by the same hybrid TLS groups on the RADIUS path.
 
-Automated checks (`make test-lab`) validate configuration and live handshakes on a deployed topology.
+Automated checks (`make test-lab`) validate configuration and live handshakes on a deployed topology. On EOS **4.37.0F**, syslog and gNPSI TLS/reflection negotiate hybrid PQC. Remaining service limitations and policy gaps are recorded in the [test results](https://fhibler.github.io/arista-quantum-safe/tests/#result-summary).
 
 ## Prerequisites
 
@@ -27,8 +27,8 @@ Automated checks (`make test-lab`) validate configuration and live handshakes on
 |-------------|-------|
 | **Linux host** with Docker | amd64 or arm64; ~10 GB RAM for three EOS nodes |
 | **Containerlab** 0.78.0+ | `make check-containerlab`; devcontainer installs latest at image build |
-| **cEOS-lab image** | Tagged `ceos:4.36.2F` matching your host architecture — **required before deploy** |
-| **Arista portal token** | **Optional** — only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
+| **cEOS-lab image** | Tagged `ceos:4.37.0F` matching your host architecture - **required before deploy** |
+| **Arista portal token** | **Optional** - only for `make download-ceos` ([create token](https://www.arista.com/en/users/profile); active maintenance contract required) |
 | **Python 3.11+** | For offline tests (`make test`) and lab check scripts |
 
 ### cEOS-lab image
@@ -42,11 +42,11 @@ make download-ceos
 make check-ceos-image
 
 # Or manual import
-docker import download/cEOS64-lab-4.36.2F.tar.xz ceos:4.36.2F
+docker import download/cEOS64-lab-4.37.0F.tar.xz ceos:4.37.0F
 make check-ceos-image
 ```
 
-On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.36.2F-EFT1.tar.xz`) but tag as `ceos:4.36.2F`.
+On arm64, use the downloaded filename (e.g. `cEOSarm-lab-4.37.0F.tar.xz`) but tag as `ceos:4.37.0F`.
 
 ## Quick start
 
@@ -81,7 +81,7 @@ make test
 
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | EOS switches — MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | EOS switches - MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
 | host1, host2, host3 | Alpine hosts on routed data segments |
 | radius | FreeRADIUS (RadSec + EAP-TLS for 802.1X) |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) |

@@ -262,7 +262,7 @@ def check_dot1x_reauth_cycle(
     else:
         ckn_note = f"CKN rotated {baseline_ckn} → {auth_ckn} (peers match)"
     report_live(
-        f"802.1X reauth cycle OK — port Authorized, {ckn_note}, "
+        f"802.1X reauth cycle OK - port Authorized, {ckn_note}, "
         f"RADIUS Login OK count {baseline_ok} → {after_ok}"
     )
 

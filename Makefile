@@ -1,4 +1,4 @@
-# Quantum Safe lab — Containerlab lifecycle
+# Quantum Safe lab - Containerlab lifecycle
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -167,7 +167,7 @@ import-ceos-help: ## Print manual docker import one-liners (amd64 / arm64)
 	@echo "# Or use the arch-aware helper:"
 	@echo "make import-ceos"
 	@echo ""
-	@echo "# Optional auto-download (requires ARISTA_TOKEN — see make download-ceos-help):"
+	@echo "# Optional auto-download (requires ARISTA_TOKEN - see make download-ceos-help):"
 	@echo "make download-ceos"
 
 download-ceos-help: ## Print Arista token setup and ardl usage
@@ -390,7 +390,7 @@ clean: ## Tear down lab and remove build artifacts (keeps download/ and .env)
 reset: clean ## Reset repo to latest commit: discard local edits and remove all gitignored/untracked files
 	@set -euo pipefail; \
 	if ! command -v git >/dev/null 2>&1; then \
-		echo "git not found — cannot reset working tree" >&2; \
+		echo "git not found - cannot reset working tree" >&2; \
 		exit 1; \
 	fi; \
 	echo "=== Resetting git working tree to HEAD ==="; \
@@ -427,7 +427,7 @@ install-quadra: ## Install QuaDRA swix on ceos1-both and ceos3-qkd (swix in down
 test-lab-runner: ## All live lab checks from mgmt-network harness (docker + deployed lab only)
 	@set -euo pipefail; \
 	if ! docker network inspect "$(CLAB_MGMT_NETWORK)" >/dev/null 2>&1; then \
-		echo "Lab mgmt network $(CLAB_MGMT_NETWORK) not found — run make deploy first" >&2; \
+		echo "Lab mgmt network $(CLAB_MGMT_NETWORK) not found - run make deploy first" >&2; \
 		exit 1; \
 	fi; \
 	docker run --rm \

@@ -278,7 +278,7 @@ def check_static_sak_key_sync(
 
     assert_static_sak_peer_mapping(master_profile, slave_profile)
     report_keys(
-        f"SC/AN mapping OK — master rx AN {master_profile.rx.an} ↔ slave tx AN {slave_profile.tx.an}, "
+        f"SC/AN mapping OK - master rx AN {master_profile.rx.an} ↔ slave tx AN {slave_profile.tx.an}, "
         f"master tx AN {master_profile.tx.an} ↔ slave rx AN {slave_profile.rx.an}"
     )
 
@@ -309,7 +309,7 @@ def check_static_sak_key_sync(
             verbose=verbose,
         )
         report_keys(
-            f"encrypted SAK in sync — both sides controlled port up, AN {master_profile.rx.an}/"
+            f"encrypted SAK in sync - both sides controlled port up, AN {master_profile.rx.an}/"
             f"{master_profile.tx.an} on {QUADRA_MACSEC_INTF[MASTER]}/{QUADRA_MACSEC_INTF[SLAVE]}"
         )
     else:
@@ -434,7 +434,7 @@ def note_rotation_success_log(container: str, node: str, *, verbose: bool | None
         return True
     report_log_warn(
         f"{node}: no %QUADRA-4-ROTATION_SUCCESS% in recent syslog "
-        "(normal in steady state — QuaDRA logs this only after agent startup or last failure)"
+        "(normal in steady state - QuaDRA logs this only after agent startup or last failure)"
     )
     return False
 
@@ -501,7 +501,7 @@ def run_qkd_checks(
     if not quadra_installed_on_nodes(targets, swix, verbose=verbose):
         report_summary(
             "QuaDRA",
-            f"skipped — {swix} not installed on both {MASTER} and {SLAVE}",
+            f"skipped - {swix} not installed on both {MASTER} and {SLAVE}",
             CheckStatus.WARN,
         )
         return False

@@ -5,14 +5,14 @@
 | Item | Required | Notes |
 |------|----------|-------|
 | Docker + Containerlab 0.78.0+ | Yes | `make check-containerlab` (devcontainer installs latest at image build) |
-| cEOS-lab `ceos:4.36.2F` | Yes | Match host arch (amd64 / arm64) |
+| cEOS-lab `ceos:4.37.0F` | Yes | Match host arch (amd64 / arm64) |
 | ~10 GB RAM | Yes | |
 | Arista portal token | No | For `make download-ceos` only |
 | Mgmt subnet | Default OK | Override with `MGMT_SUBNET=` if `.127.0/24` overlaps your host |
 
 ## cEOS-lab image
 
-### Option A — automated download from arista.com
+### Option A - automated download from arista.com
 
 Requires an [Arista portal token](https://www.arista.com/en/users/profile) with an active maintenance contract:
 
@@ -25,16 +25,16 @@ make check-ceos-image
 
 Downloaded tarballs land in `download/` (gitignored).
 
-### Option B — manual import
+### Option B - manual import
 
 Should you not be able to obtain a portal token, cEOS-lab is freely available after registration on [arista.com](https://www.arista.com). Download the tarball for your architecture from the [Arista software portal](https://www.arista.com/en/support/software-download), then import it locally:
 
 ```bash
-docker import /path/to/cEOS64-lab-4.36.2F.tar.xz ceos:4.36.2F
+docker import /path/to/cEOS64-lab-4.37.0F.tar.xz ceos:4.37.0F
 make check-ceos-image
 ```
 
-Override the expected tag with `CEOS_IMAGE=ceos:4.36.2F make deploy`.
+The default is `ceos:4.37.0F`. To deploy another imported image, set `CEOS_IMAGE` when invoking `make deploy`.
 
 ## Deploy workflow
 
@@ -47,18 +47,20 @@ make test-lab          # all live checks
 
 `make deploy` runs:
 
-1. `make gen-topo` — templates -> `lab/.gen/`, validate contract
-2. `make check-containerlab` — Containerlab installed and new enough
-3. `make build-lab-images` — `docker buildx bake` of radius, syslog, kme, and test-runner ([Tool chain](misc/toolchain.md) — OpenSSL **3.5.0** minimum for PQC-safe TLS; lab pin is Alpine 3.24 apk **3.5.7**)
-4. `make check-ceos-image` — verify local `ceos:4.36.2F`
-5. `make deploy-kme` — staged KME deploy
+1. `make gen-topo` - templates -> `lab/.gen/`, validate contract
+2. `make check-containerlab` - Containerlab installed and new enough
+3. `make build-lab-images` - `docker buildx bake` of radius, syslog, kme, and test-runner ([Tool chain](misc/toolchain.md) - OpenSSL **3.5.0** minimum for PQC-safe TLS; Alpine **3.24** is pinned; apk OpenSSL **3.5.x** patch releases float)
+4. `make check-ceos-image` - verify local `ceos:4.37.0F`
+5. `make deploy-kme` - staged KME deploy
 6. Key-pool wait (`wait-kme-pool`)
 7. `containerlab deploy -t lab/.gen.quantum-safe.clab.yml`
+
+The EOS **4.37.0F** verification used apk OpenSSL **3.5.9** in peer/probe containers and bundled OpenSSL **3.5.5** in EOS. These are separate TLS stacks; a version number alone does not establish each service’s live KEX.
 
 First EOS boot can take **5–10 minutes** per node on arm64.
 
 !!! note "Staged deploy"
-    `deploy-kme` and `wait-kme-pool` are for manual debugging only. Do **not** run `make deploy-kme` and then `make deploy` back-to-back — `deploy` already calls `deploy-kme` internally, and Containerlab rejects a second `--node-filter` deploy while KME nodes are already running. Use `make deploy` or `make redeploy` for a full bring-up.
+    `deploy-kme` and `wait-kme-pool` are for manual debugging only. Do **not** run `make deploy-kme` and then `make deploy` back-to-back - `deploy` already calls `deploy-kme` internally, and Containerlab rejects a second `--node-filter` deploy while KME nodes are already running. Use `make deploy` or `make redeploy` for a full bring-up.
 
 ## Makefile reference
 
@@ -86,7 +88,7 @@ Run `make help` for the authoritative target list in your clone.
 
 | Target | Description |
 |--------|-------------|
-| `make build-lab-images` | `docker buildx bake` radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL **3.5.7**; PQC-safe minimum is OpenSSL **3.5.0**) |
+| `make build-lab-images` | `docker buildx bake` radius, syslog, kme, and test-runner (Alpine 3.24 apk OpenSSL **3.5.x**; PQC-safe minimum is OpenSSL **3.5.0**) |
 | `make build-radius` / `build-syslog` / `build-kme` / `build-test-runner` | Build one lab image (includes image smoke tests) |
 | `make deploy` | Full lab bring-up (gen-topo, builds, KME staging, full topo) |
 | `make deploy-kme` / `make wait-kme-pool` | Staged KME deploy and key-pool wait (debugging only; see note above) |
@@ -125,7 +127,7 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CEOS_IMAGE` | `ceos:4.36.2F` | cEOS-lab Docker image tag |
+| `CEOS_IMAGE` | `ceos:4.37.0F` | cEOS-lab Docker image tag |
 | `CLAB_PREFIX` | `arista` | Container name prefix |
 | `CLAB_NAME` | `quantum-safe` | Containerlab lab name |
 | `MGMT_SUBNET` | `172.20.127.0/24` | Management network IPv4 CIDR |
@@ -133,7 +135,7 @@ GitHub Pages builds from [`.github/workflows/pages.yml`](https://github.com/fhib
 | `CLAB_MIN_VERSION` | `0.78.0` | Minimum Containerlab version enforced by `make check-containerlab` |
 | `QUADRA_SWIX` | (unset) | Path to QuaDRA `.swix` when not in `download/quadra/` |
 | `ALPINE_VERSION` | `3.24` | Alpine pin for lab image bake (`docker/base` and test-runner fetch/Go stages) |
-| `VERBOSE` | (unset) | `VERBOSE=1 make deploy` — plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
+| `VERBOSE` | (unset) | `VERBOSE=1 make deploy` - plain Docker build logs (`--progress=plain`), containerlab `-d`, verbose KME wait; `VERBOSE=1 make test-eapi` echoes live-test commands |
 
 Copy `.env.example` → `.env` to set any of the above persistently. The Makefile `-include`s `.env` for every target (command-line assignments override).
 
@@ -147,7 +149,7 @@ A Docker-in-Docker devcontainer is provided under `.devcontainer/` for a reprodu
 |---------|--------|
 | Deploy fails after manual `deploy-kme` | Run `make deploy` or `make redeploy` instead of `deploy-kme` followed by `deploy` |
 | `destroy` / `redeploy`: `Authentication required: Repository not found` | Generated topology missing; run `make gen-topo` first (or use `make redeploy`, which now runs it automatically) |
-| `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.36.2F` |
+| `check-ceos-image` fails | Import or download cEOS-lab; verify `docker image inspect ceos:4.37.0F` |
 | `check-containerlab` fails (not installed) | Install Containerlab 0.78.0+ or rebuild the devcontainer |
 | `check-containerlab` fails (too old) | Upgrade to >= 0.78.0 (`containerlab version upgrade`, or rebuild the devcontainer) |
 | Deploy stuck at EOS post-deploy | Wait for EOS POST; check `docker logs <ceos-container>` |

@@ -1,4 +1,4 @@
-"""OpenSSL TLS wire probe helpers — parse and report negotiated KEX/ciphers."""
+"""OpenSSL TLS wire probe helpers - parse and report negotiated KEX/ciphers."""
 
 from __future__ import annotations
 
@@ -130,7 +130,7 @@ def format_tls_wire_summary(result: TlsWireResult, *, port: int | None = None) -
     summary = ", ".join(parts)
     if result.pqc_confirmed:
         return summary
-    return f"not PQC-safe — {summary}"
+    return f"not PQC-safe - {summary}"
 
 
 def tls_wire_status(result: TlsWireResult, policy: TlsWirePolicy) -> CheckStatus:
@@ -149,7 +149,7 @@ def rpc_tls_wire_suffix(result: TlsWireResult | None) -> str:
         parts = [f"wire KEX {kex}"]
     elif result.tls13:
         kex = result.kex_group or "unknown"
-        parts = [f"not PQC-safe — wire KEX {kex}"]
+        parts = [f"not PQC-safe - wire KEX {kex}"]
     else:
         return "wire KEX not verified"
     if result.cipher:
@@ -176,7 +176,7 @@ def format_ssh_wire_summary(kex: str | None, cipher: str | None, *, expected_kex
     summary = ", ".join(parts) if parts else "KEX/cipher not parsed"
     if kex == expected_kex:
         return summary
-    return f"not PQC-safe — {summary}"
+    return f"not PQC-safe - {summary}"
 
 
 def report_tls_wire_probe(

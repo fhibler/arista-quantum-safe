@@ -1,6 +1,6 @@
 # Host routing tests
 
-`make test-hosts` runs `python -m lab.test_hosts` — alpine host ping across all off-diagonal data-plane pairs on **IPv4 and IPv6**.
+`make test-hosts` runs `python -m lab.test_hosts` - alpine host ping across all off-diagonal data-plane pairs on **IPv4 and IPv6**.
 
 ## What is checked
 
@@ -16,9 +16,9 @@ Six directed pairs per family (12 live checks total):
 ## Pass criteria
 
 - All off-diagonal ping pairs succeed for IPv4 and IPv6
-- Summary line: `HOSTS: ✓ — 12 passed` (one count per live ping check; IPv4 + IPv6)
+- Summary line: `HOSTS: ✓ - 12 passed` (one count per live ping check; IPv4 + IPv6)
 
-See [Test suite overview — Suite summary line](index.md#suite-summary-line) for the summary format used by all lab test targets.
+See [Test suite overview - Suite summary line](index.md#suite-summary-line) for the summary format used by all lab test targets.
 
 ## Manual reproduction
 

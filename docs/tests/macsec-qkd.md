@@ -1,6 +1,6 @@
 # MACsec QuaDRA QKD tests
 
-`make test-macsec-qkd` runs `python -m lab.test_macsec_qkd` — QuaDRA daemon health, static SAK cross-mapping on the **ceos1-both <-> ceos3-qkd** Ethernet2 link, and KME key-delivery log lines.
+`make test-macsec-qkd` runs `python -m lab.test_macsec_qkd` - QuaDRA daemon health, static SAK cross-mapping on the **ceos1-both <-> ceos3-qkd** Ethernet2 link, and KME key-delivery log lines.
 
 ETSI QKD 014 API checks (KME simulators) are separate: **`make test-kme`**.
 
@@ -9,7 +9,7 @@ ETSI QKD 014 API checks (KME simulators) are separate: **`make test-kme`**.
 | Check | Type | Method |
 |-------|------|--------|
 | QuaDRA extension | `[live]` | `show extensions` |
-| Agent roles | `[live]` | `show daemon quadra` — **master** / **slave** |
+| Agent roles | `[live]` | `show daemon quadra` - **master** / **slave** |
 | Static SAK profiles | `[keys]` | Master tx ↔ slave rx key cross-mapping |
 | Rotation syslog | `[log]` | `%QUADRA-4-ROTATION_SUCCESS%` when present (startup/recovery) |
 | KME delivery | `[kme]` | **enc_keys** on kme-a / **dec_keys** on kme-b container logs |

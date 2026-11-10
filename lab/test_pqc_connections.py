@@ -404,7 +404,7 @@ def probe_eossdkrpc_tls(
     """Probe eos-sdk-rpc mTLS (WARN when wire KEX is classical)."""
     if family == IP_FAMILY_IPV6:
         report_live(
-            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}), skipped — "
+            f"eos-sdk-rpc gRPC mTLS handshake ({family_label(family)}), skipped - "
             f"local interface Management0 binds IPv4 only",
             status=CheckStatus.SKIP,
             probe_client=True,
@@ -850,14 +850,14 @@ def probe_syslog_delivery(
         group_name = tls_key_share_group_name(negotiated_group)
         report_live(
             f"{node} TLS syslog delivered ({family_label(family)}), "
-            f"not PQC-safe, TLS 1.3 compliant — wire KEX {group_name}",
+            f"not PQC-safe, TLS 1.3 compliant - wire KEX {group_name}",
             status=CheckStatus.WARN,
         )
         return
 
     report_live(
         f"{node} TLS syslog delivered ({family_label(family)}), "
-        f"not PQC-safe, TLS 1.3 compliant — wire KEX not verified",
+        f"not PQC-safe, TLS 1.3 compliant - wire KEX not verified",
         status=CheckStatus.WARN,
     )
 
@@ -885,7 +885,7 @@ def run_eapi_checks(
     targets = lab_targets_for_subnet(clab_name=clab_name, mgmt_subnet=mgmt_subnet)
 
     print_test_header(
-        "eAPI verification (TLS 1.3, PQC-hybrid only — no classical fallback)",
+        "eAPI verification (TLS 1.3, PQC-hybrid only - no classical fallback)",
         "  [config] EOS show commands for ssl profile EAPI and http-commands binding",
         "  [live / test-runner]  HTTPS :443 handshake and command-api runCmds",
         "  grouped by check type; IPv4 and IPv6 under each",

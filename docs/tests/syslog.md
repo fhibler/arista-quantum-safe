@@ -2,7 +2,7 @@
 
 `make test-syslog` runs `python -m lab.test_syslog`.
 
-**Policy:** Encrypted delivery over TLS 1.3. The collector offers **`X25519MLKEM768`**; the EOS syslog client may still negotiate classical **`x25519`** on the wire (see [Syslog caveats](../services/syslog.md#caveats)).
+**Policy:** Encrypted delivery over TLS 1.3. EOS **4.37.0F** negotiates **`X25519MLKEM768`** to the collector on all three switches over IPv4 and IPv6; classical fallback remains configured (see [Syslog caveats](../services/syslog.md#caveats)).
 
 ## What is checked
 
@@ -10,7 +10,7 @@
 
 | Check | Type | Method |
 |-------|------|--------|
-| TLS listener :6514 | `[config]` | `netstat -ltn` — no cleartext :514 |
+| TLS listener :6514 | `[config]` | `netstat -ltn` - no cleartext :514 |
 | OpenSSL PQC groups | `[config]` | `openssl list -tls-groups` |
 | Health | `[config]` | Wait for container healthcheck **healthy** |
 
@@ -28,17 +28,18 @@
 | Check | Type | Method |
 |-------|------|--------|
 | Collector PQC handshake | `[live / test-runner]` | PQC-hybrid `openssl s_client` to syslog :6514 (IPv4 + IPv6) |
-| EOS → collector wire KEX | `[live]` | Optional tcpdump/tshark capture — **WARN** when classical |
+| EOS → collector wire KEX | `[live]` | tcpdump/tshark capture of **ServerHello selected group** - **WARN** when classical |
 
 ## Pass criteria
 
 - No cleartext logging destinations configured
 - Messages arrive over TLS
 - Collector-side probe negotiates `X25519MLKEM768`
+- Captured EOS-to-collector ServerHello selects `X25519MLKEM768` on 4.37.0F; delivery alone does not establish PQC safety
 
 ## Expected SKIP / WARN
 
-EOS **syslog client** may use classical **`x25519`** on the wire — **not PQC-safe**, TLS 1.3 compliant. `make test-syslog` validates **encrypted delivery**, collector PQC, and reports **WARN** when tcpdump capture confirms classical wire KEX.
+The recorded **4.37.0F** run has **15 passed**, with no warnings. Classical KEX produces **WARN**; an unavailable or incomplete capture leaves wire KEX unverified. A collector-only probe cannot prove the switch’s negotiated group.
 
 ## Manual reproduction
 
@@ -73,17 +74,17 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ## Result summary
 
-Recorded on **EOS 4.36.2F** (3 switches, IPv4 + IPv6):
+Recorded on **EOS 4.37.0F** (3 switches, IPv4 + IPv6):
 
 | Check | Expected | Outcome |
 |-------|----------|---------|
 | No cleartext logging hosts | TLS-only `logging host … 6514` | PASS |
 | SYSLOG ssl profile | `X25519MLKEM768` listed first (+ classical fallback) | PASS |
-| Live message delivery | Needle in collector log over TLS | PASS |
+| Live message delivery | Unique marker from this run in collector log over TLS | PASS |
 | Collector PQC probe | `X25519MLKEM768` from test-runner | PASS |
-| EOS to collector wire KEX | Often **`x25519`** (not hybrid) | PASS + **WARN** in `make test-syslog` when captured |
+| EOS to collector wire KEX | ServerHello selects **4588 (`X25519MLKEM768`)**, all six connections | PASS |
 
-See also [Test suite overview — Result summary](index.md#result-summary) for the full management-plane matrix.
+See also [Test suite overview - Result summary](index.md#result-summary) for the full management-plane matrix.
 
 Configuration reference: [Syslog service](../services/syslog.md).
 

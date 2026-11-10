@@ -1,4 +1,4 @@
-# Keep Docker build context small. Do not ignore lab/.gen/ — radius and syslog
+# Keep Docker build context small. Do not ignore lab/.gen/ - radius and syslog
 # COPY generated PKI and client files from there.
 .git
 download/

@@ -8,15 +8,15 @@ This page describes **what certificates must contain** for TLS 1.3 services in t
 |------|----------|-------|
 | Generation | `lab/gen_pki.py` via `make gen-topo` | CA, RadSec server, per-switch client/eAPI/gNMI certs, syslog collector cert |
 | Output | `lab/.gen/pki/` | Bind-mounted into containers and EOS `flash:` |
-| Install on EOS | Containerlab post-boot exec | `copy flash:… certificate:` / `sslkey:` (exec-only — not in startup-config) |
+| Install on EOS | Containerlab post-boot exec | `copy flash:… certificate:` / `sslkey:` (exec-only - not in startup-config) |
 | Lab CA subject | `/CN=quantum-safe-radsec-ca/O=Lab/C=US` | Also written as `radsec-ca.pem` |
 | Validity | 825 days | Lab default in `gen_pki.py` |
 
-KME mTLS material for QKD is generated separately by `lab/gen_kme_pki.py` into `lab/.gen/kme-pki/`. The KME CA includes `keyUsage` Certificate Sign + CRL Sign so Python 3.13+ `ssl.create_default_context()` (`VERIFY_X509_STRICT`) will accept SAE and peer client certs — without that extension, `make wait-kme-pool` fails even though the simulator is running. See [QKD / ETSI 014](../services/qkd-etsi014.md).
+KME mTLS material for QKD is generated separately by `lab/gen_kme_pki.py` into `lab/.gen/kme-pki/`. The KME CA includes `keyUsage` Certificate Sign + CRL Sign so Python 3.13+ `ssl.create_default_context()` (`VERIFY_X509_STRICT`) will accept SAE and peer client certs - without that extension, `make wait-kme-pool` fails even though the simulator is running. See [QKD / ETSI 014](../services/qkd-etsi014.md).
 
 ## TLS 1.3 certificate requirements
 
-TLS 1.3 uses certificates only for **authentication** (server identity, optional client identity). Key exchange is negotiated separately via **key-establishment groups** configured in EOS ssl profiles or OpenSSL `Groups` — not in the X.509 certificate.
+TLS 1.3 uses certificates only for **authentication** (server identity, optional client identity). Key exchange is negotiated separately via **key-establishment groups** configured in EOS ssl profiles or OpenSSL `Groups` - not in the X.509 certificate.
 
 ### Server certificate (EOS or peer server)
 
@@ -68,9 +68,9 @@ management security
 
 ### What certificates do **not** control
 
-- **PQC-hybrid key exchange** — configured via `key-establishment-group` (EOS) or OpenSSL `Groups` (peers), not embedded in the cert
-- **TLS 1.3 AEAD ciphers** — configured via `cipher v1.3 …` (EOS) or `CipherString` (OpenSSL)
-- **SSH host keys** — separate from X.509; SSH uses `management ssh` KEX, not ssl profiles
+- **PQC-hybrid key exchange** - configured via `key-establishment-group` (EOS) or OpenSSL `Groups` (peers), not embedded in the cert
+- **TLS 1.3 AEAD ciphers** - configured via `cipher v1.3 …` (EOS) or `CipherString` (OpenSSL)
+- **SSH host keys** - separate from X.509; SSH uses `management ssh` KEX, not ssl profiles
 
 ## OpenSSL command examples
 
@@ -133,7 +133,7 @@ openssl verify -CAfile ca.pem server.pem
 
 ### Test TLS 1.3 server handshake (PQC-hybrid group)
 
-Requires **OpenSSL 3.5.0 or newer** with built-in ML-KEM (lab **test-runner** image ships Alpine apk **3.5.7**):
+Requires **OpenSSL 3.5.0 or newer** with built-in ML-KEM (lab **test-runner** uses Alpine apk **3.5.x**, with **3.5.9** observed in the 4.37.0F verification; the patch release floats):
 
 ```bash
 # Server auth only (eAPI-style)

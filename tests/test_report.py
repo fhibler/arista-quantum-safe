@@ -49,10 +49,10 @@ def test_status_markers_with_color(monkeypatch) -> None:
 
 def test_format_summary_uses_status_marker(monkeypatch) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
-    assert format_summary("PQC", "all checks passed", CheckStatus.OK) == "PQC: ✓ — all checks passed"
+    assert format_summary("PQC", "all checks passed", CheckStatus.OK) == "PQC: ✓ - all checks passed"
     assert (
         format_summary("PQC", "handshake failed", CheckStatus.FAIL)
-        == "PQC FAILED: ✗ — handshake failed"
+        == "PQC FAILED: ✗ - handshake failed"
     )
 
 
@@ -72,7 +72,7 @@ def test_report_check_increments_stats(capsys, monkeypatch) -> None:
     capsys.readouterr()
     report_check_summary("OpenConfig")
     summary = capsys.readouterr().out.strip()
-    assert summary == "OpenConfig: ✓ — 1 passed, 1 warning, 1 skipped"
+    assert summary == "OpenConfig: ✓ - 1 passed, 1 warning, 1 skipped"
 
 
 def test_format_check_line_warn_is_prominent(monkeypatch) -> None:

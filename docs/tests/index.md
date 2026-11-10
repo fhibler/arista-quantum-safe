@@ -15,10 +15,10 @@ Runs all sections in order (one pass per service, no duplication):
 | 5 | `make test-openconfig` | `lab.test_openconfig` |
 | 6 | `make test-kme` | `lab.test_kme` |
 | 7 | `make test-macsec-dot1x` | `lab.test_macsec_dot1x` |
-| 8 | `make test-macsec-qkd` | `lab.test_macsec_qkd` (skips when QuaDRA extension absent — see [QKD service](../services/qkd-etsi014.md)) |
-| 9 | `make test-hosts` | `lab.test_hosts` — host routing matrix |
+| 8 | `make test-macsec-qkd` | `lab.test_macsec_qkd` (skips when QuaDRA extension absent - see [QKD service](../services/qkd-etsi014.md)) |
+| 9 | `make test-hosts` | `lab.test_hosts` - host routing matrix |
 
-Optional extended wait: **`make test-macsec-dot1x-reauth`** (~75 s) — see [MACsec 802.1X](macsec-dot1x.md).
+Optional extended wait: **`make test-macsec-dot1x-reauth`** (~75 s) - see [MACsec 802.1X](macsec-dot1x.md).
 
 On a **bare Linux host** without PQC-capable curl/OpenSSL on the host OS, use **`make test-lab-runner`** instead. It runs the same checks from the `test-runner` container on the lab mgmt network (Docker + deployed lab only).
 
@@ -47,29 +47,29 @@ Each test page follows the same chapter order: **What is checked** (`Check | Typ
 | `[host]` | Check from a cEOS SAE client to a KME (`make test-kme`) |
 | `[log]` | Syslog or container-log assertion (`make test-macsec-qkd`) |
 | `[keys]` | Static SAK / key-mapping check (`make test-macsec-qkd`) |
-| `WARN` | **Not PQC-safe** (often still TLS 1.3 compliant); check passes (not a failure) |
-| `SKIP` | Known platform/config limitation — check not run (not a failure) |
+| `WARN` | Check completes with a caveat (for example classical KEX); this is not proof of PQC safety |
+| `SKIP` | Check cannot establish the result (for example no sample or no listener); not a failure |
 
 ## Suite summary line
 
 Each `make test-*` target ends with a one-line summary that counts individual checks (`[config]`, `[live]`, `[live / test-runner]`, etc.):
 
 ```text
-OpenConfig: ✓ — 87 passed, 12 warnings
-HOSTS: ✓ — 12 passed
-RadSec: ✓ — 42 passed
+OpenConfig: ✓ - 99 passed, 15 warnings, 9 skipped
+HOSTS: ✓ - 12 passed
+RadSec: ✓ - 23 passed
 ```
 
 | Part | Meaning |
 |------|---------|
 | **Name** | Suite label (e.g. `OpenConfig`, `RadSec`, `HOSTS`) |
-| **✓ / ✗** | Overall outcome — **✓** when no check failed; **✗** when the suite aborts |
+| **✓ / ✗** | Overall outcome - **✓** when no check failed; **✗** when the suite aborts |
 | **passed** | Checks that completed successfully |
-| **warnings** | Checks marked **WARN** (e.g. classical wire KEX) — still a pass |
+| **warnings** | Checks marked **WARN** (e.g. classical wire KEX) - still a pass |
 | **failed** | Shown only when failed checks were recorded before abort |
-| **skipped** | Checks marked **SKIP** (platform limitation — not a failure) |
+| **skipped** | Checks marked **SKIP** (platform limitation - not a failure) |
 
-Only non-zero buckets are shown. On failure the summary is printed to stderr, e.g. `OpenConfig FAILED: ✗ — <first error>`.
+Only non-zero buckets are shown. On failure the summary is printed to stderr, e.g. `OpenConfig FAILED: ✗ - <first error>`.
 
 `make test-lab` prints each suite's summary in order, then `✓ All lab checks passed.` when every suite succeeds.
 
@@ -88,13 +88,28 @@ Override subnet with `MGMT_SUBNET=… make test-lab`.
 
 ## Recorded test results
 
-Result tables in the detailed test pages reflect live runs against the lab default image **EOS 4.36.2F** (`CEOS_IMAGE=ceos:4.36.2F`; see [Setup](../setup.md)).
+Results reflect the default **EOS 4.37.0F** (`CEOS_IMAGE=ceos:4.37.0F`; see [Setup](../setup.md)), verified on three ARM64 cEOS switches over IPv4 and IPv6 unless noted, with QuaDRA **1.0.10.rel1**. These results describe this lab, not a hardware qualification.
+
+| Suite | Result on 4.37.0F |
+|-------|------------------|
+| SSH | 9 passed |
+| eAPI | 15 passed |
+| RadSec | 23 passed |
+| Syslog | 15 passed |
+| OpenConfig | 99 passed, 15 warnings, 9 skipped |
+| KME | 9 passed |
+| Dynamic MACsec | 17 passed |
+| QuaDRA / QKD | 15 passed |
+| Extended MACsec reauthentication | 22 passed |
+| Settled host routing | 12 routes passed |
+
+The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **nine skips** are gNPSI Subscribe without packets (6) and eos-sdk-rpc IPv6 without a listener (3). Warnings and skips do not establish PQC-safe application operation. Historical comparisons and test changes are recorded in the [Changelog](../changelog.md).
 
 ## Result summary
 
-Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless noted).
+Recorded **live** behavior on **EOS 4.37.0F** (3 switches, IPv4 + IPv6 unless noted).
 
-| Service | Make target | TLS 1.3 compliant | KEX configured | KEX used (live) | PQC-safe |
+| Service | Make target | TLS 1.3 observed | KEX configured | KEX used (live) | PQC-safe |
 |---------|-------------|---------------------|----------------|-----------------|----------|
 | SSH | `test-ssh` | N/A (SSH, not TLS) | `mlkem768x25519-sha256` | `mlkem768x25519-sha256` | Yes |
 | eAPI | `test-eapi` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
@@ -102,33 +117,33 @@ Expected **live** behavior on **EOS 4.36.2F** (3 switches, IPv4 + IPv6 unless no
 | gNOI (transport + RPC) | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gRIBI | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
 | gNSI Certz | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| gNPSI (TLS) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
-| gNPSI (Subscribe) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
+| gNPSI (TLS) | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
+| gNPSI (Subscribe) | `test-openconfig` | Transport only | `X25519MLKEM768` | - (no packet received) | Unverified |
 | RESTCONF | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | RadSec | `test-radsec` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| Syslog (EOS to collector) | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | classical (`x25519`) | No |
+| Syslog (EOS to collector) | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | `X25519MLKEM768` | Yes |
 | eos-sdk-rpc (IPv4) | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
-| eos-sdk-rpc (IPv6) | `test-openconfig` | SKIP | `X25519MLKEM768` | — (no listener) | — |
+| eos-sdk-rpc (IPv6) | `test-openconfig` | SKIP | `X25519MLKEM768` | - (no listener) | - |
 | Syslog collector probe | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | `X25519MLKEM768` | Yes |
 
 **Columns**
 
 | Column | Meaning |
 |--------|---------|
-| **TLS 1.3 compliant** | Live session uses TLS 1.3 (or SSH for port 22). **Yes** = encrypted with the expected protocol version; **No** = handshake fails or falls back. |
+| **TLS 1.3 observed** | Live session uses TLS 1.3 (or SSH for port 22). **Yes** records the positive probe; it does not assert rejection of TLS 1.2 or classical offers. See the service notes below. |
 | **KEX configured** | Key-establishment group(s) in EOS `ssl profile` or `management ssh` config (what the switch is configured to offer). |
 | **KEX used (live)** | Group negotiated on the wire during the listed make target. |
-| **PQC-safe** | **Yes** when the live KEX is the lab hybrid (`X25519MLKEM768` or `mlkem768x25519-sha256`); **No** when classical KEX is used or PQC negotiation fails. **`WARN`** in suite output means the check still passes — it is not a PQC-safe value. |
-| **SKIP** | Check not run — known platform/config limitation (not a failure). |
+| **PQC-safe** | **Yes** when the live KEX is the lab hybrid (`X25519MLKEM768` or `mlkem768x25519-sha256`); **No** when classical KEX is used or PQC negotiation fails. **Unverified** means no successful application data check; **`WARN`** in suite output is not a PQC-safe value. |
+| **SKIP** | Result not established because of a platform/config limitation or missing data; not proof of success. |
 
 **Notes**
 
-- **Syslog (EOS to collector):** TLS 1.3 delivery succeeds, but the EOS syslog TLS client typically negotiates classical **`x25519`** despite the profile listing hybrid first — not PQC-safe, still TLS 1.3 compliant. `make test-syslog` reports **WARN** when tcpdump capture confirms classical wire KEX.
-- **eos-sdk-rpc (IPv4):** PQC-only probe gets **EOF** on port **9543**; fallback **`-groups secp256r1`** completes TLS 1.3 with classical KEX — not PQC-safe, TLS 1.3 compliant.
-- **gRIBI (IPv4/IPv6):** PQC-only OpenSSL mTLS on port **9340** gets **handshake failure**; explicit **`-groups secp256r1`** completes TLS 1.3 with classical KEX despite strict **`GRIBI`** profile — `make test-openconfig` reports **WARN** (same pattern as eos-sdk-rpc).
-- **gNPSI (IPv4/IPv6):** Same wire gap as gRIBI on port **6031** — PQC-only OpenSSL mTLS fails; explicit **`-groups secp256r1`** completes TLS 1.3 with classical KEX — `make test-openconfig` reports **WARN** on mTLS, reflection, and Subscribe.
-- **gNPSI Subscribe:** `grpcurl` `gnpsi.gNPSI/Subscribe` receives sFlow datagrams on **IPv4 and IPv6** when sampled interfaces carry traffic (typical on a deployed lab). **SKIP** only when no datagram arrives within the 8 s probe window — run `make test-hosts` and retry if needed.
-- **eos-sdk-rpc (IPv6):** **SKIP** in `make test-openconfig` (IPv4-only service binding on Management0).
+- **Syslog:** All six EOS-to-collector connections selected hybrid group **4588**, with delivery verified using unique per-run markers. Classical fallback remains configured; hybrid-only enforcement was not tested.
+- **gNPSI:** Hybrid mTLS and reflection pass. Classical TLS 1.3 and TLS 1.2 are rejected. Subscribe data reception is **unverified**, with six **SKIPs**; successful reflection alone does not prove a working stream.
+- **gRIBI:** Hybrid-only mTLS fails; `secp256r1` TLS 1.3 and Get RPC work. Separate TLS 1.2 probes also complete despite the strict profile.
+- **eos-sdk-rpc (IPv4):** Hybrid-only probe gets EOF; explicit `secp256r1` completes TLS 1.3. TLS 1.2 negotiates then ends with EOF, which is not a verified application session.
+- **eos-sdk-rpc (IPv6):** Native IPv6 connections refuse on 9543 with `local interface Management0`. Socket inspection shows an IPv4-mapped bind; IPv4 mTLS and IPv6 eAPI controls succeed on all three switches. Alternative binding configurations were not evaluated.
+- **RESTCONF:** Hybrid positive probes pass, but classical TLS 1.3 and TLS 1.2 also complete despite the strict profile. This policy gap is outside the standard suite’s positive handshake assertion.
 
 ## Test guides
 

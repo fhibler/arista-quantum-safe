@@ -1,7 +1,7 @@
 # PQC-capable probe client for live lab checks (curl + OpenSSL 3.5).
 #
 # Used by the test-runner Containerlab node and the optional test-lab-runner harness.
-# Alpine 3.24 apk OpenSSL 3.5.7, curl, and openssh-client provide PQC-hybrid TLS/SSH.
+# Alpine 3.24 apk OpenSSL 3.5.x, curl, and openssh-client provide PQC-hybrid TLS/SSH.
 
 ARG ALPINE_VERSION=3.24
 ARG GNMIC_VERSION=0.47.0

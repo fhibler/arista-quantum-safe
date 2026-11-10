@@ -45,7 +45,7 @@ def run_openconfig_checks(
     )
 
     print_test_header(
-        "OpenConfig verification (TLS 1.3, PQC-hybrid only — no classical fallback)",
+        "OpenConfig verification (TLS 1.3, PQC-hybrid only - no classical fallback)",
         "  [config] EOS show commands for gNMI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc",
         "  [live / test-runner]  gNMI/gNOI/gRIBI/gNSI/gNPSI gRPC, RESTCONF HTTPS, eos-sdk-rpc mTLS",
         "  grouped by check type; IPv4 and IPv6 under each",

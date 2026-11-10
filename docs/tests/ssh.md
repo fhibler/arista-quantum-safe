@@ -34,6 +34,6 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 Configuration reference: [SSH service](../services/ssh.md).
 
-See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.36.2F**.
+See [Test suite overview](index.md#result-summary) for expected live KEX on **EOS 4.37.0F**.
 
 <- [Test suite overview](index.md)

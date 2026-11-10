@@ -1,4 +1,4 @@
-# ETSI GS QKD 014 KME simulator — https://github.com/CreepPork/next-door-key-simulator
+# ETSI GS QKD 014 KME simulator - https://github.com/CreepPork/next-door-key-simulator
 #
 # Multi-arch (linux/amd64, linux/arm64) via docker buildx bake, matching other lab images.
 # Alpine pin is docker-bake.hcl → docker/base (FROM runtime).

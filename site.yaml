@@ -1,4 +1,4 @@
-# Public site and repository identifiers — single source of truth.
+# Public site and repository identifiers - single source of truth.
 # Consumed by MkDocs (docs/hooks/site_config.py), README sync, and CI checks.
 #
 # Override pages_base_url when using a custom domain or a different Pages layout.

@@ -29,7 +29,7 @@ management security
       trust certificate radsec-ca.pem
 ```
 
-Unlike eAPI/RadSec/gNMI profiles, **SYSLOG allows classical fallback groups** so delivery works while the EOS syslog TLS client may lack PQC-hybrid support on the wire.
+**SYSLOG allows classical fallback groups**. On EOS **4.37.0F**, the switch offers hybrid KEX and the collector selects **`X25519MLKEM768`**.
 
 ### Service binding (EOS)
 
@@ -40,7 +40,7 @@ logging vrf MGMT host 2001:db8:127::53 6514 protocol tls ssl-profile SYSLOG
 
 Rendered templates use `${SYSLOG_SERVER_IPV4}` and `${SYSLOG_SERVER_IPV6}` placeholders.
 
-### Peer — syslog-ng collector
+### Peer - syslog-ng collector
 
 Built from `docker/syslog/Dockerfile`. TLS listener in `configs/syslog/syslog-ng.conf`:
 
@@ -71,20 +71,20 @@ MinProtocol = TLSv1.3
 MaxProtocol = TLSv1.3
 ```
 
-Cleartext UDP/TCP **514 is disabled** — only TLS **6514** listens.
+Cleartext UDP/TCP **514 is disabled** - only TLS **6514** listens.
 
 ## Caveats
 
 | Topic | Status on EOS |
 |-------|------------------------|
 | Config | Profile lists `X25519MLKEM768` first |
-| Live wire (EOS → collector) | **Not PQC-safe** — typically negotiates **`x25519`** |
+| Live wire (EOS → collector) | **PQC-safe** - `X25519MLKEM768` on all three switches over IPv4 + IPv6 (4.37.0F) |
 | Live wire (probe → collector) | **PQC-safe** when using PQC OpenSSL |
 
-!!! warning "Known EOS gap — syslog client"
-    The EOS syslog TLS **client** does not offer ML-KEM hybrid groups in ClientHello even when the ssl profile advertises them. The collector accepts classical `x25519`, so logs still flow.
+!!! note "Hybrid negotiation verified; fallback remains configured"
+    On **4.37.0F**, fresh EOS-to-collector handshakes select **4588 (`X25519MLKEM768`)**. The client offers `4588,29`; inspect the collector’s **ServerHello**, not just the offered ClientHello groups.
 
-    Tightening both sides to PQC-only would **break** remote syslog on current EOS builds.
+    Both peers still allow classical fallback. The measured sessions are PQC-safe, but this configuration does not enforce hybrid-only negotiation. Tightening the policy requires separate configuration changes and testing.
 
 !!! note "Connection limit"
     syslog-ng defaults to **`max-connections(10)`** in some builds; the lab template sets **32**. Each switch opens **persistent TLS sessions** to IPv4 and IPv6 collectors (two sessions per switch × three switches ≈ 6 slots). Leave headroom for probes and health checks.
@@ -121,13 +121,13 @@ docker exec arista-quantum-safe-test-runner sh -c \
 
 ### Wire capture (EOS → collector)
 
-EOS keeps long-lived sessions — bounce logging hosts to force a new handshake:
+EOS keeps long-lived sessions - bounce logging hosts to force a new handshake:
 
 ```bash
-# Terminal A — on Docker host (mgmt bridge)
+# Terminal A - on Docker host (mgmt bridge); stop capture after reconnect
 tcpdump -i mgmt-bridge -n -s 0 -w /tmp/syslog-tls.pcap 'tcp port 6514'
 
-# Terminal B — bounce logging on a switch
+# Terminal B - bounce logging on a switch
 docker exec -i arista-quantum-safe-ceos2-pqc Cli <<'EOF'
 enable
 configure
@@ -142,15 +142,16 @@ EOF
 Decode with tshark (install in syslog container if needed):
 
 ```bash
+docker cp /tmp/syslog-tls.pcap arista-quantum-safe-syslog:/tmp/syslog-tls.pcap
 docker exec arista-quantum-safe-syslog tshark -r /tmp/syslog-tls.pcap \
-  -Y 'tls.handshake.type == 1' \
+  -Y 'tls.handshake.type == 2 && tcp.srcport == 6514' \
   -T fields -e tls.handshake.extensions_key_share_group \
   2>/dev/null | head
 ```
 
-Expect group **29 (`x25519`)**, not **4588 (`X25519MLKEM768`)** — see [Syslog tests](../tests/syslog.md#result-summary) for recorded wire KEX.
+Expect selected group **4588 (`X25519MLKEM768`)** on 4.37.0F - see [Syslog tests](../tests/syslog.md#result-summary) for recorded wire KEX.
 
-Automated: `make test-syslog` (delivery + optional wire KEX capture with **WARN** when not PQC-safe).
+Automated: `make test-syslog` (**15 passed** in the recorded run: delivery, collector probes, and six hybrid wire checks; **WARN** if a future capture shows classical KEX).
 
 See [Syslog tests](../tests/syslog.md).
 

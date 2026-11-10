@@ -1,10 +1,10 @@
 # MACsec QuaDRA QKD tests
 
-`make test-macsec-qkd` runs `python -m lab.test_macsec_qkd` - QuaDRA daemon health, static SAK cross-mapping on the **ceos1-both <-> ceos3-qkd** Ethernet2 link, and KME key-delivery log lines.
+`make test-macsec-qkd` runs `python -m lab.test_macsec_qkd` on **ceos1-both:Ethernet2 ↔ ceos3-qkd:Ethernet1**. Static MACsec configuration, controlled ports, active keys, SAK cross-mapping, and bidirectional pings are always checked. When the QuaDRA extension is installed on both switches, the suite also checks daemon health and KME key-delivery log lines.
 
 `make test-quadra-tls` adds passive TLS KEX measurement of the **actual QuaDRA clients** during normal key rotation. It captures both MGMT namespaces concurrently for 135 seconds, decodes the server-selected group with the test-runner's `tshark`, and requires fresh successful key requests from the captured source addresses. It does not generate substitute curl/OpenSSL connections or restart agents.
 
-**Wait times:** the ordinary `test-macsec-qkd` functional checks have no intentional rotation wait. `test-quadra-tls` expects **135 s of capture** for both clients concurrently. Its TLS phase allows a **250 s timeout budget**: capture + 15 s grace + two clients × (30 s decode + 20 s logs), with functional checks and process overhead extra. Changing `QUADRA_TLS_CAPTURE_SEC` changes the TLS phase budget to that value **+ 115 s**. See [Wait times](index.md#wait-times).
+**Wait times:** each static MACsec convergence check allows **15 attempts**, **2 s apart** (**28 s maximum retry delays per switch**, **56 s combined**); converged checks return immediately. Ping/show command time is extra. The ordinary `test-macsec-qkd` checks have no intentional rotation wait. `test-quadra-tls` includes the static checks and expects **135 s of capture** for both clients concurrently. Its TLS phase allows a **250 s timeout budget**: capture + 15 s grace + two clients × (30 s decode + 20 s logs), with functional checks and process overhead extra. Changing `QUADRA_TLS_CAPTURE_SEC` changes the TLS phase budget to that value **+ 115 s**. See [Wait times](index.md#wait-times).
 
 ETSI QKD 014 API checks (KME simulators) are separate: **`make test-kme`**.
 
@@ -12,35 +12,40 @@ ETSI QKD 014 API checks (KME simulators) are separate: **`make test-kme`**.
 
 | Check | Type | Method |
 |-------|------|--------|
+| Static MACsec config | `[config]` | Interface profile binding, static SAK source, `aes256-gcm-xpn` cipher; extension optional |
+| Static MACsec status | `[live]` | Both controlled ports up with active keys; retry convergence; extension optional |
 | QuaDRA extension | `[live]` | `show extensions` |
 | Agent roles | `[live]` | `show daemon quadra` - **master** / **slave** |
-| Static SAK profiles | `[keys]` | Master tx ↔ slave rx key cross-mapping |
+| Static SAK profiles | `[keys]` | Master tx ↔ slave rx key cross-mapping; extension optional |
 | Rotation syslog | `[log]` | `%QUADRA-4-ROTATION_SUCCESS%` when present (startup/recovery) |
 | KME delivery | `[kme]` | **enc_keys** on kme-a / **dec_keys** on kme-b container logs |
-| Link reachability | `[live]` | Ping across QuaDRA /30 |
+| Link reachability | `[live]` | Bidirectional ping across QuaDRA /30; extension optional |
 | QuaDRA TLS KEX (`test-quadra-tls`) | `[wire]` | Pair ClientHello with final ServerHello per TCP stream for ceos1-both → kme-a and ceos3-qkd → kme-b; correlate with fresh HTTP 200 key requests |
 
 ## Pass criteria
 
-- Both switches report expected QuaDRA agent state (when extension installed)
+- Static profiles are bound to the expected interfaces; both controlled ports are up with active keys and bidirectional pings succeed
+- Both switches report expected QuaDRA agent state (when extension installed on both)
 - Static SAK profiles cross-map correctly
 - KME log lines show key fetch/delivery activity (when QuaDRA active)
 - With `test-quadra-tls`, both clients must have a complete TLS sample and successful key delivery within the capture window; every observed final ServerHello must select TLS 1.3 and **`X25519MLKEM768`** (4588 / `0x11ec`). Client offers and HelloRetryRequest do not satisfy this check.
 
 Measured on **EOS 4.37.0F / QuaDRA 1.0.10.rel1**, ARM64, on **2026-11-10**: **`make test-quadra-tls` passed all 17 checks**. Both IPv4 QuaDRA-to-KME connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_256_GCM_SHA384`**. The clients also advertise classical groups. Hybrid-only enforcement remains **unverified**; this measurement does not qualify simulator peer TLS or alternate KME configurations.
 
+That recorded count predates moving the static MACsec configuration and convergence checks from `test-macsec-dot1x` into this suite.
+
 ## Expected SKIP / WARN
 
 | Check | When |
 |-------|------|
-| `test-macsec-qkd` | **SKIP** (warning) when the QuaDRA extension (`.swix`) is not installed |
+| Daemon / KME checks in `test-macsec-qkd` | **SKIP** when the QuaDRA extension (`.swix`) is not installed on both switches; static MACsec checks still run and failures fail the suite |
 | Rotation syslog | **WARN** when `%QUADRA-4-ROTATION_SUCCESS%` is absent (startup/recovery only) |
 | `test-quadra-tls` | **FAIL** if the extension/capture/decode is unavailable, a handshake or fresh successful request is missing, or a non-hybrid group is selected; missing evidence remains **unverified** |
 
 ## Manual reproduction
 
 ```bash
-make test-macsec-qkd    # skips when extension not installed
+make test-macsec-qkd    # always checks static MACsec; skips daemon/KME checks without extension
 make test-quadra-tls    # requires extension; passively waits for a normal rotation
 # For a longer configured rotation interval:
 make test-quadra-tls QUADRA_TLS_CAPTURE_SEC=255

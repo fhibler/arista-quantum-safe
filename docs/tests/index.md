@@ -38,7 +38,7 @@ Each test page follows the same chapter order: **What is checked** (`Check | Typ
 
 Tests print **`[wait]`** with the expected duration when known and the configured maximum **before** waiting, including without `VERBOSE=1`. These messages do not count as passed checks.
 
-The defaults below describe each wait phase, not a deadline for the entire suite. **Retry delays** exclude time spent executing commands. **Polling windows** can finish up to one polling interval late, plus the final command's runtime. A healthy service can satisfy a polling check immediately. SSH, eAPI, and the ordinary QuaDRA functional suite have no intentional settling or rotation wait.
+The defaults below describe each wait phase, not a deadline for the entire suite. **Retry delays** exclude time spent executing commands. **Polling windows** can finish up to one polling interval late, plus the final command's runtime. A healthy service can satisfy a polling check immediately. SSH and eAPI have no intentional settling wait; ordinary QuaDRA checks have no intentional rotation wait.
 
 | Target / phase | Expected wait | Configured maximum and scope |
 |----------------|---------------|------------------------------|
@@ -46,7 +46,8 @@ The defaults below describe each wait phase, not a deadline for the entire suite
 | `test-syslog`: message delivery | Usually first successful poll | 45 s polling window per switch/address family, 2 s intervals; 0.5 s capture setup extra. The 30 s cleartext guard runs concurrently and stops when delivery completes |
 | `test-syslog`: wire KEX | 7.5 s on first capture | 19 s capture/reconnect/retry delays per switch/address family across two attempts; command/decode time extra. Six sequential endpoints: 45 s expected / 114 s maximum wire waits alone |
 | `test-radsec`: AAA readiness | Immediate when ready | 15 attempts, 2 s apart: 28 s retry delays per switch/address family; AAA command time extra |
-| `test-macsec-dot1x`: MKA / static MACsec convergence | Immediate when converged | 15 attempts, 2 s apart: 28 s retry delays per check; command time extra. Baseline has one paired MKA check and two static MACsec checks (up to 84 s combined retry delays) |
+| `test-macsec-dot1x`: MKA convergence | Immediate when converged | 15 paired attempts, 2 s apart: 28 s retry delays; command time extra |
+| `test-macsec-qkd` / `test-quadra-tls`: static MACsec convergence | Immediate when converged | 15 attempts, 2 s apart per switch: 28 s retry delays per check, up to 56 s combined; ping/show command time extra |
 | `test-macsec-dot1x-reauth`: additional reauth phase | 75 s fixed wait (60 s period + 15 s buffer) | 103 s including up to 28 s paired MKA retry delays; baseline checks and command time extra |
 | `test-quadra-tls`: TLS phase | 135 s capture for both clients concurrently | 250 s timeout budget: 135 s capture + 15 s grace + two clients × (30 s decode + 20 s logs). Functional checks and process overhead extra; override capture length with `QUADRA_TLS_CAPTURE_SEC` |
 | `test-kme`: empty key pool | Immediate when keys exist | 35 s retry window, 5 s polling intervals; each request has a 20 s Docker timeout (curl limit 15 s) |
@@ -131,6 +132,8 @@ Results reflect the default **EOS 4.37.0F** (`CEOS_IMAGE=ceos:4.37.0F`; see [Set
 | Extended MACsec reauthentication | 22 passed |
 | Settled host routing | 12 routes passed |
 
+The recorded MACsec/QuaDRA counts predate moving static MACsec configuration, convergence, and ping checks out of `test-macsec-dot1x` into `test-macsec-qkd`. Current suite counts differ; the recorded TLS measurements are unchanged.
+
 The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **nine skips** are gNPSI Subscribe without packets (6) and eos-sdk-rpc IPv6 without a listener (3). Warnings and skips do not establish PQC-safe application operation. Historical comparisons and test changes are recorded in the [Changelog](../changelog.md).
 
 ## Result summary
@@ -187,7 +190,7 @@ Same order as `make test-lab`:
 | [OpenConfig connectivity](openconfig.md) | `make test-openconfig` | gNMI, gNOI, gRIBI, gNSI, gNPSI, RESTCONF, eos-sdk-rpc |
 | [KME (ETSI QKD 014)](kme.md) | `make test-kme` | SAE status + enc/dec round-trip |
 | [MACsec 802.1X](macsec-dot1x.md) | `make test-macsec-dot1x` | Dynamic MACsec (EAP-TLS + MKA); optional `test-macsec-dot1x-reauth` |
-| [MACsec QuaDRA QKD](macsec-qkd.md) | `make test-macsec-qkd` | Static SAK / QKD rotation (skips when extension absent) |
+| [MACsec QuaDRA QKD](macsec-qkd.md) | `make test-macsec-qkd` | Static MACsec always; daemon/KME checks skip when extension absent |
 | [QuaDRA TLS KEX](macsec-qkd.md) | `make test-quadra-tls` | Functional checks plus passive KEX measurement of both actual clients |
 | [Host routing](hosts.md) | `make test-hosts` | Data-plane ping matrix |
 

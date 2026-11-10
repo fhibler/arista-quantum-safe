@@ -7,11 +7,13 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from lab.ceos_json import json_find_value, json_truthy, macsec_has_active_key
 from lab.quadra_tls import QuadraTlsError, quadra_tls_peer, verify_quadra_tls
-from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_check_summary, report_summary, report_warn, reset_check_stats
+from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_check_summary, report_summary, report_warn, report_skip, report_wait, reset_check_stats
 from lab.topology_contract import (
     CEOS_QUADRA_NODES,
     KME_B_SAE_ID,
@@ -26,11 +28,13 @@ from lab.topology_contract import (
 )
 from lab.kme_http import DOCKER_EXEC_TIMEOUT_SEC
 from lab.errors import PqcConnectionError
-from lab.test_pqc_connections import ceos_cli
+from lab.test_pqc_connections import ceos_cli, ceos_show_json
 from lab.verbose import echo_command, echo_result, verbose_enabled
 
 MASTER = "ceos1-both"
 SLAVE = "ceos3-qkd"
+STATIC_MACSEC_POLL_INTERVAL_SEC = 2
+STATIC_MACSEC_POLL_ATTEMPTS = 15
 EXPECTED_AGENT_ROLES = {MASTER: "master", SLAVE: "slave"}
 ROTATION_SUCCESS_MARKERS = ("QUADRA-4-ROTATION_SUCCESS", "ROTATION_SUCCESS")
 INSTALLED_RE = re.compile(r"\bI\b")
@@ -99,6 +103,84 @@ def report_kme(detail: str) -> None:
 
 def report_keys(detail: str) -> None:
     report_ok("[keys] ", detail)
+
+
+def report_config(detail: str) -> None:
+    report_ok("[config]", detail)
+
+
+def _assert_config_contains(text: str, needle: str, *, label: str) -> None:
+    if needle not in text:
+        raise QkdCheckError(f"{label}: expected {needle!r} in output")
+
+
+def check_static_macsec_config(
+    container: str,
+    node: str,
+    *,
+    profile: str,
+    interface: str,
+    verbose: bool | None = None,
+) -> None:
+    intf = ceos_cli(
+        container,
+        f"enable\nshow running-config interface {interface}\n",
+        verbose=verbose,
+    )
+    _assert_config_contains(
+        intf,
+        f"mac security profile {profile}",
+        label=f"{node} {interface} macsec profile",
+    )
+    macsec = ceos_cli(
+        container,
+        "enable\nshow running-config | section mac security\n",
+        verbose=verbose,
+    )
+    _assert_config_contains(macsec, f"profile {profile}", label=f"{node} macsec profile {profile}")
+    _assert_config_contains(macsec, "key source sak static", label=f"{node} static SAK profile")
+    _assert_config_contains(macsec, "cipher aes256-gcm-xpn", label=f"{node} aes256-gcm-xpn cipher")
+    report_config(f"static SAK profile {profile} on {interface}")
+
+
+def _static_macsec_operational(output) -> bool:
+    """Static SAK MACsec reports state in summary JSON, not ``… detail | json``."""
+    return json_truthy(output, "controlledPort") and macsec_has_active_key(output)
+
+
+def check_static_macsec_interface(
+    container: str,
+    node: str,
+    interface: str,
+    *,
+    verbose: bool | None = None,
+) -> None:
+    peer_ip = QUADRA_PEER_IP.get(node)
+    output = None
+    report_wait(
+        f"{node} {interface} static MACsec convergence",
+        maximum_sec=(STATIC_MACSEC_POLL_ATTEMPTS - 1) * STATIC_MACSEC_POLL_INTERVAL_SEC if peer_ip else 0,
+        detail=f"retry delays; {STATIC_MACSEC_POLL_ATTEMPTS} attempts; ping/show command time extra",
+    )
+    for attempt in range(STATIC_MACSEC_POLL_ATTEMPTS):
+        if attempt and peer_ip:
+            time.sleep(STATIC_MACSEC_POLL_INTERVAL_SEC)
+        if peer_ip:
+            ceos_cli(container, f"enable\nping {peer_ip} repeat 1\n", verbose=verbose)
+        output = ceos_show_json(
+            container,
+            f"show mac security interface {interface}",
+            verbose=verbose,
+        )
+        if _static_macsec_operational(output):
+            report_live(f"MACsec controlled port up, traffic encrypted on {interface}")
+            return
+
+    if not json_truthy(output, "controlledPort"):
+        raise QkdCheckError(f"{node}: controlled port not up on {interface}")
+    if not macsec_has_active_key(output):
+        raise QkdCheckError(f"{node}: expected active static SAK on {interface}")
+    raise QkdCheckError(f"{node}: expected protected MACsec traffic on {interface}")
 
 
 def extension_installed(show_extensions: str, swix: str) -> bool:
@@ -228,9 +310,6 @@ def check_macsec_interface_sak_state(
     verbose: bool | None,
 ) -> None:
     """Verify summary MACsec state matches configured static SAK ANs."""
-    from lab.ceos_json import json_find_value, json_truthy, macsec_has_active_key
-    from lab.test_pqc_connections import ceos_show_json
-
     try:
         payload = ceos_show_json(container, f"show mac security interface {interface}", verbose=verbose)
     except PqcConnectionError as exc:
@@ -470,6 +549,33 @@ def check_quadra_link_ping(
     report_live(f"{SLAVE} ping {slave_peer} over {QUADRA_MACSEC_INTF[SLAVE]} OK")
 
 
+def run_quadra_macsec_checks(
+    master_container: str,
+    slave_container: str,
+    *,
+    verbose: bool | None = None,
+) -> None:
+    """Check the static MACsec link even without the QuaDRA extension."""
+    print_section_header("QuaDRA static MACsec (ceos1-both:eth2 ↔ ceos3-qkd:eth1)")
+    for node, container, profile in (
+        (MASTER, master_container, QUADRA_MACSEC_PROFILE_MASTER),
+        (SLAVE, slave_container, QUADRA_MACSEC_PROFILE_SLAVE),
+    ):
+        print_device(node)
+        interface = QUADRA_MACSEC_INTF[node]
+        check_static_macsec_config(
+            container, node, profile=profile, interface=interface, verbose=verbose,
+        )
+        check_static_macsec_interface(container, node, interface, verbose=verbose)
+        print()
+
+    print_device("QuaDRA MACsec keys")
+    check_static_sak_key_sync(master_container, slave_container, verbose=verbose)
+    print()
+    print_device("QuaDRA link")
+    check_quadra_link_ping(master_container, slave_container, verbose=verbose)
+
+
 def quadra_installed_on_nodes(targets: QkdTargets, swix: str, *, verbose: bool | None) -> bool:
     for node in sorted(CEOS_QUADRA_NODES):
         container = targets.ceos_container(node)
@@ -490,32 +596,37 @@ def run_qkd_checks(
     tls_capture_seconds: int = 135,
     tls_output_dir: Path = Path("lab/.gen/quadra-tls"),
 ) -> bool:
-    """Run QuaDRA checks. Returns True when checks ran, False when skipped."""
+    """Always check static MACsec; return whether extension-dependent QKD checks ran."""
     reset_check_stats()
     swix = quadra_swix_name()
     targets = QkdTargets(clab_name=clab_name)
 
     print_test_header(
-        "QuaDRA / QKD verification (static MACsec key rotation)",
+        "QuaDRA / QKD verification (static MACsec and optional QKD key rotation)",
+        "  [config] static SAK profiles and interface bindings (extension optional)",
         "  [live]  show daemon quadra, agent role, next rotation, QuaDRA link ping",
         "  [keys]  static SAK profile cross-mapping (master tx ↔ slave rx)",
         "  [log]   %QUADRA-4-ROTATION_SUCCESS% when present (startup/recovery only)",
         "  [kme]   enc_keys / dec_keys in KME container logs",
     )
 
-    if not quadra_installed_on_nodes(targets, swix, verbose=verbose):
-        if verify_tls:
-            raise QkdCheckError("QuaDRA must be installed on both nodes to measure TLS KEX; unverified")
-        report_summary(
-            "QuaDRA",
-            f"skipped - {swix} not installed on both {MASTER} and {SLAVE}",
-            CheckStatus.WARN,
-        )
-        return False
-
+    installed = quadra_installed_on_nodes(targets, swix, verbose=verbose)
+    if verify_tls and not installed:
+        raise QkdCheckError("QuaDRA must be installed on both nodes to measure TLS KEX; unverified")
     master_container = targets.ceos_container(MASTER)
     slave_container = targets.ceos_container(SLAVE)
+    run_quadra_macsec_checks(master_container, slave_container, verbose=verbose)
+    print()
 
+    if not installed:
+        report_skip(
+            "[qkd]",
+            f"daemon and KME checks skipped - {swix} not installed on both {MASTER} and {SLAVE}",
+        )
+        report_check_summary("QuaDRA")
+        return False
+
+    print_section_header("QuaDRA / QKD key rotation")
     print_device(MASTER)
     check_extension_installed(master_container, MASTER, swix, verbose=verbose)
     master_output = check_daemon_running(master_container, MASTER, verbose=verbose)
@@ -553,10 +664,6 @@ def run_qkd_checks(
         )
 
     print()
-    print_device("QuaDRA MACsec keys")
-    check_static_sak_key_sync(master_container, slave_container, verbose=verbose)
-
-    print()
     print_device("KME key delivery")
     check_kme_key_request_logs(
         targets.kme_container("kme-a"),
@@ -572,10 +679,6 @@ def run_qkd_checks(
         sae_id=KME_SAE_ID,
         verbose=verbose,
     )
-
-    print()
-    print_device("QuaDRA link")
-    check_quadra_link_ping(master_container, slave_container, verbose=verbose)
 
     report_check_summary("QuaDRA")
     return True

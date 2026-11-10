@@ -54,6 +54,8 @@ Final results use the corrected assertions on both versions. Passing functional 
 | Extended MACsec reauthentication | 22 passed | 22 passed |
 | Settled host routing | 12 routes passed | 12 routes passed |
 
+The MACsec/QuaDRA counts in this comparison predate moving static MACsec configuration, convergence, and ping checks from `test-macsec-dot1x` into `test-macsec-qkd`.
+
 Offline upgrade verification also passed **588 pytest tests**, including Containerlab checks.
 
 ### Known limitations

@@ -4,7 +4,7 @@
 
 Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`): **75 s fixed wait**, or up to **103 s** including paired MKA retry delays, plus command time and baseline checks.
 
-**Wait times:** MKA agreement and each static MACsec convergence check allow **15 attempts**, **2 s apart** (**28 s maximum retry delays per check**). A converged check returns immediately. The baseline includes one paired MKA check and two static MACsec checks, for up to **84 s** combined retry delays; reauth adds its separate wait and MKA check. Commands add runtime. See [Wait times](index.md#wait-times).
+**Wait times:** MKA agreement allows **15 paired attempts**, **2 s apart** (**28 s maximum retry delays**). A converged check returns immediately; reauth adds its separate wait and MKA check. Commands add runtime. Static MACsec on the ceos1-both ↔ ceos3-qkd link is covered by [MACsec QuaDRA QKD tests](macsec-qkd.md). See [Wait times](index.md#wait-times).
 
 **Policy:** The RADIUS EAP-TLS tunnel uses PQC-hybrid **`X25519MLKEM768`**. MACsec frame encryption uses MKA-derived keys (separate layer).
 

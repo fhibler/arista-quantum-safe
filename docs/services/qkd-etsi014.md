@@ -7,7 +7,7 @@ This lab integrates **ETSI GS QKD 014** Key Management Entities (KMEs) on the ma
 
     To obtain QuaDRA packages, documentation, and licensing for your platform, **contact your Arista account team** or Arista support.
 
-    The configuration sections below describe how the lab is set up when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown** and `make test-macsec-qkd` skips with a warning.
+    The configuration sections below describe how the lab is set up when QuaDRA is present. Without the extension, startup-config keeps the `daemon quadra` stanza in **shutdown**. `make test-macsec-qkd` still checks the static MACsec link and skips only the daemon/KME checks.
 
 | Item | Value |
 |------|-------|
@@ -230,7 +230,7 @@ make test-kme
 ### QuaDRA agent and key rotation
 
 ```bash
-make test-macsec-qkd    # skips when extension not installed
+make test-macsec-qkd    # always checks static MACsec; skips daemon/KME checks without extension
 ```
 
 Manual checks:
@@ -247,7 +247,7 @@ Healthy progression: `underconfigured` → `peer discovery` → `master` / `slav
 
 Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**, QuaDRA/QKD **15 passed**, including master/slave roles, matching SAK cross-mapping, and key delivery. Passive captures confirm hybrid TLS on both actual QuaDRA-to-KME IPv4 connections; `make test-quadra-tls` passes **17 checks**. This does not establish simulator peer TLS or rejection of classical fallback.
 
-Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static SAK - skips when extension not installed).
+Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (static MACsec always; QuaDRA daemon/KME checks when the extension is installed on both switches).
 
 Run **`make test-quadra-tls`** for QuaDRA functional checks plus passive KEX measurement during a normal rotation (135 seconds by default). Missing measurements or non-hybrid selection fail the test. See [QuaDRA test procedure and packet evidence](../tests/macsec-qkd.md).
 

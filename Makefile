@@ -470,7 +470,7 @@ test-macsec-dot1x: ## Dynamic MACsec + MKA (convergence retry delays up to 28s p
 test-macsec-dot1x-reauth: ## MACsec reauth (75s fixed wait; up to 103s with MKA retries; baseline/command time extra)
 	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec-dot1x
 
-test-macsec-qkd: ## QuaDRA static SAK / QKD checks (no rotation wait; skips when swix absent)
+test-macsec-qkd: ## Static MACsec (up to 56s retry delays; commands extra) + QKD (skips QKD when swix absent)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 

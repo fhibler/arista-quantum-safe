@@ -270,6 +270,13 @@ def test_public_docs_do_not_reference_internal_arista_devcontainer() -> None:
         )
 
 
+def test_public_docs_do_not_reference_private_agents_instructions() -> None:
+    for path in (README, MKDOCS, *sorted(PUBLIC_DOCS.rglob("*.md"))):
+        assert "AGENTS.md" not in path.read_text(encoding="utf-8"), (
+            f"public documentation must not reference private repository instructions: {path}"
+        )
+
+
 def test_public_setup_doc_has_makefile_reference() -> None:
     content = (PUBLIC_DOCS / "setup.md").read_text(encoding="utf-8")
     assert "make help" in content

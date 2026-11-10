@@ -483,7 +483,7 @@ test-hosts: ## Host routing (30s timeout per route, 12 routes; no convergence wa
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_hosts --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-# Documentation targets are documented in AGENTS.md.
+# Synchronize generated documentation configuration from site.yaml.
 
 .PHONY: docs-config-sync
 

@@ -72,7 +72,7 @@ STALE_TEST_MODULE_PATTERNS = (
 WIRE_KEX_ROWS = (
     ("gRIBI", "classical (`secp256r1`)", "No"),
     ("gNPSI (TLS)", "`X25519MLKEM768`", "Yes"),
-    ("gNPSI (Subscribe)", "- (no packet received)", "Unverified"),
+    ("gNPSI (Subscribe)", "`X25519MLKEM768`", "Yes"),
     ("Syslog (EOS to collector)", "`X25519MLKEM768`", "Yes"),
     ("eos-sdk-rpc (IPv4)", "classical (`secp256r1`)", "No"),
 )
@@ -140,7 +140,7 @@ def test_services_summary_distinguishes_hybrid_and_unverified_results() -> None:
     text = (PUBLIC_DOCS / "services/index.md").read_text(encoding="utf-8")
     section = text.split("## Summary", 1)[1].split("!!! note", 1)[0]
     for service, expected in (
-        ("gNPSI", "**Yes** (TLS/reflection; Subscribe unverified)"),
+        ("gNPSI", "**Yes** (TLS/reflection + Subscribe)"),
         ("Syslog-over-TLS", "**Yes** (fallback configured)"),
         ("gRIBI", "**No** (wire)"),
         ("eos-sdk-rpc", "**No** (wire)"),

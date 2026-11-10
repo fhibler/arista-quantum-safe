@@ -89,7 +89,7 @@ These are **not** “PQC ciphers” in the sense of ML-KEM - they are standard T
 | SSH management | **`mlkem768x25519-sha256`** preferred |
 | SYSLOG profile | Hybrid listed **with classical fallback** (retained for compatibility); 4.37.0F selects hybrid |
 
-On **4.37.0F**, syslog and gNPSI TLS/reflection negotiate hybrid on all six endpoints. gRIBI and eos-sdk-rpc remain classical. RESTCONF supports hybrid but accepts weaker offers despite its strict profile. See [Services overview](services/index.md) for per-interface status and the [current test results](tests/index.md#result-summary).
+On **4.37.0F**, syslog and gNPSI TLS/reflection/Subscribe negotiate hybrid on all six endpoints. gRIBI and eos-sdk-rpc remain classical. RESTCONF supports hybrid but accepts weaker offers despite its strict profile. See [Services overview](services/index.md) for per-interface status and the [current test results](tests/index.md#result-summary).
 
 ## OpenSSL 3.5 (minimum for PQC-safe lab containers)
 

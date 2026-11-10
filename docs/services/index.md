@@ -16,7 +16,7 @@ Verified on **EOS 4.37.0F** across three switches over IPv4 and IPv6 unless note
 | [gNOI](openconfig.md#gnmi-gnoi-grpc) | 6030 | `GNMI` (shared) | Yes | **Yes** | [openconfig.md](openconfig.md) |
 | [gRIBI](openconfig.md#gribi-grpc) | 9340 | `GRIBI` | Yes | **No** (wire) | [openconfig.md](openconfig.md) |
 | [gNSI](openconfig.md#gnsi-grpc) | 6030 (`transport gnmi default`) | `GNSI` (+ wire `GNMI`) | Yes | **Yes** (Certz; `-u admin`) | [openconfig.md](openconfig.md) |
-| [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy) | 6031 | `GNPSI` | Yes | **Yes** (TLS/reflection; Subscribe unverified) | [openconfig.md](openconfig.md) |
+| [gNPSI](openconfig.md#gnpsi-grpc-sflow-proxy) | 6031 | `GNPSI` | Yes | **Yes** (TLS/reflection + Subscribe) | [openconfig.md](openconfig.md) |
 | [RESTCONF](openconfig.md#restconf-https) | 6020 | `RESTCONF` | Yes | **Yes** (policy gap) | [openconfig.md](openconfig.md) |
 | [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) | 9543 | `GNMI` (reused) | Yes | **No** (wire) | [openconfig.md](openconfig.md) |
 | [RadSec](radius-radsec.md) | 2083 | `RADSEC` | Yes | **Yes** | [radius-radsec.md](radius-radsec.md) |
@@ -39,7 +39,7 @@ Strict profiles (`EAPI`, `RADSEC`, `GNMI`, `GRIBI`, `GNSI`, `GNPSI`, `RESTCONF`,
 
 **Syslog:** Both sides retain classical fallback for compatibility. Packet captures on 4.37.0F confirm **`X25519MLKEM768`** on all six EOS-to-collector connections. Hybrid-only enforcement has not been tested with a changed configuration. See [Syslog caveats](syslog.md#caveats).
 
-**gNPSI:** TLS and reflection negotiate **`X25519MLKEM768`** on all six endpoints; classical TLS 1.3 and TLS 1.2 offers are rejected. **Subscribe data reception remains unverified**.
+**gNPSI:** TLS and reflection negotiate **`X25519MLKEM768`** on all six endpoints; classical TLS 1.3 and TLS 1.2 offers are rejected. **Subscribe delivers sFlow datagrams on all six endpoints** after correcting the sFlow source; actual Subscribe ServerHellos also select hybrid KEX.
 
 **Remaining EOS gaps (4.37.0F):** [gRIBI](openconfig.md#gribi-grpc) and [eos-sdk-rpc](openconfig.md#eos-sdk-rpc-grpc-mtls) remain classical despite their hybrid-only profiles. [RESTCONF](openconfig.md#restconf-https) supports hybrid but accepts classical TLS 1.3 and TLS 1.2; gRIBI also accepts TLS 1.2. eos-sdk-rpc remains IPv4-only with the current Management0 binding. See the [current test results](../tests/index.md#result-summary).
 

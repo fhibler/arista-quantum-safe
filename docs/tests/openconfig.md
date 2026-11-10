@@ -16,7 +16,7 @@ Per switch, in order:
 | **gNOI** | gNOI transport via gNMI / `GNMI` profile | Transport TLS; `System/Ping` RPC; reflection lists `gnoi.system.System` |
 | **gRIBI** | `GRIBI` profile; listener port **9340** vrf MGMT; IPv6 `::` in bind | mTLS PQC handshake; **WARN** if wire classical KEX; `gribic get --aft IPv4` |
 | **gNSI** | `GNSI` profile; `transport gnmi default` on port **6030**; certz + authz enabled | mTLS on :6030; `gnsic certz get-profile-list` (requires `-u admin`) |
-| **gNPSI** | `GNPSI` profile; port **6031**; `listen-address vrf MGMT ::`; sFlow source | OpenSSL mTLS wire probe; **WARN** if classical KEX; `gnoic` reflection + `grpcurl` Subscribe (requires JSON `Sample.packet`; **SKIP** if no packet within 8 s) |
+| **gNPSI** | `GNPSI` profile; port **6031**; `listen-address vrf MGMT ::`; usable sFlow source on Ethernet8; counter polling 2 s | OpenSSL mTLS wire probe; **WARN** if classical KEX; `gnoic` reflection + `grpcurl` Subscribe (requires nonempty base64-decoded JSON `Sample.packet`; **FAIL** if no packet within 8 s) |
 | **RESTCONF** | `RESTCONF` profile; HTTPS transport | TLS handshake :6020 |
 | **eos-sdk-rpc** | Reuses `GNMI` profile; `local interface Management0` | mTLS :9543 - **WARN** if not PQC-safe; **SKIP** IPv6 (IPv4-only bind) |
 
@@ -38,10 +38,10 @@ Live checks use the PQC-capable clients above; see [Tool chain](../misc/toolchai
 ## Pass criteria
 
 - `[config]` profiles and listeners present for each protocol that the image supports
-- Live KEX **PQC-safe** for gNMI, gNOI, gNSI Certz, gNPSI TLS/reflection, and RESTCONF (`X25519MLKEM768`)
+- Live KEX **PQC-safe** for gNMI, gNOI, gNSI Certz, gNPSI Subscribe, and RESTCONF (`X25519MLKEM768`)
 - gRIBI and eos-sdk-rpc IPv4 **WARN** (not fail) when the wire is classical - see below
 - eos-sdk-rpc IPv6 **SKIP** (IPv4-only bind)
-- Subscribe requires an actual JSON `Sample.packet` on stdout; RPC/JSON errors fail. No packet in the bounded probe window produces **SKIP**, leaving data reception unverified.
+- Subscribe requires a nonempty base64-decoded JSON `Sample.packet` on stdout; RPC/JSON/base64 errors and no packet within eight seconds **fail**. The configured two-second polling interval supplies sFlow counter samples on an idle lab. This verifies datagram delivery; a separate traffic run is needed to establish flow sampling.
 
 The standard suite probes positive TLS support. Separate policy probes confirm that RESTCONF accepts classical TLS 1.3 and TLS 1.2, and gRIBI accepts TLS 1.2. These are policy enforcement gaps; see the [current result summary](index.md#result-summary).
 
@@ -50,7 +50,7 @@ The standard suite probes positive TLS support. Separate policy probes confirm t
 | Check | When |
 |-------|------|
 | gNPSI mTLS / reflection (IPv4/IPv6) | **PASS** with hybrid KEX on 4.37.0F; a classical wire result produces **WARN** |
-| gNPSI Subscribe (IPv4/IPv6) | **SKIP** in all six recorded probes: no `Sample.packet` within 8 s, also unverified in a separate 75-second traffic run |
+| gNPSI Subscribe (IPv4/IPv6) | **PASS** on all six endpoints after setting `sflow source-interface Ethernet8`; absence of a packet now **fails** |
 | gRIBI IPv4/IPv6 | **WARN** when wire accepts classical KEX (`secp256r1`); PQC-only OpenSSL mTLS gets handshake failure |
 | eos-sdk-rpc IPv4 | **WARN** when wire KEX is classical (`secp256r1`) despite PQC-only profile |
 | eos-sdk-rpc IPv6 | **SKIP** - `local interface Management0` binds primary IPv4 only |
@@ -75,7 +75,7 @@ docker exec arista-quantum-safe-test-runner gnsic -u admin -a 172.20.127.11:6030
 
 ## Result summary (EOS 4.37.0F)
 
-**99 passed, 15 warnings, 9 skipped** on 4.37.0F. Warnings: gRIBI TLS/Get (12), eos-sdk-rpc IPv4 (3). Skips: gNPSI Subscribe (6), eos-sdk-rpc IPv6 (3).
+**105 passed, 15 warnings, 3 skipped** on 4.37.0F after the sFlow configuration correction. Warnings: gRIBI TLS/Get (12), eos-sdk-rpc IPv4 (3). Skips: eos-sdk-rpc IPv6 (3).
 
 Same PQC-safe values as [Test suite overview - Result summary](index.md#result-summary) for OpenConfig services:
 
@@ -86,9 +86,11 @@ Same PQC-safe values as [Test suite overview - Result summary](index.md#result-s
 | gRIBI | 9340 | classical (`secp256r1`) | No | Suite **WARN**s; OpenSSL PQC + classical diagnostic probes |
 | gNSI Certz | 6030 | `X25519MLKEM768` | Yes | Shared gNMI transport; `-u admin` |
 | gNPSI (TLS) | 6031 | `X25519MLKEM768` | Yes | Hybrid mTLS + reflection PASS; weaker offers rejected |
-| gNPSI (Subscribe) | 6031 | - (no packet received) | Unverified | Six SKIPs; transport is hybrid, data delivery not established |
+| gNPSI (Subscribe) | 6031 | `X25519MLKEM768` | Yes | All six endpoints deliver sFlow datagrams; actual Subscribe ServerHellos captured |
 | RESTCONF | 6020 | `X25519MLKEM768` | Yes | Positive HTTPS probe; classical TLS 1.3 / TLS 1.2 also accepted |
 | eos-sdk-rpc (IPv4) | 9543 | classical (`secp256r1`) | No | Suite **WARN**s; IPv4 only |
+
+A separate controlled check used temporary **1:1 sampling**, **500 routed pings from each of three hosts**, and six concurrent **8 s** Subscribe windows. All six streams contained sFlow v5 flow samples as well as counter samples. Actual Subscribe ServerHellos selected **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`** in both the normal-rate and controlled checks. The normal **1:4096** rate was restored afterward. This fixes a lab source configuration gap on the same build; the corrected configuration was **not tested** on the previous image.
 
 Configuration reference: [OpenConfig & gRPC](../services/openconfig.md).
 

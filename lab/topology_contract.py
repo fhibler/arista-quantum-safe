@@ -1062,6 +1062,10 @@ def validate_ceos_configs(
             errors.append(f"{ceos}.cfg gNPSI transport must be enabled (no disabled)")
         if "sflow run" not in text:
             errors.append(f"{ceos}.cfg must enable sFlow for gNPSI")
+        if "sflow source-interface Ethernet8" not in text.splitlines():
+            errors.append(f"{ceos}.cfg must set the sFlow source interface to Ethernet8")
+        if "sflow polling-interval 2" not in text.splitlines():
+            errors.append(f"{ceos}.cfg must poll sFlow counters every 2 seconds for bounded Subscribe checks")
         eth8_block = text.split("interface Ethernet8", 1)[-1].split("!", 1)[0]
         if "sflow enable" not in eth8_block:
             errors.append(f"{ceos}.cfg Ethernet8 (host link) must enable sFlow ingress (sflow enable)")

@@ -490,13 +490,15 @@ management api gnpsi
 interface Ethernet8
    sflow enable
 !
+sflow source-interface Ethernet8
+sflow polling-interval 2
 sflow run
 sflow interface egress enable default Ethernet8
 ```
 
 gNPSI proxies sFlow samples to gRPC clients. Requires sFlow enabled on at least one interface. Unlike gRIBI/gNMI (which use `vrf MGMT` on the transport), gNPSI binds the listen socket with **`listen-address vrf MGMT`** - `vrf MGMT` alone is not accepted under `management api gnpsi transport grpc`. Only **one** `listen-address` is permitted; **`listen-address vrf MGMT ::`** dual-stacks IPv4 and IPv6 on MGMT.
 
-Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the routed port towards each Alpine host. Egress sampling is also configured. This configuration alone does not demonstrate that the platform produces sFlow samples.
+Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the routed port towards each Alpine host. Egress sampling is also configured. Set **`sflow source-interface Ethernet8`** so the agent has usable IPv4/IPv6 addresses. On this cEOS build, the previous unspecified source left both sampling and gNPSI datagram counters at zero despite working routed traffic. **`sflow polling-interval 2`** supplies counter samples within the eight-second Subscribe window even when the lab is idle; the normal flow sampling rate remains **1:4096**.
 
 ### Caveats
 
@@ -505,11 +507,11 @@ Ingress sampling is enabled under `interface Ethernet8` (`sflow enable`), the ro
 | Config | Dedicated `GNPSI` profile; PQC-hybrid only |
 | Live TLS / reflection | **PQC-safe** on 4.37.0F - `X25519MLKEM768` on all three switches over IPv4 + IPv6 |
 | Policy enforcement | Classical TLS 1.3 and TLS 1.2 offers rejected on all six endpoints |
-| Subscribe live | **Unverified / SKIP** - no actual JSON `Sample.packet` received on 4.37.0F |
+| Subscribe live | **PASS**, all six endpoints; counter samples at 1:4096, flow samples also verified with temporary 1:1 sampling |
 | SA-0146 | **Safe** - lab already had mTLS (`trust certificate`); not named in the advisory ([details](#security-advisory-0146)) |
 
-!!! warning "Subscribe data delivery remains unverified"
-    No `Sample.packet` arrived on 4.37.0F, including a separate **75-second** run with sustained traffic from all three hosts. On 4.37.0F, all three switches reported zero sFlow samples and zero gNPSI received datagrams. The six Subscribe checks therefore **SKIP**. The test requires an actual packet on stdout; stderr output is not a sample. Successful TLS or reflection does not establish a working sample stream.
+!!! note "Subscribe delivery verified after correcting the sFlow source"
+    All three switches now deliver nonempty JSON `Sample.packet` over IPv4 and IPv6. Captures of the actual Subscribe connections select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. Idle probes decode as sFlow v5 **counter samples**; a separate controlled run with temporary **1:1 sampling** and **500 routed pings per host** also delivers **flow samples** on all six endpoints. The normal suite proves datagram delivery and does not require a sampled user packet. The earlier empty eight-second probes and 75-second traffic run used no explicit sFlow source; this is a configuration correction on the same 4.37.0F build, not an EOS upgrade fix.
 
 ### Verification
 
@@ -520,6 +522,8 @@ docker exec -i arista-quantum-safe-ceos1-both Cli <<'EOF'
 enable
 show management security ssl profile GNPSI detail
 show management api gnpsi
+show sflow
+show sflow interfaces
 EOF
 ```
 
@@ -545,7 +549,7 @@ docker exec arista-quantum-safe-test-runner grpcurl \
   -d '{}' '172.20.127.11:6031' gnpsi.gNPSI/Subscribe
 ```
 
-Automated: **`make test-openconfig`** - hybrid mTLS and reflection **PASS** on IPv4 and IPv6; Subscribe **SKIP** in the recorded run ([OpenConfig tests](../tests/openconfig.md)).
+Automated: **`make test-openconfig`** - hybrid mTLS and reflection **PASS** on IPv4 and IPv6; Subscribe **PASS** on all six endpoints ([OpenConfig tests](../tests/openconfig.md)).
 
 ---
 
@@ -572,7 +576,7 @@ This lab **already contained** Arista's published **mTLS** mitigation (`trust ce
 | gNOI | 6030 (shared) | `GNMI` | Yes | Ping RPC, reflection |
 | gRIBI | 9340 | `GRIBI` | **No** (wire) | mTLS + Get (**WARN** on 4.37.0F) |
 | gNSI | 6030 (via `transport gnmi default`) | `GNSI` profile; wire TLS on `GNMI` | Yes | Certz.GetProfileList (`-u admin`) |
-| gNPSI | 6031 | `GNPSI` | **Yes** (TLS/reflection) | Hybrid mTLS + reflection PASS; Subscribe SKIP (unverified) |
+| gNPSI | 6031 | `GNPSI` | **Yes** (TLS/reflection/Subscribe) | Hybrid mTLS + reflection + Subscribe PASS |
 | RESTCONF | 6020 | `RESTCONF` | Yes (positive probe) | HTTPS handshake; weaker offers also accepted |
 | eos-sdk-rpc | 9543 | `GNMI` (reused) | **No** (wire) | mTLS (**WARN** on IPv4); SKIP IPv6 |
 

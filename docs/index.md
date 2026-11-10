@@ -4,7 +4,7 @@ Post-quantum cryptography (PQC) demonstration lab for **Arista EOS** using Conta
 
 ## What this lab demonstrates
 
-- **PQC-hybrid TLS 1.3** verified on eAPI, gNMI/gNOI, gNSI, gNPSI TLS/reflection, RESTCONF, RadSec, and remote syslog on EOS **4.37.0F**
+- **PQC-hybrid TLS 1.3** verified on eAPI, gNMI/gNOI, gNSI, gNPSI TLS/reflection/Subscribe, RESTCONF, RadSec, and remote syslog on EOS **4.37.0F**
 - **PQC-hybrid SSH** KEX (`mlkem768x25519-sha256`) on VRF MGMT - also used by NETCONF
 - **802.1X EAP-TLS + dynamic MACsec** on an inter-switch link, with EAP-TLS negotiated over PQC-hybrid groups via FreeRADIUS
 - Automated **live verification** (`make test-lab`) with OpenSSL and EOS CLI probes
@@ -15,10 +15,10 @@ PQC applies to **key establishment only**. Server and client certificates remain
 
 Most TLS ssl profiles list **only** the hybrid group `X25519MLKEM768` - no classical ECDH fallback. FreeRADIUS matches that strict policy; syslog-ng permits hybrid with classical fallback.
 
-**Syslog and gNPSI TLS/reflection are PQC-safe** on the wire in 4.37.0F. Current results are in the [test summary](tests/index.md#result-summary); version history is in the [Changelog](changelog.md).
+**Syslog and gNPSI TLS/reflection/Subscribe are PQC-safe** on the wire in 4.37.0F. Current results are in the [test summary](tests/index.md#result-summary); version history is in the [Changelog](changelog.md).
 
 !!! warning "Remaining service limits"
-    **gRIBI** and **eos-sdk-rpc** still negotiate classical KEX. **RESTCONF** negotiates hybrid when requested but also accepts classical TLS 1.3 and TLS 1.2 despite its strict profile. Syslog retains configured classical fallback. gNPSI Subscribe sample delivery remains **unverified**. See [Services](services/index.md) and the [test result summary](tests/index.md#result-summary).
+    **gRIBI** and **eos-sdk-rpc** still negotiate classical KEX. **RESTCONF** negotiates hybrid when requested but also accepts classical TLS 1.3 and TLS 1.2 despite its strict profile. Syslog retains configured classical fallback. See [Services](services/index.md) and the [test result summary](tests/index.md#result-summary).
 
 ## Quick links
 

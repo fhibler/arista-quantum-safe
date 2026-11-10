@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import shlex
 from typing import TYPE_CHECKING
@@ -512,9 +514,21 @@ def check_gnpsi_config(targets: LabTargets, node: str, *, verbose: bool | None =
         raise PqcConnectionError(f"{node} gNPSI: expected source sFlow in JSON output")
     if not json_tree_contains(gnpsi, "MGMT"):
         raise PqcConnectionError(f"{node} gNPSI: expected listen-address vrf MGMT in JSON output")
+    sflow = ceos_show_json(container, "show sflow", verbose=verbose)
+    agents = sflow.get("ipv4Agents", [])
+    if not any(
+        agent.get("sourceInterface") == "Ethernet8"
+        and agent.get("ipv4Address") not in (None, "", "0.0.0.0")
+        for agent in agents
+    ):
+        raise PqcConnectionError(f"{node} gNPSI: expected a usable sFlow agent address from Ethernet8")
+    polling = sflow.get("pollingInterval", 0)
+    if not sflow.get("running") or not sflow.get("polling") or polling != 2:
+        raise PqcConnectionError(f"{node} gNPSI: expected running sFlow counter polling every 2 seconds")
     _report_config(
         f"gNPSI ssl profile {GNPSI_SSL_PROFILE} valid ({TLS_PQC_GROUP}), "
-        f"transport enabled port {GNPSI_PORT} source sFlow vrf MGMT"
+        f"transport enabled port {GNPSI_PORT} source sFlow vrf MGMT; "
+        "sFlow source Ethernet8, counter polling 2 s"
     )
 
 
@@ -626,12 +640,12 @@ def probe_gnpsi_subscribe(
         title=f"{node} gNPSI subscribe ({family_label(family)})",
     )
     # A streaming RPC normally ends via timeout (124 with GNU timeout, 143
-    # with BusyBox). Only Sample.packet on stdout proves data was received;
+    # with BusyBox). Only decoded Sample.packet on stdout proves data was received;
     # stderr may contain "Terminated" even when no sample arrived.
     if sub_result.returncode not in (0, 124, 143):
         detail = sub_result.stderr.strip() or sub_result.stdout.strip()
         raise PqcConnectionError(f"{node} gNPSI Subscribe ({family_label(family)}): {detail}")
-    received_packet = False
+    received_packets = 0
     remaining = sub_result.stdout.strip()
     decoder = json.JSONDecoder()
     while remaining:
@@ -641,22 +655,28 @@ def probe_gnpsi_subscribe(
             raise PqcConnectionError(f"{node} gNPSI Subscribe: invalid sample JSON") from exc
         if not isinstance(sample, dict):
             raise PqcConnectionError(f"{node} gNPSI Subscribe: expected a Sample object")
-        received_packet |= isinstance(sample.get("packet"), str) and bool(sample["packet"])
+        packet = sample.get("packet", "")
+        try:
+            if not isinstance(packet, str):
+                raise ValueError("packet must be base64 text")
+            received_packets += bool(base64.b64decode(packet, validate=True))
+        except (ValueError, binascii.Error) as exc:
+            raise PqcConnectionError(f"{node} gNPSI Subscribe: invalid Sample.packet base64") from exc
         remaining = remaining[end:].lstrip()
     wire = rpc_tls_wire_suffix(tls_wire)
-    if received_packet:
+    if received_packets:
         status = CheckStatus.OK if tls_wire and tls_wire.pqc_confirmed else CheckStatus.WARN
         _report_live(
-            f"gNPSI subscribe received datagram ({family_label(family)}, mTLS, {wire})",
+            f"gNPSI subscribe received datagram ({family_label(family)}, mTLS, {wire}); "
+            f"{received_packets} nonempty Sample.packet messages (flow or counter samples)",
             status=status,
             probe_client=True,
         )
         return
-    _report_live(
-        f"gNPSI subscribe ({family_label(family)}), skipped - "
-        f"no sFlow datagrams on cEOS within probe window",
-        status=CheckStatus.SKIP,
-        probe_client=True,
+    raise PqcConnectionError(
+        f"{node} gNPSI Subscribe ({family_label(family)}): no Sample.packet within "
+        f"{GNPSI_SUBSCRIBE_TIMEOUT_SEC} s; check sFlow source address, counter polling, "
+        "and counters in show management api gnpsi"
     )
 
 

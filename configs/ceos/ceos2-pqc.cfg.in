@@ -168,7 +168,8 @@ management security
       trust certificate radsec-ca.pem
 !
 sflow sample 4096
-sflow polling-interval 30
+sflow source-interface Ethernet8
+sflow polling-interval 2
 sflow run
 sflow interface egress enable default Ethernet8
 !

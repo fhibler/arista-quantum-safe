@@ -19,7 +19,7 @@ Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed 
 
 The lab shows how to configure and verify **PQC-hybrid key establishment** (`X25519MLKEM768` for TLS 1.3, `mlkem768x25519-sha256` for SSH) across common EOS management interfaces, plus **802.1X EAP-TLS + MKA dynamic MACsec** protected by the same hybrid TLS groups on the RADIUS path.
 
-Automated checks (`make test-lab`) validate configuration and live handshakes on a deployed topology. On EOS **4.37.0F**, syslog and gNPSI TLS/reflection negotiate hybrid PQC. Remaining service limitations and policy gaps are recorded in the [test results](https://fhibler.github.io/arista-quantum-safe/tests/#result-summary).
+Automated checks (`make test-lab`) validate configuration and live handshakes on a deployed topology. On EOS **4.37.0F**, syslog and gNPSI TLS/reflection/Subscribe negotiate hybrid PQC. Remaining service limitations and policy gaps are recorded in the [test results](https://fhibler.github.io/arista-quantum-safe/tests/#result-summary).
 
 ## Prerequisites
 

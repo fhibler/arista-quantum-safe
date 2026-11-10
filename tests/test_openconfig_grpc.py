@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from lab.test_openconfig_grpc import (
+    check_gnpsi_config,
     gnpsi_supported_on_ceos,
     probe_gribi_mtls,
     probe_gribi_tls,
@@ -135,9 +136,10 @@ def test_probe_gnpsi_tls_skips_on_connection_refused(capsys) -> None:
 def test_gnpsi_subscribe_does_not_count_timeout_stderr_as_datagram(code, capsys) -> None:
     result = subprocess.CompletedProcess([], code, stdout="", stderr="Terminated\n")
     with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
-        probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
+        with pytest.raises(PqcConnectionError, match="no Sample.packet within 8 s"):
+            probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
     output = capsys.readouterr().out
-    assert "SKIP" in output
+    assert "SKIP" not in output
     assert "received datagram" not in output
 
 
@@ -158,16 +160,49 @@ def test_gnpsi_subscribe_accepts_sample_before_stream_timeout(code, capsys) -> N
 def test_gnpsi_subscribe_does_not_count_empty_sample_as_datagram(capsys) -> None:
     result = subprocess.CompletedProcess([], 0, stdout='{"timestamp":"123"}', stderr="")
     with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
-        probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
-    assert "SKIP" in capsys.readouterr().out
+        with pytest.raises(PqcConnectionError, match="no Sample.packet within 8 s"):
+            probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
+    assert "SKIP" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
     "code,stdout,stderr",
-    [(1, "", "rpc error"), (0, "not a datagram", ""), (0, "[]", "")],
+    [
+        (1, "", "rpc error"), (0, "not a datagram", ""), (0, "[]", ""),
+        (0, '{"packet":"not base64!"}', ""), (0, '{"packet":123}', ""),
+    ],
 )
 def test_gnpsi_subscribe_rejects_rpc_errors_and_invalid_payloads(code, stdout, stderr) -> None:
     result = subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
     with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
         with pytest.raises(PqcConnectionError, match="gNPSI Subscribe"):
             probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
+
+
+@pytest.mark.parametrize(
+    "source,polling,error",
+    [
+        ("0.0.0.0", 2, "usable sFlow agent address"),
+        ("10.0.1.254", 30, "counter polling every 2 seconds"),
+        ("10.0.1.254", 2, None),
+    ],
+)
+def test_gnpsi_config_requires_sample_production(source, polling, error, capsys) -> None:
+    gnpsi = {"transports": {"default": {
+        "sslProfile": "GNPSI", "port": GNPSI_PORT, "source": "sflow",
+        "vrfs": {"MGMT": {"ipAddrs": ["::"]}},
+    }}}
+    sflow = {
+        "running": True, "polling": True, "pollingInterval": polling,
+        "ipv4Agents": [{"sourceInterface": "Ethernet8", "ipv4Address": source}],
+    }
+    with (
+        patch("lab.test_pqc_connections.check_switch_ssl_profile"),
+        patch("lab.test_pqc_connections.ceos_show_json", side_effect=[gnpsi, sflow]),
+    ):
+        if error:
+            with pytest.raises(PqcConnectionError, match=error):
+                check_gnpsi_config(_FakeTargets(), "ceos1-both")
+        else:
+            check_gnpsi_config(_FakeTargets(), "ceos1-both")
+            assert "sFlow source Ethernet8" in capsys.readouterr().out

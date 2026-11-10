@@ -19,7 +19,7 @@ Stock Linux packages and upstream release binaries often **fail that requirement
 | **gnoic** | test-runner | Go `crypto/tls` | **Yes** - release **0.2.1** (Go **1.25+**) | Upstream tarball | **Yes** |
 | **gnsic** | test-runner | Go `crypto/tls` | **Yes** - release **0.0.4** (Go **1.25+**) | Upstream tarball | **Yes** |
 | **gribic** | test-runner | Go `crypto/tls` | **No** - release **0.0.14** (`go 1.21` in upstream `go.mod`) | Source-build **0.0.14** (Go **1.27.0**, `go mod edit -go=1.27`) | **Hybrid-capable**; target gRIBI remains classical |
-| **grpcurl** | test-runner | Go `crypto/tls` | **No** - release **1.9.3** (`go 1.21` in upstream `go.mod`) | Source-build **1.9.3** (Go **1.27.0**, `go mod edit -go=1.27`) | **Yes** for gNPSI reflection on `:6031`; Subscribe delivery unverified; use primary clients on `:6030` |
+| **grpcurl** | test-runner | Go `crypto/tls` | **No** - release **1.9.3** (`go 1.21` in upstream `go.mod`) | Source-build **1.9.3** (Go **1.27.0**, `go mod edit -go=1.27`) | **Yes** for gNPSI reflection on `:6031`; Subscribe delivery verified; use primary clients on `:6030` |
 | **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | Alpine **3.24** apk `python3` (compile `cffi` on aarch64) | Hybrid on both [QuaDRA client paths](../tests/macsec-qkd.md); simulator peer TLS KEX remains **unverified** |
 | **EOS cEOS** | ceos* | Arista (native) | N/A (switch image) | Vendor image + templates | **Per service** - syslog/gNPSI hybrid; gRIBI/eos-sdk remain classical; RESTCONF policy gap ([Services](../services/index.md)) |
 
@@ -70,7 +70,7 @@ Upstream **grpcurl** and **gribic** tarballs still declare **`go 1.21`** in `go.
 
 The test-runner image **source-builds grpcurl v1.9.3** with Go **1.27.0** and **`go mod edit -go=1.27`** before compile, and stamps **`main.version=v1.9.3`** via ldflags (same as upstream goreleaser) so `grpcurl --version` reports the tag. grpcurl’s `ClientTLSConfig` does not override `CurvePreferences`, so the Go **1.27** defaults apply.
 
-**Verified against deployed EOS 4.37.0F:** the source-built client completes mTLS and gNPSI reflection `list` on **:6031**. That listener negotiates **`X25519MLKEM768`**, and separate classical TLS 1.3 / TLS 1.2 probes are rejected. **Subscribe sample delivery remains unverified**: no JSON `Sample.packet` arrived on 4.37.0F, including a 75-second sustained traffic run. The probe requires an actual packet and reports SKIP when none arrives.
+**Verified against deployed EOS 4.37.0F:** the source-built client completes mTLS and gNPSI reflection `list` on **:6031**. That listener negotiates **`X25519MLKEM768`**, and separate classical TLS 1.3 / TLS 1.2 probes are rejected. **Subscribe sample delivery is verified** on all six endpoints after setting the sFlow source interface and polling counters every two seconds. Captured Subscribe ServerHellos select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. The probe requires a nonempty base64-decoded `Sample.packet` and fails when none arrives within eight seconds.
 
 For the shared **gNMI/gNOI listener (:6030)**, use the validated primary clients **gnoic**, **gnmic**, and **gnsic**. grpcurl support on that port was **not revalidated** on 4.37.0F. grpcurl remains an RPC fallback in the test code and the primary client for the bounded gNPSI Subscribe probe.
 

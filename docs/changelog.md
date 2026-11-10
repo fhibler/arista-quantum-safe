@@ -30,7 +30,7 @@ Both EOS images are ARM64. Peer/probe containers pin Alpine **3.24**; apk OpenSS
 | gNPSI classical TLS 1.3 offer | Accepted | **Rejected** |
 | gNPSI TLS 1.2 offer | Negotiates, then EOF | **Rejected before handshake** |
 
-Syslog hybrid KEX and gNPSI hybrid TLS/reflection were verified on all three switches over IPv4 and IPv6 without changing their profiles. gNPSI Subscribe sample delivery remains **unverified**; policy enforcement results are recorded under [Known limitations](#known-limitations).
+Syslog hybrid KEX and gNPSI hybrid TLS/reflection were verified on all three switches over IPv4 and IPv6 without changing their profiles. gNPSI Subscribe also delivers samples after correcting the sFlow source configuration on 4.37.0F; the corrected configuration was **not tested** on 4.36.2F. Policy enforcement results are recorded under [Known limitations](#known-limitations).
 
 SSH, eAPI JSON-RPC, gNMI GET/mTLS, gNOI Ping/reflection, gNSI Certz, RadSec, and EAP-TLS continued to negotiate hybrid KEX. Dynamic MACsec encryption and reauthentication, KME round trips and certificate-chain checks, QuaDRA roles/SAK cross-mapping/key delivery, and settled host routing continued to pass.
 
@@ -38,7 +38,7 @@ Both QuaDRA master/slave IPv4 TLS connections select **TLS 1.3 / `X25519MLKEM768
 
 ### Test results
 
-Final results use the corrected assertions on both versions. Passing functional checks do not establish unmeasured TLS KEX or untested policy enforcement; the remaining gaps are recorded under [Known limitations](#known-limitations).
+The original same-configuration OpenConfig upgrade comparison was **87 passed, 27 warnings, 9 skipped → 99 passed, 15 warnings, 9 skipped**. The current 4.37.0F result below includes the additional sFlow source/polling correction; that configuration was **not tested** on the previous image. Other upgrade results use the corrected assertions on both versions. Passing functional checks do not establish unmeasured TLS KEX or untested policy enforcement; the remaining gaps are recorded under [Known limitations](#known-limitations).
 
 | Suite | 4.36.2F | 4.37.0F |
 |-------|---------|---------|
@@ -46,7 +46,7 @@ Final results use the corrected assertions on both versions. Passing functional 
 | eAPI | 15 passed | 15 passed |
 | RadSec | 23 passed | 23 passed |
 | Syslog | 9 passed, 6 warnings | **15 passed** |
-| OpenConfig | 87 passed, 27 warnings, 9 skipped | **99 passed, 15 warnings, 9 skipped** |
+| OpenConfig | 87 passed, 27 warnings, 9 skipped | **105 passed, 15 warnings, 3 skipped** after sFlow source/polling correction |
 | KME | 9 passed | 9 passed |
 | Dynamic MACsec | 17 passed | 17 passed |
 | QuaDRA / QKD | 15 passed | 15 passed |
@@ -62,30 +62,29 @@ Offline upgrade verification also passed **588 pytest tests**, including Contain
 
 The following service failures and verification gaps remain after the upgrade:
 
-- **gNPSI Subscribe:** Hybrid TLS/reflection succeeds. Subscribe sample delivery remains **unverified** (six SKIPs): no JSON `Sample.packet` arrived, including during a separate 75-second sustained traffic run from three hosts. On 4.37.0F, all switches reported zero sFlow samples and zero gNPSI received datagrams.
 - **gRIBI:** Classical `secp256r1` TLS 1.3 and Get RPC succeed; hybrid-only mTLS fails. Hybrid-only and TLS 1.3-only policy enforcement **fails**: classical TLS 1.3 and TLS 1.2 complete despite the strict profile.
 - **eos-sdk-rpc:** Classical `secp256r1` TLS 1.3 succeeds over IPv4; hybrid-only mTLS fails. TLS 1.2 negotiates parameters then ends with EOF, leaving application operation over TLS 1.2 **unverified**. The current `local interface Management0` binding has no native IPv6 listener (three SKIPs). Direct socket inspection and TCP/mTLS probes confirmed the IPv4-mapped bind on all three upgraded switches; IPv6 eAPI succeeded as a connectivity control. Alternative bindings were **not tested**.
 - **RESTCONF:** Hybrid TLS 1.3 succeeds. Hybrid-only and TLS 1.3-only policy enforcement **fails**: separate probes confirm that classical TLS 1.3 and TLS 1.2 also complete despite the strict profile.
 - **Syslog:** Hybrid TLS 1.3 succeeds. Hybrid-only policy enforcement with a changed configuration was **not tested**.
 - **QuaDRA:** Both actual client paths now have measured hybrid TLS KEX. Classical groups are also advertised; hybrid-only enforcement remains **unverified**. Simulator peer TLS KEX was **not measured**.
 - **Routing:** Settled reruns pass all 12 directed IPv4/IPv6 routes. Both versions show temporary loss during initialization.
-- **gNSI / shared-port clients:** The `transport gnmi default` binding and the gnoic, gnmic, and gnsic clients on port 6030 are verified. Earlier 4.36.2F rejection of `transport grpc default` and the grpcurl handshake failure on port 6030 were **not revalidated** on 4.37.0F. grpcurl reflection on gNPSI port 6031 succeeds; Subscribe sample delivery remains **unverified**.
+- **gNSI / shared-port clients:** The `transport gnmi default` binding and the gnoic, gnmic, and gnsic clients on port 6030 are verified. Earlier 4.36.2F rejection of `transport grpc default` and the grpcurl handshake failure on port 6030 were **not revalidated** on 4.37.0F. grpcurl reflection and Subscribe sample delivery on gNPSI port 6031 succeed.
 - **Other cryptographic capabilities:** Standalone ML-KEM and post-quantum certificate/signature capabilities were **not revalidated**.
 
-The remaining **15 OpenConfig warnings** on 4.37.0F are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). Its **nine skips** are gNPSI Subscribe (6) and eos-sdk-rpc IPv6 (3).
+The remaining **15 OpenConfig warnings** on 4.37.0F are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). Its **three skips** are eos-sdk-rpc IPv6.
 
 ### Test and tooling changes
 
 - `make test-quadra-tls` adds passive capture of both actual QuaDRA clients, checks final ServerHello selection and fresh successful key delivery, and retains packet/decoded evidence. Missing evidence and non-hybrid selection fail the check.
 - Syslog checks now verify negotiated hybrid KEX and delivery of fresh messages.
-- gNPSI Subscribe requires an actual JSON `Sample.packet` on stdout and checks RPC/JSON errors. The former probe incorrectly counted stderr `Terminated` as a datagram and masked RPC failures; earlier claims of successful streaming are withdrawn. Subscribe sample delivery remains **unverified**.
+- gNPSI Subscribe now passes on all six endpoints after setting **`sflow source-interface Ethernet8`** and **`sflow polling-interval 2`**. Normal 1:4096 sampling produces counter datagrams in the eight-second windows; a controlled run with temporary 1:1 sampling and 500 successful routed pings per host also delivered flow samples with matching IPv4/ICMP headers on every stream. Actual Subscribe ServerHellos select **TLS 1.3 / `X25519MLKEM768` / `TLS_AES_128_GCM_SHA256`**. The old empty eight-second and 75-second runs lacked an explicit source; this is a configuration correction on the same build. The probe requires a nonempty base64-decoded `Sample.packet` and now fails on empty streams or RPC/JSON/base64 errors. Earlier claims based on stderr `Terminated` remain withdrawn.
 - Reauthentication recognizes RADIUS request IDs such as `Auth: (59) Login OK`. MKA extraction prefers the successful `principalActor` when retained participants coexist.
 - The eAPI failure-test mock intercepts the actual TLS helper, avoiding unintended live connections.
 - The devcontainer Python image is pinned to **`3.14-trixie`** to avoid the autopep8 extension crash under Python 3.15.
 
 ### Verification scope
 
-Both images were deployed on three ARM64 cEOS switches with the same templates, peer images, probe tools, and QuaDRA extension. Both archive SHA-512 checks passed. This is a lab comparison, not a hardware qualification.
+Both images were initially compared on three ARM64 cEOS switches with the same templates, peer images, probe tools, and QuaDRA extension. The subsequent sFlow source/polling correction and successful Subscribe delivery were measured only on 4.37.0F. Both archive SHA-512 checks passed. This is a lab comparison, not a hardware qualification.
 
 A separate TLS matrix exercised **108 probes per image**. All **18 changed outcomes** in that matrix were gNPSI. EOS-originated syslog was verified separately.
 

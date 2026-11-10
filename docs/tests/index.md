@@ -15,7 +15,7 @@ Runs all sections in order (one pass per service, no duplication):
 | 5 | `make test-openconfig` | `lab.test_openconfig` |
 | 6 | `make test-kme` | `lab.test_kme` |
 | 7 | `make test-macsec-dot1x` | `lab.test_macsec_dot1x` |
-| 8 | `make test-macsec-qkd` | `lab.test_macsec_qkd` (skips when QuaDRA extension absent - see [QKD service](../services/qkd-etsi014.md)) |
+| 8 | `make test-macsec-qkd` | `lab.test_macsec_qkd` (always checks static MACsec; skips daemon/KME checks when QuaDRA extension absent - see [QKD service](../services/qkd-etsi014.md)) |
 | 9 | `make test-hosts` | `lab.test_hosts` - host routing matrix |
 
 Optional extended waits: **`make test-macsec-dot1x-reauth`** (75 s fixed wait, up to 103 s including MKA retry delays) and **`make test-quadra-tls`** (135 s capture, TLS phase budget up to 250 s). Baseline checks and command overhead add to these times; see [Wait times](#wait-times).
@@ -78,7 +78,7 @@ Deployment readiness is separate: `images-kme-pool-wait` allows a 60 s container
 Each `make test-*` target ends with a one-line summary that counts individual checks (`[config]`, `[live]`, `[live / test-runner]`, etc.):
 
 ```text
-OpenConfig: ✓ - 99 passed, 15 warnings, 9 skipped
+OpenConfig: ✓ - 105 passed, 15 warnings, 3 skipped
 HOSTS: ✓ - 12 passed
 RadSec: ✓ - 23 passed
 ```
@@ -124,7 +124,7 @@ Results reflect the default **EOS 4.37.0F** (`CEOS_IMAGE=ceos:4.37.0F`; see [Set
 | eAPI | 15 passed |
 | RadSec | 23 passed |
 | Syslog | 15 passed |
-| OpenConfig | 99 passed, 15 warnings, 9 skipped |
+| OpenConfig | 105 passed, 15 warnings, 3 skipped |
 | KME | 9 passed |
 | Dynamic MACsec | 17 passed |
 | QuaDRA / QKD | 15 passed |
@@ -134,7 +134,7 @@ Results reflect the default **EOS 4.37.0F** (`CEOS_IMAGE=ceos:4.37.0F`; see [Set
 
 The recorded MACsec/QuaDRA counts predate moving static MACsec configuration, convergence, and ping checks out of `test-macsec-dot1x` into `test-macsec-qkd`. Current suite counts differ; the recorded TLS measurements are unchanged.
 
-The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **nine skips** are gNPSI Subscribe without packets (6) and eos-sdk-rpc IPv6 without a listener (3). Warnings and skips do not establish PQC-safe application operation. Historical comparisons and test changes are recorded in the [Changelog](../changelog.md).
+The **15 OpenConfig warnings** are gRIBI TLS/RPC checks (12) and eos-sdk-rpc IPv4 checks (3). The **three skips** are eos-sdk-rpc IPv6 without a listener. The six gNPSI Subscribe probes now pass after correcting the sFlow source and shortening counter polling. Warnings and skips do not establish PQC-safe application operation. Historical comparisons and test changes are recorded in the [Changelog](../changelog.md).
 
 ## Result summary
 
@@ -149,7 +149,7 @@ Recorded **live** behavior on **EOS 4.37.0F** (3 switches, IPv4 + IPv6 unless no
 | gRIBI | `test-openconfig` | Yes | `X25519MLKEM768` | classical (`secp256r1`) | No |
 | gNSI Certz | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | gNPSI (TLS) | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
-| gNPSI (Subscribe) | `test-openconfig` | Transport only | `X25519MLKEM768` | - (no packet received) | Unverified |
+| gNPSI (Subscribe) | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | RESTCONF | `test-openconfig` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | RadSec | `test-radsec` | Yes | `X25519MLKEM768` | `X25519MLKEM768` | Yes |
 | Syslog (EOS to collector) | `test-syslog` | Yes | `X25519MLKEM768` (+ classical fallback) | `X25519MLKEM768` | Yes |
@@ -171,7 +171,7 @@ Recorded **live** behavior on **EOS 4.37.0F** (3 switches, IPv4 + IPv6 unless no
 **Notes**
 
 - **Syslog:** All six EOS-to-collector connections selected hybrid group **4588**, with delivery verified using unique per-run markers. Classical fallback remains configured; hybrid-only enforcement was not tested.
-- **gNPSI:** Hybrid mTLS and reflection pass. Classical TLS 1.3 and TLS 1.2 are rejected. Subscribe data reception is **unverified**, with six **SKIPs**; successful reflection alone does not prove a working stream.
+- **gNPSI:** Hybrid mTLS and reflection pass. Classical TLS 1.3 and TLS 1.2 are rejected. Subscribe receives sFlow datagrams on all six endpoints after configuring the sFlow source on Ethernet8. Idle probes receive counter samples; controlled traffic with temporary 1:1 sampling also verified flow samples. Actual Subscribe ServerHellos select hybrid KEX.
 - **gRIBI:** Hybrid-only mTLS fails; `secp256r1` TLS 1.3 and Get RPC work. Separate TLS 1.2 probes also complete despite the strict profile.
 - **eos-sdk-rpc (IPv4):** Hybrid-only probe gets EOF; explicit `secp256r1` completes TLS 1.3. TLS 1.2 negotiates then ends with EOF, which is not a verified application session.
 - **eos-sdk-rpc (IPv6):** Native IPv6 connections refuse on 9543 with `local interface Management0`. Socket inspection shows an IPv4-mapped bind; IPv4 mTLS and IPv6 eAPI controls succeed on all three switches. Alternative binding configurations were not evaluated.

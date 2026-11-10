@@ -52,7 +52,7 @@ from lab.tls_wire import (
     rpc_tls_wire_suffix,
     run_tls_wire_probe,
 )
-from lab.report import CheckStatus, print_check_group, report_ok, report_skip, report_warn
+from lab.report import CheckStatus, print_check_group, report_ok, report_skip, report_wait, report_warn
 
 if TYPE_CHECKING:
     from lab.test_pqc_connections import LabTargets
@@ -62,6 +62,7 @@ GNOI_REFLECTION_SERVICES = ("gnoi.system.System",)
 GNPSI_SERVICE = "gnpsi.gNPSI"
 GNPSI_SUBSCRIBE_RPC = f"{GNPSI_SERVICE}/Subscribe"
 EOS_ADMIN_USERNAME = "admin"
+GNPSI_SUBSCRIBE_TIMEOUT_SEC = 8
 GNPSI_UNSUPPORTED_MARKERS = (
     "invalid input",
     "invalid command",
@@ -613,8 +614,13 @@ def probe_gnpsi_subscribe(
     ip = targets.ceos_mgmt_ip(node, family)
     target = grpc_target(ip, GNPSI_PORT)
     invoke = grpcurl_invoke_command(target, node=node, rpc=GNPSI_SUBSCRIBE_RPC, data="{}")
+    report_wait(
+        f"{node} gNPSI Subscribe ({family_label(family)})",
+        expected_sec=GNPSI_SUBSCRIBE_TIMEOUT_SEC, maximum_sec=GNPSI_SUBSCRIBE_TIMEOUT_SEC,
+        detail="stream capture window per endpoint; Docker overhead extra",
+    )
     sub_result = run_grpc_probe(
-        f"timeout 8 sh -c {shlex.quote(invoke)}",
+        f"timeout {GNPSI_SUBSCRIBE_TIMEOUT_SEC} sh -c {shlex.quote(invoke)}",
         clab_name=targets.clab_name,
         verbose=verbose,
         title=f"{node} gNPSI subscribe ({family_label(family)})",

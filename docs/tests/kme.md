@@ -2,6 +2,8 @@
 
 `make test-kme` runs `python -m lab.test_kme` - SAE status, peer domain, enc/dec round-trip inside KME containers, and strict TLS chain verify from cEOS SAE clients.
 
+**Wait times:** `enc_keys` returns immediately when keys are available; an empty pool enables a **35 s retry window**, polling every **5 s**. The window may overrun by one interval and the final request; each Docker request times out after **20 s** (curl limit **15 s**). Other checks add runtime. See [Wait times](index.md#wait-times).
+
 QuaDRA static SAK / MACsec rotation is separate: **`make test-macsec-qkd`**.
 
 ## What is checked

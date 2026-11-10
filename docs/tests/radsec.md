@@ -2,6 +2,8 @@
 
 `make test-radsec` runs `python -m lab.test_radsec` - FreeRADIUS collector checks, per-switch reachability, RadSec AAA, and collector TLS PQC handshakes (IPv4 and IPv6).
 
+**Wait times:** AAA succeeds immediately when ready; transient failures allow **15 attempts**, **2 s apart**, for up to **28 s of retry delays per switch/address family** (six probes). AAA command execution and the other checks add time. Each probe prints its budget before starting; see [Wait times](index.md#wait-times).
+
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** on the `RADSEC` ssl profile.
 
 ## What is checked

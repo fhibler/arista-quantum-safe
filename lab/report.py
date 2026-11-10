@@ -124,6 +124,20 @@ def print_check_group(name: str) -> None:
     print(f"--- {name} ---")
 
 
+def report_wait(
+    label: str, *, maximum_sec: float, expected_sec: float | None = None, detail: str = "",
+) -> None:
+    """Announce a wait before blocking, without recording a successful check.
+
+    Callers specify whether the maximum covers a polling window, retry delays,
+    or command timeouts in *detail*; it is not a whole-suite runtime promise.
+    """
+    timing = f"expected {expected_sec:g}s; " if expected_sec is not None else ""
+    timing += f"maximum {maximum_sec:g}s"
+    suffix = f"; {detail}" if detail else ""
+    print(f"  [wait]  {label}: {timing}{suffix}", flush=True)
+
+
 def status_marker(status: CheckStatus, *, use_colors: bool | None = None) -> str:
     icon = _STATUS_ICONS[status]
     use = colors_enabled() if use_colors is None else use_colors

@@ -8,7 +8,9 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
+from lab.quadra_tls import QuadraTlsError, quadra_tls_peer, verify_quadra_tls
 from lab.report import CheckStatus, print_device, print_section_header, print_test_header, report_ok, report_check_summary, report_summary, report_warn, reset_check_stats
 from lab.topology_contract import (
     CEOS_QUADRA_NODES,
@@ -484,6 +486,9 @@ def run_qkd_checks(
     *,
     clab_name: str,
     verbose: bool | None = None,
+    verify_tls: bool = False,
+    tls_capture_seconds: int = 135,
+    tls_output_dir: Path = Path("lab/.gen/quadra-tls"),
 ) -> bool:
     """Run QuaDRA checks. Returns True when checks ran, False when skipped."""
     reset_check_stats()
@@ -499,6 +504,8 @@ def run_qkd_checks(
     )
 
     if not quadra_installed_on_nodes(targets, swix, verbose=verbose):
+        if verify_tls:
+            raise QkdCheckError("QuaDRA must be installed on both nodes to measure TLS KEX; unverified")
         report_summary(
             "QuaDRA",
             f"skipped - {swix} not installed on both {MASTER} and {SLAVE}",
@@ -525,13 +532,25 @@ def run_qkd_checks(
     print_device(SLAVE)
     check_extension_installed(slave_container, SLAVE, swix, verbose=verbose)
     slave_output = check_daemon_running(slave_container, SLAVE, verbose=verbose)
-    check_agent_role(
+    slave_status = check_agent_role(
         SLAVE,
         slave_output,
         expected_role=EXPECTED_AGENT_ROLES[SLAVE],
         verbose=verbose,
     )
     note_rotation_success_log(slave_container, SLAVE, verbose=verbose)
+
+    if verify_tls:
+        print()
+        print_device("QuaDRA TLS key exchange")
+        verify_quadra_tls(
+            [quadra_tls_peer(node, status_field(status, "kme") or "")
+             for node, status in ((MASTER, master_status), (SLAVE, slave_status))],
+            clab_name=clab_name,
+            duration=tls_capture_seconds,
+            output_dir=tls_output_dir,
+            verbose=verbose,
+        )
 
     print()
     print_device("QuaDRA MACsec keys")
@@ -567,20 +586,32 @@ def main(argv: list[str] | None = None) -> int:
         description="Verify QuaDRA QKD MACsec key rotation on ceos1-both and ceos3-qkd.",
     )
     parser.add_argument("--clab-name", default=LAB_NAME)
+    parser.add_argument("--verify-tls", action="store_true", help="Passively measure both QuaDRA clients' TLS KEX")
+    parser.add_argument("--tls-capture-seconds", type=int, default=135, help="Capture window (default: 135s for 120s rotation)")
+    parser.add_argument("--tls-output-dir", type=Path, default=Path("lab/.gen/quadra-tls"), help="Packet and decoded TLS evidence directory")
     parser.add_argument(
         "--verbose",
         action="store_true",
         help="Echo commands and print full output (also enabled by VERBOSE=1)",
     )
     args = parser.parse_args(argv)
+    if args.tls_capture_seconds <= 0:
+        parser.error("--tls-capture-seconds must be positive")
     verbose = args.verbose or os.environ.get("VERBOSE") == "1"
 
     try:
-        run_qkd_checks(clab_name=args.clab_name, verbose=verbose)
+        run_qkd_checks(
+            clab_name=args.clab_name, verbose=verbose, verify_tls=args.verify_tls,
+            tls_capture_seconds=args.tls_capture_seconds, tls_output_dir=args.tls_output_dir,
+        )
     except QkdSkip as exc:
+        if args.verify_tls:
+            report_summary("QuaDRA", f"TLS KEX unverified: {exc}", CheckStatus.FAIL, file=sys.stderr)
+            return 1
         report_summary("QuaDRA", str(exc), CheckStatus.WARN)
         return 0
-    except (QkdCheckError, PqcConnectionError, subprocess.CalledProcessError) as exc:
+    except (QkdCheckError, QuadraTlsError, PqcConnectionError, subprocess.CalledProcessError,
+            subprocess.TimeoutExpired, OSError) as exc:
         report_summary("QuaDRA", str(exc), CheckStatus.FAIL, file=sys.stderr)
         print(file=sys.stderr)
         return 1

@@ -202,7 +202,7 @@ show daemon quadra
 | QuaDRA availability | **Not public** - contact Arista account team for the extension and user guide |
 | MACsec license | Static SAK MACsec requires a MACsec license on EOS |
 | KME simulator | Open-source lab stand-in; not a production QKD system |
-| TLS KEX | **Unverified** - strict certificate-chain checks and ETSI round trips do not establish hybrid KEX for KME/QuaDRA |
+| QuaDRA TLS KEX | **Verified hybrid on the measured IPv4 paths** - both real agents select TLS 1.3 / `X25519MLKEM768` / `TLS_AES_256_GCM_SHA384`; classical groups are also offered, and hybrid-only enforcement remains **unverified** |
 | Startup default | `daemon quadra` **shutdown** in startup-config until extension is installed |
 | Dynamic vs static MACsec | Ethernet1 (ceos1 ↔ ceos2) uses 802.1X; Ethernet2/1 (ceos1 ↔ ceos3) uses QuaDRA static SAK |
 | Key rotation interval | Lab default **120 s** on master (`option key-rotation value 120s`) |
@@ -245,9 +245,11 @@ ping 10.255.0.6 source 10.255.0.5
 
 Healthy progression: `underconfigured` → `peer discovery` → `master` / `slave` → `%QUADRA-4-ROTATION_SUCCESS%` in syslog after startup or recovery.
 
-Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**, QuaDRA/QKD **15 passed**, including master/slave roles, matching SAK cross-mapping, and key delivery. TLS group negotiation on the KME/QuaDRA path was not measured.
+Verified on **EOS 4.37.0F** with **QuaDRA 1.0.10.rel1** on ARM64: KME **9 passed**, QuaDRA/QKD **15 passed**, including master/slave roles, matching SAK cross-mapping, and key delivery. Passive captures confirm hybrid TLS on both actual QuaDRA-to-KME IPv4 connections; `make test-quadra-tls` passes **17 checks**. This does not establish simulator peer TLS or rejection of classical fallback.
 
 Automated: `make test-kme` (ETSI QKD 014); `make test-macsec-qkd` (QuaDRA static SAK - skips when extension not installed).
+
+Run **`make test-quadra-tls`** for QuaDRA functional checks plus passive KEX measurement during a normal rotation (135 seconds by default). Missing measurements or non-hybrid selection fail the test. See [QuaDRA test procedure and packet evidence](../tests/macsec-qkd.md).
 
 See [KME tests](../tests/kme.md) and [MACsec QuaDRA QKD tests](../tests/macsec-qkd.md).
 

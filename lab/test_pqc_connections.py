@@ -17,6 +17,7 @@ from lab.ceos_json import (
 )
 from lab.syslog_checks import (
     PQC_GROUP as SYSLOG_PQC_GROUP,
+    SYSLOG_CAPTURE_STARTUP_SEC,
     SyslogCheckError,
     capture_eos_syslog_tls_key_share_group,
     check_switch_syslog_logging_config,
@@ -72,6 +73,7 @@ from lab.report import (
     report_ok,
     report_skip,
     report_summary,
+    report_wait,
     report_warn,
     reset_check_stats,
 )
@@ -102,6 +104,9 @@ PQC_GROUP = TLS_PQC_GROUP
 RADSEC_AAA_SUCCESS_MARKER = "successfully authenticated"
 RADSEC_AAA_POLL_INTERVAL_SEC = 2
 RADSEC_AAA_POLL_ATTEMPTS = 15
+SYSLOG_RECONNECT_SEC = 3
+SYSLOG_WIRE_SETTLE_SEC = (4.0, 6.0)
+SYSLOG_WIRE_RETRY_SEC = 1
 
 
 @dataclass(frozen=True)
@@ -679,6 +684,10 @@ def probe_radsec_from_switch(
     radius_addr = targets.service_ip("radius", family)
     commands = radsec_aaa_test_commands(radius_addr)
     label = f"{node} RadSec AAA test ({family_label(family)})"
+    report_wait(
+        label, maximum_sec=(RADSEC_AAA_POLL_ATTEMPTS - 1) * RADSEC_AAA_POLL_INTERVAL_SEC,
+        detail=f"retry delays; {RADSEC_AAA_POLL_ATTEMPTS} attempts, {RADSEC_AAA_POLL_INTERVAL_SEC}s apart; command time extra",
+    )
     last_output = ""
     for attempt in range(RADSEC_AAA_POLL_ATTEMPTS):
         if attempt:
@@ -807,7 +816,7 @@ def probe_syslog_delivery(
             f"enable\nconfigure\n{remove_lines}end\n",
             verbose=verbose,
         )
-        time.sleep(3)
+        time.sleep(SYSLOG_RECONNECT_SEC)
         ceos_cli(
             container,
             f"enable\nconfigure\n{add_lines}end\n",
@@ -828,17 +837,27 @@ def probe_syslog_delivery(
         raise PqcConnectionError(str(exc)) from exc
 
     negotiated_group: int | None = None
-    for attempt in range(2):
+    first_capture_sec = SYSLOG_CAPTURE_STARTUP_SEC + SYSLOG_RECONNECT_SEC + SYSLOG_WIRE_SETTLE_SEC[0]
+    maximum_capture_sec = sum(
+        SYSLOG_CAPTURE_STARTUP_SEC + SYSLOG_RECONNECT_SEC + settle + SYSLOG_WIRE_RETRY_SEC
+        for settle in SYSLOG_WIRE_SETTLE_SEC
+    )
+    report_wait(
+        f"{node} syslog wire KEX ({family_label(family)})",
+        expected_sec=first_capture_sec, maximum_sec=maximum_capture_sec,
+        detail=f"capture/reconnect/retry waits across {len(SYSLOG_WIRE_SETTLE_SEC)} attempts; command time extra",
+    )
+    for settle_sec in SYSLOG_WIRE_SETTLE_SEC:
         negotiated_group = capture_eos_syslog_tls_key_share_group(
             switch_ip=switch_ip,
             bounce_logging=bounce_logging_hosts,
             syslog_container=targets.syslog_container,
-            settle_sec=4.0 + attempt * 2,
+            settle_sec=settle_sec,
             verbose=verbose,
         )
         if negotiated_group is not None:
             break
-        time.sleep(1)
+        time.sleep(SYSLOG_WIRE_RETRY_SEC)
     if negotiated_group is not None and is_pqc_hybrid_key_share_group(negotiated_group):
         report_live(
             f"{node} TLS syslog delivered ({family_label(family)}), "

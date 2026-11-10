@@ -20,7 +20,7 @@ Stock Linux packages and upstream release binaries often **fail that requirement
 | **gnsic** | test-runner | Go `crypto/tls` | **Yes** - release **0.0.4** (Go **1.25+**) | Upstream tarball | **Yes** |
 | **gribic** | test-runner | Go `crypto/tls` | **No** - release **0.0.14** (`go 1.21` in upstream `go.mod`) | Source-build **0.0.14** (Go **1.27.0**, `go mod edit -go=1.27`) | **Hybrid-capable**; target gRIBI remains classical |
 | **grpcurl** | test-runner | Go `crypto/tls` | **No** - release **1.9.3** (`go 1.21` in upstream `go.mod`) | Source-build **1.9.3** (Go **1.27.0**, `go mod edit -go=1.27`) | **Yes** for gNPSI reflection on `:6031`; Subscribe delivery unverified; use primary clients on `:6030` |
-| **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | Alpine **3.24** apk `python3` (compile `cffi` on aarch64) | **Unverified** - ETSI mTLS / strict chain checks pass; TLS KEX not measured |
+| **KME simulator** | kme-a, kme-b | Python `ssl` / system OpenSSL | **No** | Alpine **3.24** apk `python3` (compile `cffi` on aarch64) | Hybrid on both [QuaDRA client paths](../tests/macsec-qkd.md); simulator peer TLS KEX remains **unverified** |
 | **EOS cEOS** | ceos* | Arista (native) | N/A (switch image) | Vendor image + templates | **Per service** - syslog/gNPSI hybrid; gRIBI/eos-sdk remain classical; RESTCONF policy gap ([Services](../services/index.md)) |
 
 **Column notes**

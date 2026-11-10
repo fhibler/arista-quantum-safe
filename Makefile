@@ -391,7 +391,10 @@ test-runner-shell: ## Open interactive shell on test-runner probe node
 
 ##@ Tests
 
-.PHONY: test-offline test-lab test-lab-runner test-ssh test-eapi test-radsec test-syslog test-openconfig test-kme test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-hosts
+.PHONY: test-offline test-lab test-lab-runner test-ssh test-eapi test-radsec test-syslog test-openconfig test-kme test-macsec-dot1x test-macsec-dot1x-reauth test-macsec-qkd test-quadra-tls test-hosts
+
+QUADRA_TLS_CAPTURE_SEC ?= 135
+QUADRA_TLS_OUTPUT_DIR ?= lab/.gen/quadra-tls
 
 test-offline: ## Run offline pytest (scaffold + contract validation)
 	$(PYTHON) -m pytest
@@ -443,43 +446,48 @@ test-eapi: ## eAPI HTTPS + command-api PQC checks (requires deployed lab; VERBOS
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_eapi --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-radsec: ## RadSec reachability, AAA, and collector PQC TLS (requires deployed lab; VERBOSE=1 for full output)
+test-radsec: ## RadSec + AAA + PQC TLS (retry delays up to 28s per AAA probe; command time extra)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_radsec --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-syslog: ## PQC syslog-over-TLS checks (requires deployed lab; VERBOSE=1 for full output)
+test-syslog: ## Syslog TLS (waits: health up to 90s; delivery 45s + wire 19s per endpoint; command time extra)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_syslog --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-openconfig: ## OpenConfig gRPC + RESTCONF PQC checks (requires deployed lab; VERBOSE=1 for full output)
+test-openconfig: ## OpenConfig + RESTCONF (gNPSI Subscribe up to 8s per endpoint, 48s total; other checks extra)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_openconfig --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-kme: ## ETSI QKD 014 checks (requires deployed lab; VERBOSE=1 for full output)
+test-kme: ## ETSI QKD 014 (empty-pool retry window up to 35s; request time extra)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_kme --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-macsec-dot1x: ## Dynamic MACsec (802.1X EAP-TLS + MKA) checks (requires deployed lab; VERBOSE=1 for full output)
+test-macsec-dot1x: ## Dynamic MACsec + MKA (convergence retry delays up to 28s per check; command time extra)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_dot1x --clab-name '$(CLAB_NAME)' --mgmt-subnet '$(MGMT_SUBNET)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,) \
 		$(if $(filter 1,$(VERIFY_REAUTH)),--verify-reauth,)
 
-test-macsec-dot1x-reauth: ## 802.1X MACsec + periodic reauth wait (~75s; requires deployed lab)
+test-macsec-dot1x-reauth: ## MACsec reauth (75s fixed wait; up to 103s with MKA retries; baseline/command time extra)
 	@$(MAKE) --no-print-directory VERIFY_REAUTH=1 test-macsec-dot1x
 
-test-macsec-qkd: ## QuaDRA static SAK / QKD rotation checks (requires deployed lab; skips when swix absent)
+test-macsec-qkd: ## QuaDRA static SAK / QKD checks (no rotation wait; skips when swix absent)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-test-hosts: ## host routing across all segments (VERBOSE=1 for full output)
+test-quadra-tls: ## QuaDRA TLS (default 135s capture; TLS phase budget up to 250s; functional checks extra)
+	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_macsec_qkd --clab-name '$(CLAB_NAME)' \
+		--verify-tls --tls-capture-seconds '$(QUADRA_TLS_CAPTURE_SEC)' --tls-output-dir '$(QUADRA_TLS_OUTPUT_DIR)' \
+		$(if $(filter 1,$(VERBOSE)),--verbose,)
+
+test-hosts: ## Host routing (30s timeout per route, 12 routes; no convergence wait; VERBOSE=1 for full output)
 	@env $(if $(filter 1,$(VERBOSE)),VERBOSE=1,-u VERBOSE) $(PYTHON) -m lab.test_hosts --clab-name '$(CLAB_NAME)' \
 		$(if $(filter 1,$(VERBOSE)),--verbose,)
 
-##@ Documentation
+# Documentation targets are documented in AGENTS.md.
 
 .PHONY: docs-config-sync
 
-docs-config-sync: ## Sync README.md and mkdocs.yml site blocks from site.yaml
+docs-config-sync:
 	@$(PYTHON) scripts/site_config.py --sync-readme
 	@$(PYTHON) scripts/site_config.py --sync-mkdocs
 

@@ -2,6 +2,8 @@
 
 `make test-openconfig` runs `python -m lab.test_openconfig` against all three EOS nodes (**ceos1-both**, **ceos2-pqc**, **ceos3-qkd**) on **IPv4 and IPv6** (where the service binds dual-stack).
 
+**Wait times:** each gNPSI Subscribe probe runs for up to **8 s**; the six sequential endpoints add up to **48 s** of stream capture. It may finish earlier if the stream closes. RPC/TLS checks and Docker overhead add runtime. The probe prints its window before starting; see [Wait times](index.md#wait-times).
+
 **Policy:** TLS 1.3 with PQC-hybrid group **`X25519MLKEM768`** on strict ssl profiles. Probes run inside **`arista-quantum-safe-test-runner`** (default `PROBE_CLIENT`) using `gnoic`, `gribic`, `gnsic`, `gnmic`, and OpenSSL.
 
 ## What is checked

@@ -2,7 +2,9 @@
 
 `make test-macsec-dot1x` runs `python -m lab.test_macsec_dot1x` on the **ceos1-both <-> ceos2-pqc** Ethernet1 link (dynamic MACsec via 802.1X EAP-TLS + MKA).
 
-Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`, ~75 s).
+Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1`): **75 s fixed wait**, or up to **103 s** including paired MKA retry delays, plus command time and baseline checks.
+
+**Wait times:** MKA agreement and each static MACsec convergence check allow **15 attempts**, **2 s apart** (**28 s maximum retry delays per check**). A converged check returns immediately. The baseline includes one paired MKA check and two static MACsec checks, for up to **84 s** combined retry delays; reauth adds its separate wait and MKA check. Commands add runtime. See [Wait times](index.md#wait-times).
 
 **Policy:** The RADIUS EAP-TLS tunnel uses PQC-hybrid **`X25519MLKEM768`**. MACsec frame encryption uses MKA-derived keys (separate layer).
 
@@ -38,7 +40,7 @@ Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1
 
 | Check | Type | Method |
 |-------|------|--------|
-| Port still authorized | `[live]` | Wait ~75 s; `show dot1x` still Authorized |
+| Port still authorized | `[live]` | Wait 75 s; `show dot1x` still Authorized; paired MKA retries can add up to 28 s plus command time |
 | Matching CKN | `[live]` | Peers still agree (CKN may rotate - new EAP-TLS MSK) |
 | RADIUS Login OK | `[live]` | Extra `Auth: Login OK` in radius log |
 

@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from lab.ceos_json import json_tree_contains, json_truthy
 from lab.probe_client import probe_syslog_ca_path, run_openssl_s_client
+from lab.report import report_wait
 from lab.topology_contract import LAB_NAME, SYSLOG_PORT, SYSLOG_SSL_PROFILE, TLS_PQC_GROUP, hostport
 from lab.tls_wire import negotiated_pqc_group
 from lab.verbose import echo_command, verbose_enabled
@@ -26,6 +27,12 @@ PROBE_MESSAGE = "quantum-safe-syslog-probe"
 CEOS_SYSLOG_NODES = ("ceos1-both", "ceos2-pqc", "ceos3-qkd")
 MGMT_BRIDGE_NETWORK = "quantum-safe-mgmt"
 DEFAULT_MGMT_BRIDGE = "mgmt-bridge"
+SYSLOG_HEALTH_TIMEOUT_SEC = 90
+SYSLOG_HEALTH_POLL_SEC = 2
+SYSLOG_CAPTURE_STARTUP_SEC = 0.5
+SYSLOG_DELIVERY_TIMEOUT_SEC = 45
+SYSLOG_DELIVERY_POLL_SEC = 2
+SYSLOG_CLEARTEXT_CAPTURE_SEC = 30
 
 # TLS 1.3 key_share group IDs (wire format)
 TLS_KEY_SHARE_X25519 = 29
@@ -203,7 +210,7 @@ def _run_bridge_tcpdump_capture(
     tcpdump = subprocess.Popen(argv, **popen_kwargs)
     stderr = ""
     try:
-        time.sleep(0.5)
+        time.sleep(SYSLOG_CAPTURE_STARTUP_SEC)
         bounce_logging()
         time.sleep(settle_sec)
     finally:
@@ -252,7 +259,7 @@ def _run_syslog_eth0_tcpdump_capture(
         return False
 
     try:
-        time.sleep(0.5)
+        time.sleep(SYSLOG_CAPTURE_STARTUP_SEC)
         bounce_logging()
         time.sleep(settle_sec)
     finally:
@@ -346,8 +353,12 @@ def capture_eos_syslog_tls_key_share_group(
     return None
 
 
-def wait_for_syslog_healthy(container: str, *, timeout_sec: int = 90) -> None:
+def wait_for_syslog_healthy(container: str, *, timeout_sec: int = SYSLOG_HEALTH_TIMEOUT_SEC) -> None:
     """Wait until Docker reports the syslog collector container as healthy."""
+    report_wait(
+        "syslog collector health", maximum_sec=timeout_sec,
+        detail=f"polling window; every {SYSLOG_HEALTH_POLL_SEC}s; returns when healthy; command time extra",
+    )
     deadline = time.time() + timeout_sec
     last_status = "unknown"
     while time.time() < deadline:
@@ -366,7 +377,7 @@ def wait_for_syslog_healthy(container: str, *, timeout_sec: int = 90) -> None:
         last_status = result.stdout.strip() or "missing"
         if last_status == "healthy":
             return
-        time.sleep(2)
+        time.sleep(SYSLOG_HEALTH_POLL_SEC)
     raise SyslogCheckError(
         f"{container} not healthy after {timeout_sec}s (last status: {last_status})"
     )
@@ -522,17 +533,23 @@ def probe_syslog_delivery_no_cleartext(
     node: str,
     needle: str | None = None,
     marker_id: str | None = None,
-    delivery_timeout_sec: int = 45,
+    delivery_timeout_sec: int = SYSLOG_DELIVERY_TIMEOUT_SEC,
 ) -> None:
     """Send a probe log while watching for cleartext syslog packets from the switch."""
     _ = marker_id  # retained for callers; capture no longer uses marker files
     probe_needle = needle or f"{PROBE_MESSAGE}-{node}"
     capture_filter = cleartext_capture_filter(switch_ip)
     cleartext_seen = threading.Event()
+    report_wait(
+        f"{node} syslog delivery ({switch_ip})", maximum_sec=delivery_timeout_sec,
+        detail=f"delivery polling window; every {SYSLOG_DELIVERY_POLL_SEC}s; "
+               f"+{SYSLOG_CAPTURE_STARTUP_SEC:g}s capture setup; "
+               f"cleartext guard up to {SYSLOG_CLEARTEXT_CAPTURE_SEC}s runs concurrently; command time extra",
+    )
 
     def watch_cleartext() -> None:
         cmd = (
-            f"timeout 30 tcpdump -i eth0 -n -c 1 -Z root "
+            f"timeout {SYSLOG_CLEARTEXT_CAPTURE_SEC} tcpdump -i eth0 -n -c 1 -Z root "
             f"{shlex.quote(capture_filter)}"
         )
         result = docker_exec(syslog_container, cmd, check=False)
@@ -542,7 +559,7 @@ def probe_syslog_delivery_no_cleartext(
     docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
     watcher = threading.Thread(target=watch_cleartext, daemon=True)
     watcher.start()
-    time.sleep(0.5)
+    time.sleep(SYSLOG_CAPTURE_STARTUP_SEC)
     send_log()
 
     deadline = time.time() + delivery_timeout_sec
@@ -561,6 +578,6 @@ def probe_syslog_delivery_no_cleartext(
         if probe_needle in grep.stdout:
             docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
             return
-        time.sleep(2)
+        time.sleep(SYSLOG_DELIVERY_POLL_SEC)
     docker_exec(syslog_container, "pkill -x tcpdump 2>/dev/null || true", check=False)
     raise SyslogCheckError(f"{node}: timed out waiting for TLS syslog delivery of {probe_needle!r}")

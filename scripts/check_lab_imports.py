@@ -26,6 +26,7 @@ TEST_LAB_MODULES = (
     "lab.test_syslog",
     "lab.test_macsec_dot1x",
     "lab.test_macsec_qkd",
+    "lab.quadra_tls",
     "lab.test_hosts",
     "lab.syslog_checks",
     "lab.probe_client",

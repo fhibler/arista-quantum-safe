@@ -16,6 +16,7 @@ from lab.report import (
     report_check_summary,
     report_ok,
     report_summary,
+    report_wait,
     reset_check_stats,
     status_marker,
     visible_len,
@@ -29,6 +30,8 @@ from lab.topology_contract import (
     container_name,
     family_label,
 )
+
+HOST_PING_TIMEOUT_SEC = 30
 
 
 class HostRoutingError(RuntimeError):
@@ -165,7 +168,7 @@ def _ping_host(
         from lab.test_lab import LabTestError, run_step
 
         try:
-            run_step(title, argv, verbose=True)
+            run_step(title, argv, verbose=True, timeout_sec=HOST_PING_TIMEOUT_SEC)
             report_ok("[live]  ", title)
             return True
         except LabTestError:
@@ -177,7 +180,7 @@ def _ping_host(
             text=True,
             capture_output=True,
             check=False,
-            timeout=30,
+            timeout=HOST_PING_TIMEOUT_SEC,
         )
     except subprocess.TimeoutExpired:
         report_check("[live]  ", f"{title} timed out", CheckStatus.FAIL)
@@ -201,6 +204,10 @@ def run_hosts_check(*, clab_name: str, verbose: bool) -> None:
     print_test_header(
         "Host routing verification (data-plane ping matrix)",
         "  [live]  alpine host ping across all off-diagonal pairs (IPv4 + IPv6)",
+    )
+    report_wait(
+        "host routing probes", maximum_sec=HOST_PING_TIMEOUT_SEC,
+        detail=f"command timeout per route; {sum(len(targets) for _, _, targets in host_ping_groups())} routes run sequentially; no convergence wait",
     )
     results: dict[str, dict[tuple[str, str], bool]] = {
         IP_FAMILY_IPV4: {},

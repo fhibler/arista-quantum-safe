@@ -79,31 +79,32 @@ EXPECTED_TARGETS = {
     "images-build", "images-check", "images-kme-deploy", "images-kme-pool-wait",
     "ceos-cli", "test-runner-shell", "test-offline", "test-lab", "test-lab-runner",
     "test-ssh", "test-eapi", "test-radsec", "test-syslog", "test-openconfig", "test-kme",
-    "test-macsec-dot1x", "test-macsec-dot1x-reauth", "test-macsec-qkd", "test-hosts",
+    "test-macsec-dot1x", "test-macsec-dot1x-reauth", "test-macsec-qkd", "test-quadra-tls", "test-hosts",
     "docs-config-sync", "docs-build", "docs-export", "docs-publish", "clean", "reset",
 }
+
+DOCUMENTATION_TARGETS = {"docs-config-sync", "docs-build", "docs-export", "docs-publish"}
 
 
 def test_make_help_lists_only_supported_targets(tmp_path: Path) -> None:
     sections = [
         "General", "Containerlab", "cEOS image management", "Lab images",
-        "Node access", "Tests", "Documentation", "Workspace",
+        "Node access", "Tests", "Workspace",
     ]
     result = _run_make("--no-print-directory", "help")
     lines = result.stdout.splitlines()
     assert [line for line in lines if line and not line.startswith(" ")] == sections
     targets = [line.split()[0] for line in lines if line.startswith("  ")]
-    assert set(targets) == EXPECTED_TARGETS
-    assert len(targets) == len(EXPECTED_TARGETS)
+    assert set(targets) == EXPECTED_TARGETS - DOCUMENTATION_TARGETS
+    assert len(targets) == len(EXPECTED_TARGETS - DOCUMENTATION_TARGETS)
     workspace_targets = re.findall(r"^  (\S+)", result.stdout.split("\nWorkspace\n", 1)[1], re.M)
     assert workspace_targets == ["deploy", "redeploy", "destroy", "inspect", "clean", "reset"]
-    assert result.stdout.index("docs-config-sync") < result.stdout.index("docs-build") < result.stdout.index("Workspace")
     shutil.copy(MAKEFILE, tmp_path / "Makefile")
     public_help = _run_make("--no-print-directory", cwd=tmp_path)
     headings = [line for line in public_help.stdout.splitlines() if line and not line.startswith(" ")]
     assert headings == sections
     targets = {line.split()[0] for line in public_help.stdout.splitlines() if line.startswith("  ")}
-    assert targets == EXPECTED_TARGETS - {"docs-build", "docs-export", "docs-publish"}
+    assert targets == EXPECTED_TARGETS - DOCUMENTATION_TARGETS
 
 
 def test_documented_make_commands_use_supported_targets() -> None:
@@ -656,6 +657,7 @@ def test_makefile_defines_mgmt_subnet() -> None:
         ("test-syslog", "lab.test_syslog", None),
         ("test-macsec-dot1x", "lab.test_macsec_dot1x", None),
         ("test-macsec-qkd", "lab.test_macsec_qkd", None),
+        ("test-quadra-tls", "lab.test_macsec_qkd", None),
         ("test-hosts", "lab.test_hosts", "lab.test_lab"),
     ],
 )
@@ -766,10 +768,11 @@ def test_internal_export_mk_resolves_git_branch() -> None:
     assert "--branch '" in result.stdout
 
 
-def test_make_help_lists_export_targets_from_internal_include() -> None:
+def test_documentation_targets_remain_available_but_hidden_from_help() -> None:
     export_mk = REPO_ROOT / "internal" / "export.mk"
     if not export_mk.is_file():
         pytest.skip("internal/export.mk not present")
     result = _run_make("help")
-    for target in ("docs-export", "docs-publish", "docs-build"):
-        assert target in result.stdout
+    for target in DOCUMENTATION_TARGETS:
+        assert target not in result.stdout
+        assert _run_make("-n", target).stdout

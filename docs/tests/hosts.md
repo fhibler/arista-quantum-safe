@@ -4,6 +4,8 @@
 
 ## What is checked
 
+**Wait times:** ping usually takes about **2 s per route**, with a **30 s command timeout** in both normal and verbose mode. Twelve routes run sequentially, for up to **360 s** of command timeout budget. The suite does not wait for routing convergence; see [Wait times](index.md#wait-times).
+
 | Check | Type | Method |
 |-------|------|--------|
 | Host-to-host reachability | `[live]` | `ping` from each `host1` / `host2` / `host3` container to every other host's data-plane address |

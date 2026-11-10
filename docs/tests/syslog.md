@@ -2,6 +2,8 @@
 
 `make test-syslog` runs `python -m lab.test_syslog`.
 
+**Wait times:** collector health polls for up to **90 s**. Each switch/address-family delivery check polls for up to **45 s** (plus 0.5 s capture setup), followed by wire verification taking **7.5 s** on the first capture or up to **19 s** in capture/reconnect/retry waits across two attempts. Six sequential wire checks therefore add about **45 s** normally or at most **114 s** of intentional waits. Command/decode time is extra; health/delivery polls can overrun by one 2 s interval. The cleartext guard runs concurrently for up to 30 s and stops when delivery completes. See [Wait times](index.md#wait-times).
+
 **Policy:** Encrypted delivery over TLS 1.3. EOS **4.37.0F** negotiates **`X25519MLKEM768`** to the collector on all three switches over IPv4 and IPv6; classical fallback remains configured (see [Syslog caveats](../services/syslog.md#caveats)).
 
 ## What is checked

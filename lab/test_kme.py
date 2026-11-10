@@ -32,6 +32,7 @@ from lab.topology_contract import (
     mgmt_ips_for_subnet,
 )
 from lab.verbose import echo_command, echo_result, verbose_enabled
+from lab.report import report_wait
 
 
 @dataclass(frozen=True)
@@ -201,6 +202,11 @@ def enc_keys_on_kme_a(targets: KmeTargets, *, verbose: bool | None = None) -> tu
     title = "kme-a enc_keys (master SAE, AES-256)"
     url = f"https://{targets.kme_a_ip}:8010/api/v1/keys/{KME_B_SAE_ID}/enc_keys"
     deadline = time.monotonic() + ENC_KEYS_POOL_TIMEOUT_SEC
+    report_wait(
+        "kme-a enc_keys key-pool readiness", maximum_sec=ENC_KEYS_POOL_TIMEOUT_SEC,
+        detail=f"retry window; polls every {ENC_KEYS_POOL_POLL_SEC}s; returns when ready; "
+               f"each request has a {DOCKER_EXEC_TIMEOUT_SEC}s timeout",
+    )
 
     while True:
         try:

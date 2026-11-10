@@ -22,7 +22,7 @@ Verified on **EOS 4.37.0F** across three switches over IPv4 and IPv6 unless note
 | [RadSec](radius-radsec.md) | 2083 | `RADSEC` | Yes | **Yes** | [radius-radsec.md](radius-radsec.md) |
 | [Syslog-over-TLS](syslog.md) | 6514 | `SYSLOG` | Yes | **Yes** (fallback configured) | [syslog.md](syslog.md) |
 | [MACsec (802.1X)](macsec.md) | - | EAP-TLS via `DOT1X` | Yes | **Yes** (EAP-TLS) | [macsec.md](macsec.md) |
-| [QKD / QuaDRA](qkd-etsi014.md) | 8010/8020 | ETSI 014 mTLS | Separate key source | **Unverified TLS KEX**; QKD works with extension | [qkd-etsi014.md](qkd-etsi014.md) |
+| [QKD / QuaDRA](qkd-etsi014.md) | 8010/8020 | ETSI 014 mTLS | Separate key source | **Yes** (both QuaDRA clients, IPv4; enforcement unverified) | [qkd-etsi014.md](qkd-etsi014.md) |
 
 !!! note "Terminology"
     - **Non-PQC** - classical key exchange only (for example `x25519`, `secp256r1`).

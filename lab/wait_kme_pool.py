@@ -11,6 +11,7 @@ import time
 
 from lab.kme_http import DOCKER_EXEC_TIMEOUT_SEC, KME_CA_CERT_CONTAINER, kme_curl_argv
 from lab.topology_contract import KME_B_SAE_ID, KME_KEY_SIZE, LAB_NAME, container_name, mgmt_ips_for_subnet
+from lab.report import report_wait
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -21,6 +22,7 @@ UUID_RE = re.compile(
 DEFAULT_MIN_WAIT_SEC = 15
 DEFAULT_TIMEOUT_SEC = 90
 POLL_INTERVAL_SEC = 5
+CONTAINER_START_TIMEOUT_SEC = 60
 KME_KEY_SIZE_BITS = KME_KEY_SIZE * 8
 
 
@@ -44,7 +46,11 @@ def container_running(name: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
-def wait_for_containers(*names: str, timeout_sec: int = 60) -> None:
+def wait_for_containers(*names: str, timeout_sec: int = CONTAINER_START_TIMEOUT_SEC) -> None:
+    report_wait(
+        "KME container startup", maximum_sec=timeout_sec,
+        detail="polling window; returns when both containers are running; inspect command time extra",
+    )
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
         if all(container_running(name) for name in names):
@@ -139,7 +145,6 @@ def wait_for_kme_pool(
     kme_a_container = container_name("kme-a", lab_name=clab_name)
     kme_b_container = container_name("kme-b", lab_name=clab_name)
 
-    log("Waiting for KME containers...", force=True)
     wait_for_containers(kme_a_container, kme_b_container)
     log(
         f"KME up; waiting {min_wait_sec}s for key generation "

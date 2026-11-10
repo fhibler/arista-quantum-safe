@@ -23,6 +23,7 @@ from lab.report import (
     print_test_header,
     report_check,
     report_check_summary,
+    report_wait,
     reset_check_stats,
     status_marker,
     visible_len,
@@ -73,6 +74,19 @@ def test_report_check_increments_stats(capsys, monkeypatch) -> None:
     report_check_summary("OpenConfig")
     summary = capsys.readouterr().out.strip()
     assert summary == "OpenConfig: ✓ - 1 passed, 1 warning, 1 skipped"
+
+
+def test_wait_notice_flushes_without_counting_a_pass(monkeypatch) -> None:
+    from unittest.mock import patch
+    from lab.report import check_stats
+
+    reset_check_stats()
+    with patch("builtins.print") as printed:
+        report_wait("wire capture", expected_sec=7.5, maximum_sec=19, detail="command time extra")
+    printed.assert_called_once_with(
+        "  [wait]  wire capture: expected 7.5s; maximum 19s; command time extra", flush=True,
+    )
+    assert check_stats() == CheckStats()
 
 
 def test_format_check_line_warn_is_prominent(monkeypatch) -> None:

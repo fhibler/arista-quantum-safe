@@ -82,7 +82,7 @@ Cleartext UDP/TCP **514 is disabled** - only TLS **6514** listens.
 | Live wire (probe → collector) | **PQC-safe** when using PQC OpenSSL |
 
 !!! note "Hybrid negotiation verified; fallback remains configured"
-    On **4.37.0F**, fresh EOS-to-collector handshakes select **4588 (`X25519MLKEM768`)**. The client offers `4588,29`; inspect the collector’s **ServerHello**, not just the offered ClientHello groups.
+    On **4.37.0F**, EOS-to-collector connections negotiate **`X25519MLKEM768`** on all three switches over IPv4 and IPv6.
 
     Both peers still allow classical fallback. The measured sessions are PQC-safe, but this configuration does not enforce hybrid-only negotiation. Tightening the policy requires separate configuration changes and testing.
 

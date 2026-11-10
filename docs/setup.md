@@ -133,15 +133,12 @@ make images-check
 | `make test-lab` | Run all standard live lab checks |
 | `make test-lab-runner` | Run the same checks through the Docker harness |
 | `make test-ssh` / `test-eapi` / `test-radsec` / `test-syslog` / `test-openconfig` / `test-kme` / `test-macsec-dot1x` / `test-macsec-qkd` / `test-hosts` | Run one live suite |
-| `make test-macsec-dot1x-reauth` | Verify MACsec with periodic reauthentication (~75 s) |
+| `make test-macsec-dot1x-reauth` | Reauth: 75 s fixed wait, up to 103 s including MKA retry delays; baseline/commands extra |
+| `make test-quadra-tls` | Passive QuaDRA TLS: 135 s capture, TLS phase budget up to 250 s; functional checks extra |
 
 Add `VERBOSE=1` to a live test target to echo commands and full output. `test-offline` uses the repository's default pytest selection, which excludes Containerlab integration tests; run `python3 -m pytest -o addopts=` to include them when Containerlab is available.
 
-### Documentation
-
-| Target | Description |
-|--------|-------------|
-| `make docs-config-sync` | Sync README and MkDocs site settings from `site.yaml` |
+Tests print `[wait]` timing notices before captures, polling, and retries even without `VERBOSE=1`. See [test wait times](tests/index.md#wait-times) for expected durations and maximum budgets for syslog, RadSec, MKA, reauth, QuaDRA, KME, gNPSI, and host pings. Poll/retry budgets exclude command time unless stated.
 
 ### Workspace
 

@@ -36,6 +36,7 @@ from lab.topology_contract import (
     QUADRA_PEER_IP,
 )
 from lab.test_pqc_connections import LabTargets, ceos_cli, ceos_show_json, docker_exec
+from lab.report import report_wait
 
 MACSEC_INTERFACE = "Ethernet1"
 AUTHENTICATOR = "ceos1-both"
@@ -205,6 +206,10 @@ def _read_mka_ckn(container: str, node: str, *, verbose: bool | None = None) -> 
 def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
     """Poll MKA participants until live peers appear (802.1X reauth can briefly clear them)."""
     last_error: str | None = None
+    report_wait(
+        f"{node} MKA live peers", maximum_sec=(MKA_POLL_ATTEMPTS - 1) * MKA_POLL_INTERVAL_SEC,
+        detail=f"retry delays; {MKA_POLL_ATTEMPTS} attempts, {MKA_POLL_INTERVAL_SEC}s apart; command time extra",
+    )
     for attempt in range(MKA_POLL_ATTEMPTS):
         if attempt:
             time.sleep(MKA_POLL_INTERVAL_SEC)
@@ -226,6 +231,10 @@ def check_matching_mka_ckn(
 ) -> str:
     """Resample both peers until their principal CKNs agree across reauth."""
     last_error = "MKA peer CKN check failed"
+    report_wait(
+        "matching MKA CKN on both peers", maximum_sec=(MKA_POLL_ATTEMPTS - 1) * MKA_POLL_INTERVAL_SEC,
+        detail=f"retry delays; {MKA_POLL_ATTEMPTS} paired attempts, {MKA_POLL_INTERVAL_SEC}s apart; command time extra",
+    )
     for attempt in range(MKA_POLL_ATTEMPTS):
         if attempt:
             time.sleep(MKA_POLL_INTERVAL_SEC)
@@ -268,7 +277,12 @@ def check_dot1x_reauth_cycle(
     baseline_ok = count_radius_login_ok(targets.radius_container, verbose=verbose)
 
     print()
-    print_section_header(f"=== reauth (waiting {wait_sec}s for periodic 802.1X reauthentication) ===")
+    print_section_header("=== periodic 802.1X reauthentication ===")
+    report_wait(
+        "periodic 802.1X reauthentication",
+        expected_sec=wait_sec, maximum_sec=wait_sec + (MKA_POLL_ATTEMPTS - 1) * MKA_POLL_INTERVAL_SEC,
+        detail=f"{wait_sec}s fixed wait plus MKA retry delays; command time extra",
+    )
     time.sleep(wait_sec)
 
     check_authenticator_dot1x(auth_container, verbose=verbose)
@@ -351,6 +365,11 @@ def check_static_macsec_interface(
 ) -> None:
     peer_ip = QUADRA_PEER_IP.get(node)
     output = None
+    report_wait(
+        f"{node} {interface} static MACsec convergence",
+        maximum_sec=(STATIC_MACSEC_POLL_ATTEMPTS - 1) * STATIC_MACSEC_POLL_INTERVAL_SEC if peer_ip else 0,
+        detail=f"retry delays; {STATIC_MACSEC_POLL_ATTEMPTS} attempts; ping/show command time extra",
+    )
     for attempt in range(STATIC_MACSEC_POLL_ATTEMPTS):
         if attempt and peer_ip:
             time.sleep(STATIC_MACSEC_POLL_INTERVAL_SEC)

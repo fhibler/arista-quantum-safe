@@ -8,6 +8,18 @@ from lab.test_hosts import (
 from lab.topology_contract import IP_FAMILY_IPV4, IP_FAMILY_IPV6
 
 
+def test_verbose_host_ping_preserves_response_timeout() -> None:
+    from unittest.mock import patch
+    from lab.test_hosts import HOST_PING_TIMEOUT_SEC, _ping_host
+
+    with patch("lab.test_lab.run_step") as run:
+        assert _ping_host(
+            src_host="host1", dst_host="host2", src_ip="10.0.1.1", target_ip="10.0.2.1",
+            clab_name="test", verbose=True, family=IP_FAMILY_IPV4,
+        )
+    assert run.call_args.kwargs["timeout_sec"] == HOST_PING_TIMEOUT_SEC
+
+
 def test_host_data_ips_match_contract() -> None:
     assert host_data_ips() == {
         "host1": "10.0.1.1",

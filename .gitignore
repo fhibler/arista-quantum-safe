@@ -29,6 +29,9 @@ site/
 *.swp
 .DS_Store
 
+# Local Codex state and configuration
+/.codex/
+
 # Python test artifacts
 .pytest_cache/
 __pycache__/

@@ -1,5 +1,5 @@
 {
-    "name": "Quantum Safe (Containerlab DinD)",
+    "name": "Arista Quantum Safe Lab",
     "build": {
         "dockerfile": "Dockerfile",
         "context": ".."

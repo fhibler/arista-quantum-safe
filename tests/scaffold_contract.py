@@ -7,6 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_PATHS = [
+    "AGENTS.md",
     ".gitignore",
     ".env.example",
     "Makefile",

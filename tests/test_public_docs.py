@@ -210,6 +210,14 @@ def test_public_docs_have_no_internal_links() -> None:
     assert not offenders, "public docs must not reference internal/:\n" + "\n".join(offenders)
 
 
+def test_public_docs_do_not_reference_internal_arista_devcontainer() -> None:
+    for path in (README, MKDOCS, *sorted(PUBLIC_DOCS.rglob("*.md"))):
+        content = path.read_text(encoding="utf-8").lower()
+        assert ".devcontainer/arista" not in content, (
+            f"public documentation must not reference the internal Arista devcontainer: {path}"
+        )
+
+
 def test_public_setup_doc_has_makefile_reference() -> None:
     content = (PUBLIC_DOCS / "setup.md").read_text(encoding="utf-8")
     assert "make help" in content

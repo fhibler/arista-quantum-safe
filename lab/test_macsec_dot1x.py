@@ -187,29 +187,62 @@ def check_macsec_interface(container: str, node: str, *, verbose: bool | None = 
     report_live(f"MACsec controlled port up, traffic encrypted on {MACSEC_INTERFACE}")
 
 
+def _read_mka_ckn(container: str, node: str, *, verbose: bool | None = None) -> str:
+    """Read one successful MKA participant snapshot with live peers."""
+    output = ceos_show_json(container, "show mac security participants detail", verbose=verbose)
+    if not json_truthy(output, "success") and not json_tree_contains(
+        output, "Success", case_sensitive=False
+    ):
+        raise MacsecCheckError(f"{node}: expected successful MKA participant")
+    if not mka_has_live_peers(output):
+        raise MacsecCheckError(f"{node}: MKA live peer list is empty")
+    try:
+        return extract_ckn_from_json(output)
+    except CeosJsonError as exc:
+        raise MacsecCheckError(f"{node}: {exc}") from exc
+
+
 def check_mka_participants(container: str, node: str, *, verbose: bool | None = None) -> str:
     """Poll MKA participants until live peers appear (802.1X reauth can briefly clear them)."""
     last_error: str | None = None
     for attempt in range(MKA_POLL_ATTEMPTS):
         if attempt:
             time.sleep(MKA_POLL_INTERVAL_SEC)
-        output = ceos_show_json(container, "show mac security participants detail", verbose=verbose)
-        if not json_truthy(output, "success") and not json_tree_contains(
-            output, "Success", case_sensitive=False
-        ):
-            last_error = f"{node}: expected successful MKA participant"
-            continue
-        if not mka_has_live_peers(output):
-            last_error = f"{node}: MKA live peer list is empty"
-            continue
         try:
-            ckn = extract_ckn_from_json(output)
-        except CeosJsonError as exc:
+            ckn = _read_mka_ckn(container, node, verbose=verbose)
+        except MacsecCheckError as exc:
             last_error = str(exc)
             continue
         report_live(f"MKA participant CKN {ckn}, Success: True")
         return ckn
     raise MacsecCheckError(last_error or f"{node}: MKA participants check failed")
+
+
+def check_matching_mka_ckn(
+    auth_container: str,
+    supp_container: str,
+    *,
+    verbose: bool | None = None,
+) -> str:
+    """Resample both peers until their principal CKNs agree across reauth."""
+    last_error = "MKA peer CKN check failed"
+    for attempt in range(MKA_POLL_ATTEMPTS):
+        if attempt:
+            time.sleep(MKA_POLL_INTERVAL_SEC)
+        try:
+            auth_ckn = _read_mka_ckn(auth_container, AUTHENTICATOR, verbose=verbose)
+            supp_ckn = _read_mka_ckn(supp_container, SUPPLICANT, verbose=verbose)
+        except MacsecCheckError as exc:
+            last_error = str(exc)
+            continue
+        if auth_ckn != supp_ckn:
+            last_error = (
+                f"CKN mismatch: {AUTHENTICATOR}={auth_ckn!r} vs {SUPPLICANT}={supp_ckn!r}"
+            )
+            continue
+        report_live(f"MKA participants successful with live peers, matching CKN on both peers ({auth_ckn})")
+        return auth_ckn
+    raise MacsecCheckError(f"{last_error} (after {MKA_POLL_ATTEMPTS} paired MKA attempts)")
 
 
 def count_radius_login_ok(radius_container: str, *, verbose: bool | None = None) -> int:
@@ -241,15 +274,9 @@ def check_dot1x_reauth_cycle(
     check_authenticator_dot1x(auth_container, verbose=verbose)
     check_supplicant_dot1x(supp_container, verbose=verbose)
 
-    auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR, verbose=verbose)
-    supp_ckn = check_mka_participants(supp_container, SUPPLICANT, verbose=verbose)
     # Each EAP-TLS reauth derives a new MSK / EAP-Session-Id, so CKN often
     # rotates. That is expected; peers must still agree on the live CA.
-    if auth_ckn != supp_ckn:
-        raise MacsecCheckError(
-            f"CKN mismatch after reauth: {AUTHENTICATOR}={auth_ckn!r} vs "
-            f"{SUPPLICANT}={supp_ckn!r} (baseline {baseline_ckn!r})"
-        )
+    auth_ckn = check_matching_mka_ckn(auth_container, supp_container, verbose=verbose)
 
     after_ok = count_radius_login_ok(targets.radius_container, verbose=verbose)
     if after_ok <= baseline_ok:
@@ -442,7 +469,6 @@ def run_macsec_checks(
         check_authenticator_config(auth_container, verbose=verbose)
     check_authenticator_dot1x(auth_container, verbose=verbose)
     check_macsec_interface(auth_container, AUTHENTICATOR, verbose=verbose)
-    auth_ckn = check_mka_participants(auth_container, AUTHENTICATOR, verbose=verbose)
 
     print()
     print_device(SUPPLICANT)
@@ -450,16 +476,12 @@ def run_macsec_checks(
         check_supplicant_config(supp_container, verbose=verbose)
     check_supplicant_dot1x(supp_container, verbose=verbose)
     check_macsec_interface(supp_container, SUPPLICANT, verbose=verbose)
-    supp_ckn = check_mka_participants(supp_container, SUPPLICANT, verbose=verbose)
-
-    if auth_ckn != supp_ckn:
-        raise MacsecCheckError(
-            f"CKN mismatch: {AUTHENTICATOR}={auth_ckn!r} vs {SUPPLICANT}={supp_ckn!r}"
-        )
-    report_live(f"matching CKN on both peers ({auth_ckn})")
 
     print()
     print_device("inter-switch")
+    # Keep peer reads adjacent, then resample both if periodic reauth rotates
+    # the CKN between reads or EOS has not switched both principal actors yet.
+    auth_ckn = check_matching_mka_ckn(auth_container, supp_container, verbose=verbose)
     probe_inter_switch_ping(
         auth_container,
         AUTHENTICATOR,

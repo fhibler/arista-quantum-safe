@@ -50,6 +50,11 @@ Optional extended reauth wait: `make test-macsec-dot1x-reauth` (`VERIFY_REAUTH=1
 - Inter-switch ping succeeds
 - With `test-macsec-dot1x-reauth`: port stays Authorized, peers still match on CKN, RADIUS `Login OK` count increases
 
+The CKN comparison samples both peers together and retries up to 15 times, two seconds apart.
+Periodic 802.1X reauthentication can rotate the CKN and briefly select different principal
+MKA participants on each switch. Both the normal and extended reauth checks wait for
+agreement; a persistent mismatch or missing live peers still fails.
+
 ## Manual reproduction
 
 ```bash

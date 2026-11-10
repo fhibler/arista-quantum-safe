@@ -14,6 +14,7 @@ from lab.test_macsec_dot1x import (
     DOT1X_EAP_IDENTITY,
     MacsecCheckError,
     check_dot1x_reauth_cycle,
+    check_matching_mka_ckn,
     count_radius_login_ok,
     check_mka_participants,
     extract_ckn,
@@ -110,10 +111,13 @@ def test_extract_ckn_raises_when_missing() -> None:
         extract_ckn("Interface: Ethernet1\n    Success: True")
 
 
-def test_run_macsec_checks_happy_path(capsys) -> None:
+@pytest.mark.parametrize("rotate_during_check", [False, True])
+def test_run_macsec_checks_happy_path(capsys, rotate_during_check) -> None:
     state_json = _macsec_state_json(ckn="abcdef0123456789")
+    participant_reads = 0
 
     def fake_ceos_cli(container: str, commands: str, **kwargs: object) -> str:
+        nonlocal participant_reads
         if "show running-config | include dot1x" in commands:
             section, _interface = _dot1x_config_text(authenticator="ceos1" in container)
             return section
@@ -152,14 +156,19 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
         if "show mac security interface Ethernet2" in commands:
             return json.dumps(state_json["macSecurityInterface"])
         if "show mac security participants" in commands:
+            participant_reads += 1
+            if rotate_during_check and participant_reads == 1:
+                return json.dumps(_macsec_state_json(ckn="aaa")["macSecurityParticipants"])
             return json.dumps(state_json["macSecurityParticipants"])
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
     with (
         patch("lab.test_macsec_dot1x.ceos_cli", side_effect=fake_ceos_cli),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_macsec_dot1x.time.sleep") as sleep,
     ):
         run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24")
+        assert sleep.call_count == int(rotate_during_check)
 
     output = capsys.readouterr().out
     assert "MACsec: ✓" in output
@@ -167,13 +176,11 @@ def test_run_macsec_checks_happy_path(capsys) -> None:
 
 
 def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
-    call_count = {"n": 0}
     state_json = _macsec_state_json(ckn="aaa")
 
-    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+    def fake_ceos_cli(container: str, commands: str, **kwargs: object) -> str:
         if "show mac security participants" in commands:
-            call_count["n"] += 1
-            ckn = "aaa" if call_count["n"] == 1 else "bbb"
+            ckn = "aaa" if "ceos1-both" in container else "bbb"
             payload = {"participants": [{"ckn": ckn, "success": True, "livePeerList": ["peer"]}]}
             return json.dumps(payload)
         if "show dot1x hosts" in commands:
@@ -194,6 +201,7 @@ def test_run_macsec_checks_ckn_mismatch(capsys) -> None:
     with (
         patch("lab.test_macsec_dot1x.ceos_cli", side_effect=fake_ceos_cli),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
+        patch("lab.test_macsec_dot1x.time.sleep"),
     ):
         with pytest.raises(MacsecCheckError, match="CKN mismatch"):
             run_macsec_checks(clab_name="quantum-safe", mgmt_subnet="172.20.127.0/24", skip_config=True)
@@ -214,6 +222,66 @@ def test_check_mka_participants_retries_until_peers_appear() -> None:
             result = check_mka_participants("clab-test-ceos1-both", AUTHENTICATOR)
     assert result == ckn
     assert call_count["n"] == 3
+    assert sleep.call_count == 2
+
+
+def test_check_matching_mka_ckn_retries_principal_transition(capsys) -> None:
+    def snapshot(principal: str) -> dict:
+        return {"interfaces": {"Ethernet1": {"participants": {
+            ckn: {
+                "success": True,
+                "principalActor": ckn == principal,
+                "details": {"sakTransmit": True, "livePeerList": ["peer1"]},
+            }
+            for ckn in ("aaa", "bbb")
+        }}}}
+
+    with (
+        patch("lab.test_macsec_dot1x.ceos_show_json", side_effect=[
+            snapshot("aaa"), snapshot("bbb"), snapshot("bbb"), snapshot("bbb"),
+        ]) as show,
+        patch("lab.test_macsec_dot1x.time.sleep") as sleep,
+    ):
+        assert check_matching_mka_ckn("auth", "supp") == "bbb"
+
+    assert [call.args[0] for call in show.call_args_list] == ["auth", "supp", "auth", "supp"]
+    sleep.assert_called_once_with(2)
+    output = capsys.readouterr().out
+    assert "matching CKN on both peers (bbb)" in output
+    assert "aaa" not in output
+
+
+@pytest.mark.parametrize("recover", [False, True])
+def test_check_matching_mka_ckn_handles_missing_peers(recover) -> None:
+    valid = _macsec_state_json(ckn="aaa")["macSecurityParticipants"]
+    empty = {"participants": [{"ckn": "aaa", "success": True, "livePeerList": []}]}
+    samples = [valid, empty, valid, valid if recover else empty]
+    with (
+        patch("lab.test_macsec_dot1x.MKA_POLL_ATTEMPTS", 2),
+        patch("lab.test_macsec_dot1x.ceos_show_json", side_effect=samples) as show,
+        patch("lab.test_macsec_dot1x.time.sleep"),
+    ):
+        if recover:
+            assert check_matching_mka_ckn("auth", "supp") == "aaa"
+        else:
+            with pytest.raises(MacsecCheckError, match="ceos2-pqc: MKA live peer list is empty"):
+                check_matching_mka_ckn("auth", "supp")
+    assert show.call_count == 4
+
+
+def test_check_matching_mka_ckn_rejects_matches_from_different_attempts() -> None:
+    samples = [
+        _macsec_state_json(ckn=ckn)["macSecurityParticipants"]
+        for ckn in ("aaa", "bbb", "bbb", "ccc", "ccc", "ddd")
+    ]
+    with (
+        patch("lab.test_macsec_dot1x.MKA_POLL_ATTEMPTS", 3),
+        patch("lab.test_macsec_dot1x.ceos_show_json", side_effect=samples) as show,
+        patch("lab.test_macsec_dot1x.time.sleep") as sleep,
+    ):
+        with pytest.raises(MacsecCheckError, match="CKN mismatch: ceos1-both='ccc' vs ceos2-pqc='ddd'.*3 paired"):
+            check_matching_mka_ckn("auth", "supp")
+    assert show.call_count == 6
     assert sleep.call_count == 2
 
 
@@ -255,12 +323,15 @@ def test_check_dot1x_reauth_cycle_happy_path(capsys) -> None:
     assert "CKN unchanged (abcdef0123456789)" in output
 
 
-def test_check_dot1x_reauth_cycle_allows_ckn_rotation(capsys) -> None:
+@pytest.mark.parametrize("rotate_during_check", [False, True])
+def test_check_dot1x_reauth_cycle_allows_ckn_rotation(capsys, rotate_during_check) -> None:
     """EAP-TLS reauth derives a new MSK, so CKN may change; peers must still match."""
     state_json = _macsec_state_json(ckn="2de6708f95996d6d1357f08347db26df")
     login_ok_counts = iter([2, 3])
+    participant_reads = 0
 
     def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+        nonlocal participant_reads
         if "show dot1x hosts" in commands:
             return json.dumps(state_json["dot1xHosts"])
         if "show dot1x interface" in commands:
@@ -268,6 +339,9 @@ def test_check_dot1x_reauth_cycle_allows_ckn_rotation(capsys) -> None:
         if "show dot1x supplicant" in commands:
             return json.dumps(state_json["dot1xSupplicant"])
         if "show mac security participants" in commands:
+            participant_reads += 1
+            if rotate_during_check and participant_reads == 1:
+                return json.dumps(_macsec_state_json(ckn="aaa")["macSecurityParticipants"])
             return json.dumps(state_json["macSecurityParticipants"])
         raise AssertionError(f"unexpected ceos_cli commands: {commands!r}")
 
@@ -298,12 +372,10 @@ def test_check_dot1x_reauth_cycle_allows_ckn_rotation(capsys) -> None:
 def test_check_dot1x_reauth_cycle_raises_on_peer_ckn_mismatch() -> None:
     state_json = _macsec_state_json(ckn="aaa")
     login_ok_counts = iter([2, 3])
-    call_count = {"n": 0}
 
-    def fake_ceos_cli(_container: str, commands: str, **kwargs: object) -> str:
+    def fake_ceos_cli(container: str, commands: str, **kwargs: object) -> str:
         if "show mac security participants" in commands:
-            call_count["n"] += 1
-            ckn = "aaa" if call_count["n"] == 1 else "bbb"
+            ckn = "aaa" if "ceos1-both" in container else "bbb"
             payload = {"participants": [{"ckn": ckn, "success": True, "livePeerList": ["peer"]}]}
             return json.dumps(payload)
         if "show dot1x hosts" in commands:
@@ -326,7 +398,7 @@ def test_check_dot1x_reauth_cycle_raises_on_peer_ckn_mismatch() -> None:
         patch("lab.test_macsec_dot1x.docker_exec", side_effect=fake_docker_exec),
         patch("lab.test_pqc_connections.ceos_cli", side_effect=fake_ceos_cli),
     ):
-        with pytest.raises(MacsecCheckError, match="CKN mismatch after reauth"):
+        with pytest.raises(MacsecCheckError, match="CKN mismatch"):
             check_dot1x_reauth_cycle(
                 targets,
                 "clab-test-ceos1-both",

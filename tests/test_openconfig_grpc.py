@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +12,7 @@ from lab.test_openconfig_grpc import (
     probe_gribi_mtls,
     probe_gribi_tls,
     probe_gnpsi_tls,
+    probe_gnpsi_subscribe,
 )
 from lab.errors import PqcConnectionError
 from lab.tls_wire import TlsWireResult, parse_tls_wire_output
@@ -127,3 +129,45 @@ def test_probe_gnpsi_tls_skips_on_connection_refused(capsys) -> None:
     output = capsys.readouterr().out
     assert "SKIP" in output
     assert str(GNPSI_PORT) in output
+
+
+@pytest.mark.parametrize("code", [0, 124, 143])
+def test_gnpsi_subscribe_does_not_count_timeout_stderr_as_datagram(code, capsys) -> None:
+    result = subprocess.CompletedProcess([], code, stdout="", stderr="Terminated\n")
+    with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
+        probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
+    output = capsys.readouterr().out
+    assert "SKIP" in output
+    assert "received datagram" not in output
+
+
+@pytest.mark.parametrize("code", [0, 124, 143])
+def test_gnpsi_subscribe_accepts_sample_before_stream_timeout(code, capsys) -> None:
+    result = subprocess.CompletedProcess(
+        [], code, stdout='{}\n{"packet": "AQID", "timestamp": "123"}\n', stderr="Terminated\n",
+    )
+    wire = parse_tls_wire_output(_pqc_output())
+    with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result) as probe:
+        probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both", tls_wire=wire)
+    output = capsys.readouterr().out
+    assert "received datagram" in output
+    assert "SKIP" not in output
+    assert "|| true" not in probe.call_args.args[0]
+
+
+def test_gnpsi_subscribe_does_not_count_empty_sample_as_datagram(capsys) -> None:
+    result = subprocess.CompletedProcess([], 0, stdout='{"timestamp":"123"}', stderr="")
+    with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
+        probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")
+    assert "SKIP" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "code,stdout,stderr",
+    [(1, "", "rpc error"), (0, "not a datagram", ""), (0, "[]", "")],
+)
+def test_gnpsi_subscribe_rejects_rpc_errors_and_invalid_payloads(code, stdout, stderr) -> None:
+    result = subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
+    with patch("lab.test_openconfig_grpc.run_grpc_probe", return_value=result):
+        with pytest.raises(PqcConnectionError, match="gNPSI Subscribe"):
+            probe_gnpsi_subscribe(_FakeTargets(), "ceos1-both")

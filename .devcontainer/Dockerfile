@@ -1,6 +1,7 @@
 # Fork of srl-labs/containerlab .devcontainer/slim.Dockerfile on Debian trixie.
+# Pin Python 3.14 until the VS Code Python tooling supports Python 3.15.
 # Omits dclab and vscode/zsh customization; this lab runs as root.
-FROM mcr.microsoft.com/devcontainers/python:3-trixie
+FROM mcr.microsoft.com/devcontainers/python:3.14-trixie
 
 ARG GNMIC_VERSION=0.47.0
 

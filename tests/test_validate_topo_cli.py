@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lab.topology_contract import GEN_TOPOLOGY_PATH, load_topology, validate_topology
+from lab.topology_contract import DEFAULT_CEOS_IMAGE, GEN_TOPOLOGY_PATH, load_topology, validate_topology
 from tests.scaffold_contract import REPO_ROOT
 
 
@@ -34,7 +34,7 @@ def test_validate_topo_cli_success() -> None:
 
 
 def test_validate_topo_cli_with_ceos_image_flag() -> None:
-    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--ceos-image", "ceos:4.36.2F")
+    result = _run_cli(str(GEN_TOPOLOGY_PATH), "--ceos-image", DEFAULT_CEOS_IMAGE)
     assert result.returncode == 0, result.stderr
 
 

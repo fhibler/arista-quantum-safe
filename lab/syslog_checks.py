@@ -97,6 +97,16 @@ def tshark_client_hello_filter(switch_ip: str) -> str:
     )
 
 
+def tshark_server_hello_filter(switch_ip: str) -> str:
+    """Select the collector's negotiated group, rather than the client's offers."""
+    if ":" in switch_ip:
+        return f"tls.handshake.type == 2 && ipv6.dst == {switch_ip}"
+    return (
+        f"tls.handshake.type == 2 && "
+        f"(ip.dst == {switch_ip} || ipv6.dst == ::ffff:{switch_ip})"
+    )
+
+
 def _tcpdump_permission_denied(stderr: str) -> bool:
     """Return True when tcpdump stderr indicates missing capture privileges."""
     lower = stderr.lower()
@@ -291,7 +301,7 @@ def capture_eos_syslog_tls_key_share_group(
     settle_sec: float = 5.0,
     verbose: bool | None = None,
 ) -> int | None:
-    """Capture cEOS→syslog ClientHello and return the client key_share group id.
+    """Capture cEOS→syslog TLS and return the ServerHello key_share group id.
 
     Returns None when capture or decode is unavailable. Capture runs via
     ``tcpdump -i eth0`` inside the syslog collector container (no host bridge
@@ -311,7 +321,7 @@ def capture_eos_syslog_tls_key_share_group(
     if not pcap_ok:
         return None
 
-    hello_filter = tshark_client_hello_filter(switch_ip)
+    hello_filter = tshark_server_hello_filter(switch_ip)
     decode = subprocess.run(
         [
             "docker",

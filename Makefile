@@ -7,7 +7,7 @@ SHELL := /bin/bash
 -include .env
 
 CLAB_MIN_VERSION ?= 0.78.0
-CEOS_IMAGE ?= ceos:4.36.2F
+CEOS_IMAGE ?= ceos:4.37.0F
 CEOS_VERSION ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f2)
 CEOS_DOCKER_NAME ?= $(shell echo "$(CEOS_IMAGE)" | cut -d: -f1)
 CEOS_DOWNLOAD_DIR ?= download

@@ -215,7 +215,7 @@ def check_mka_participants(container: str, node: str, *, verbose: bool | None = 
 def count_radius_login_ok(radius_container: str, *, verbose: bool | None = None) -> int:
     result = docker_exec(
         radius_container,
-        "grep -c 'Auth: Login OK' /var/log/radius/radius.log 2>/dev/null || true",
+        r"grep -Ec 'Auth: (\([0-9]+\) )?Login OK' /var/log/radius/radius.log 2>/dev/null || true",
         check=False,
         verbose=verbose,
         title=f"{radius_container} Login OK count",

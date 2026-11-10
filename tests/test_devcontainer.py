@@ -13,7 +13,7 @@ DEVCONTAINER_JSON = REPO_ROOT / ".devcontainer" / "devcontainer.json"
 DEVCONTAINER_DOCKERFILE = REPO_ROOT / ".devcontainer" / "Dockerfile"
 DEVCONTAINER_LOCK = REPO_ROOT / ".devcontainer" / "devcontainer-lock.json"
 
-TRIXIE_BASE = "mcr.microsoft.com/devcontainers/python:3-trixie"
+TRIXIE_BASE = "mcr.microsoft.com/devcontainers/python:3.14-trixie"
 
 
 def _devcontainer_text() -> str:

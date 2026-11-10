@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from unittest.mock import patch
 
@@ -13,11 +14,33 @@ from lab.test_macsec_dot1x import (
     DOT1X_EAP_IDENTITY,
     MacsecCheckError,
     check_dot1x_reauth_cycle,
+    count_radius_login_ok,
     check_mka_participants,
     extract_ckn,
     run_macsec_checks,
 )
 from lab.topology_contract import DOT1X_EAP_SSL_PROFILE, DOT1X_REAUTH_PERIOD_SEC, DOT1X_SUPPLICANT_PROFILE, MACSEC_PROFILE
+
+
+@pytest.mark.parametrize(
+    "lines,expected",
+    [
+        ("Auth: Login OK: [ceos2-pqc]\n", 1),
+        ("Auth: (59) Login OK: [ceos2-pqc]\n", 1),
+        ("Auth: Login OK: [old]\nAuth: (60) Login OK: [new]\nAuth: (61) Login incorrect\n", 2),
+        ("Auth: (62) Login incorrect\n", 0),
+    ],
+)
+def test_count_radius_login_ok_accepts_request_ids(lines, expected, tmp_path) -> None:
+    logfile = tmp_path / "radius.log"
+    logfile.write_text(lines)
+
+    def execute_count(container, command, **kwargs):
+        command = command.replace("/var/log/radius/radius.log", shlex.quote(str(logfile)))
+        return subprocess.run(["sh", "-c", command], capture_output=True, text=True)
+
+    with patch("lab.test_macsec_dot1x.docker_exec", side_effect=execute_count):
+        assert count_radius_login_ok("radius") == expected
 
 
 def _dot1x_config_text(*, authenticator: bool) -> tuple[str, str]:

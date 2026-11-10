@@ -85,6 +85,21 @@ def test_mka_has_live_peers() -> None:
     assert not mka_has_live_peers({"livePeerList": []})
 
 
+@pytest.mark.parametrize("principal_first", [True, False])
+def test_extract_ckn_prefers_principal_during_reauthentication(principal_first) -> None:
+    principal = ("68247ed7ee4e74163a9fad5e3ded2317", {
+        "success": True, "principalActor": True,
+        "details": {"sakTransmit": True, "livePeerList": ["peer1"]},
+    })
+    retained = ("733d9b99d255a4d759537e8e637b2f7f", {
+        "success": True, "principalActor": False,
+        "details": {"sakTransmit": True, "livePeerList": ["peer2"]},
+    })
+    entries = [principal, retained] if principal_first else [retained, principal]
+    payload = {"interfaces": {"Ethernet1": {"participants": dict(entries)}}}
+    assert extract_ckn_from_json(payload) == principal[0]
+
+
 def test_mka_has_live_peers_any_non_empty_list() -> None:
     """During reauth EOS may list a stale participant with empty peers before the live one."""
     payload = {

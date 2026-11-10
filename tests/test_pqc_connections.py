@@ -431,7 +431,7 @@ def test_probe_eapi_https_requires_tls13(ip_family: str) -> None:
     targets = _lab_targets()
     switch_ip = MGMT_IPS["ceos1-both"] if ip_family == "ipv4" else MGMT_IPV6_IPS["ceos1-both"]
     with patch(
-        "lab.test_pqc_connections.run_openssl_s_client",
+        "lab.tls_wire.run_openssl_s_client",
         side_effect=Exception(f"TLS 1.3 handshake to {switch_ip}:443 failed"),
     ):
         with pytest.raises(Exception):

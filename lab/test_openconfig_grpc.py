@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import shlex
 from typing import TYPE_CHECKING
 
 from lab.ceos_json import (
@@ -612,14 +614,31 @@ def probe_gnpsi_subscribe(
     target = grpc_target(ip, GNPSI_PORT)
     invoke = grpcurl_invoke_command(target, node=node, rpc=GNPSI_SUBSCRIBE_RPC, data="{}")
     sub_result = run_grpc_probe(
-        f"timeout 8 sh -c {invoke!r} || true",
+        f"timeout 8 sh -c {shlex.quote(invoke)}",
         clab_name=targets.clab_name,
         verbose=verbose,
         title=f"{node} gNPSI subscribe ({family_label(family)})",
     )
-    sub_body = sub_result.stdout + sub_result.stderr
+    # A streaming RPC normally ends via timeout (124 with GNU timeout, 143
+    # with BusyBox). Only Sample.packet on stdout proves data was received;
+    # stderr may contain "Terminated" even when no sample arrived.
+    if sub_result.returncode not in (0, 124, 143):
+        detail = sub_result.stderr.strip() or sub_result.stdout.strip()
+        raise PqcConnectionError(f"{node} gNPSI Subscribe ({family_label(family)}): {detail}")
+    received_packet = False
+    remaining = sub_result.stdout.strip()
+    decoder = json.JSONDecoder()
+    while remaining:
+        try:
+            sample, end = decoder.raw_decode(remaining)
+        except json.JSONDecodeError as exc:
+            raise PqcConnectionError(f"{node} gNPSI Subscribe: invalid sample JSON") from exc
+        if not isinstance(sample, dict):
+            raise PqcConnectionError(f"{node} gNPSI Subscribe: expected a Sample object")
+        received_packet |= isinstance(sample.get("packet"), str) and bool(sample["packet"])
+        remaining = remaining[end:].lstrip()
     wire = rpc_tls_wire_suffix(tls_wire)
-    if sub_result.returncode == 0 and sub_body.strip():
+    if received_packet:
         status = CheckStatus.OK if tls_wire and tls_wire.pqc_confirmed else CheckStatus.WARN
         _report_live(
             f"gNPSI subscribe received datagram ({family_label(family)}, mTLS, {wire})",

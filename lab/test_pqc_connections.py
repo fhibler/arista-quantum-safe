@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 
 from lab.errors import PqcConnectionError
@@ -780,7 +781,7 @@ def probe_syslog_delivery(
     switch_ip = targets.ceos_mgmt_ip(node, family)
     syslog_ipv4, syslog_ipv6 = targets.syslog_ips
     syslog_ip = syslog_ipv4 if family == IP_FAMILY_IPV4 else syslog_ipv6
-    needle = f"quantum-safe-syslog-probe-{node}-{family}"
+    needle = f"quantum-safe-syslog-probe-{node}-{family}-{uuid.uuid4().hex}"
 
     def send_log() -> None:
         ceos_cli(

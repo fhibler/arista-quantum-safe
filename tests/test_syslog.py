@@ -25,6 +25,7 @@ from lab.syslog_checks import (
     tls_handshake_incomplete,
     tls_key_share_group_name,
     tshark_client_hello_filter,
+    tshark_server_hello_filter,
 )
 from lab.topology_contract import (
     SYSLOG_PORT,
@@ -128,6 +129,19 @@ def test_tshark_client_hello_filter_ipv4_mapped() -> None:
 def test_tshark_client_hello_filter_ipv6() -> None:
     filt = tshark_client_hello_filter("2001:db8:127::12")
     assert "ipv6.src == 2001:db8:127::12" in filt
+
+
+def test_tshark_server_hello_filter_ipv4_selects_negotiated_group() -> None:
+    filt = tshark_server_hello_filter("172.20.127.12")
+    assert "tls.handshake.type == 2" in filt
+    assert "ip.dst == 172.20.127.12" in filt
+    assert "ipv6.dst == ::ffff:172.20.127.12" in filt
+
+
+def test_tshark_server_hello_filter_ipv6_selects_negotiated_group() -> None:
+    filt = tshark_server_hello_filter("2001:db8:127::12")
+    assert "tls.handshake.type == 2" in filt
+    assert "ipv6.dst == 2001:db8:127::12" in filt
 
 
 def test_tcpdump_captured_packet() -> None:

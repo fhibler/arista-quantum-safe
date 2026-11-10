@@ -157,6 +157,11 @@ def extract_ckn_from_json(obj: Any) -> str:
             if isinstance(entry, dict) and entry.get("success") is True
         ]
         if successful:
+            # Reauthentication can retain multiple successful participants
+            # with sakTransmit set. The principal actor is the active CA.
+            for key, entry in successful:
+                if entry.get("principalActor") is True:
+                    return key
             for key, entry in successful:
                 details = entry.get("details")
                 if isinstance(details, dict) and details.get("sakTransmit") is True:

@@ -4,7 +4,7 @@ Containerlab lab demonstrating **post-quantum cryptography (PQC)** on Arista EOS
 
 **Tested EOS version: 4.37.0F.** The guides describe this lab version; release comparisons are in the [Changelog](https://fhibler.github.io/arista-quantum-safe/changelog/).
 
-Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` by default).
+Three EOS switches (`ceos1-both`, `ceos2-pqc`, `ceos3-qkd`) form a small routed topology with Alpine Linux hosts on data segments and a shared management network (`172.20.127.0/24` and `2001:db8:127::/64` by default).
 
 <!-- site-config:begin -->
 **Documentation:** [https://fhibler.github.io/arista-quantum-safe/](https://fhibler.github.io/arista-quantum-safe/) (GitHub Pages)
@@ -83,10 +83,20 @@ make test-offline
 
 ## Topology overview
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/lab-topology-dark.svg">
+  <img src="docs/assets/images/lab-topology-light.svg" alt="Lab topology: grouped QKD simulators, syslog, RadSec, and test client share a management network with three cEOS switches. Static MACsec with optional QuaDRA key rotation connects ceos3-qkd to ceos1-both; dynamic MACsec using hybrid EAP-TLS and MKA connects ceos1-both to ceos2-pqc. Each switch has a routed host link without MACsec.">
+</picture>
+
+The service containers and all three cEOS instances connect through the **shared Docker management network `quantum-safe-mgmt`** (`172.20.127.0/24` and `2001:db8:127::/64` by default), backed by `mgmt-bridge`. cEOS uses Management0 in VRF `MGMT`; service traffic is separate from the inter-switch data links. Hosts also attach to this management network on `eth0` (omitted from the drawing).
+
+RadSec and syslog use hybrid TLS 1.3; syslog retains configured classical fallback. Dynamic MACsec derives keys from hybrid EAP-TLS via FreeRADIUS. The static MACsec link uses preconfigured keys at startup; rotation using simulated QKD keys requires the optional QuaDRA extension. Both QuaDRA-to-KME mTLS connections negotiated hybrid TLS 1.3 over IPv4; hybrid-only enforcement is **unverified**. Management API and SSH results, including policy limits, are in the [test results](https://fhibler.github.io/arista-quantum-safe/tests/#result-summary).
+
 | Node | Role |
 |------|------|
-| ceos1-both, ceos2-pqc, ceos3-qkd | EOS switches - MGMT VRF, RadSec, remote syslog (TLS), dynamic MACsec on eth1 (ceos1 <-> ceos2) |
+| ceos1-both, ceos2-pqc, ceos3-qkd | EOS switches - MGMT VRF, RadSec, remote syslog (TLS); dynamic and static MACsec on the inter-switch links shown above |
 | host1, host2, host3 | Alpine hosts on routed data segments |
+| kme-a, kme-b | ETSI QKD 014 simulators (HTTPS mTLS :8010 / :8020); optional QuaDRA key source for static MACsec on ceos1-both:Ethernet2 <-> ceos3-qkd:Ethernet1 |
 | radius | FreeRADIUS (RadSec + EAP-TLS for 802.1X) |
 | syslog | syslog-ng collector (TLS 6514, OpenSSL 3.5 PQC-hybrid) |
 | test-runner | PQC probe client (OpenSSL 3.5 + curl) for live checks and manual debug |

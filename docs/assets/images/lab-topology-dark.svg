@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1180" viewBox="0 0 1280 1180" role="img" aria-labelledby="title description">
+  <title id="title">Quantum Safe Lab topology — EOS 4.37.0F</title>
+  <desc id="description">QKD simulator containers kme-a and kme-b, FreeRADIUS radius, syslog-ng syslog, and test-runner connect to all three cEOS instances over the shared Docker management network quantum-safe-mgmt. Dashed lines show management connectivity, with security provided per service. ceos3-qkd Ethernet1 connects to ceos1-both Ethernet2 using static MACsec; optional QuaDRA rotates keys from the QKD simulators over HTTPS mTLS. ceos1-both Ethernet1 connects to ceos2-pqc Ethernet1 using dynamic MACsec, with keys derived from hybrid EAP-TLS via FreeRADIUS and MKA. Each switch Ethernet8 connects to its corresponding Alpine host eth1 over routed Ethernet without MACsec. Host management connections are omitted. QKD is simulated; certificates remain classical.</desc>
+  <!-- Keep layout and labels in sync with lab-topology-light.svg; only the palette differs. -->
+  <defs>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; fill: #e6edf7; }
+      .canvas { fill: #1e2129; stroke: #3b4557; }
+      .card { fill: #282e3b; stroke: #4b5870; stroke-width: 1.5; }
+      .inset { fill: #222837; stroke: #3b4557; }
+      .muted { fill: #b3c1d5; }
+      .heading { font-size: 21px; font-weight: 650; }
+      .node { font-size: 22px; font-weight: 650; }
+      .body { font-size: 18px; }
+      .small { font-size: 17px; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 17px; }
+      .mgmt-panel { fill: #253650; stroke: #85b4f4; stroke-width: 1.5; }
+      .mgmt { fill: none; stroke: #85b4f4; stroke-width: 2.5; stroke-dasharray: 7 7; }
+      .mgmt-text { fill: #b2d1ff; }
+      .qkd-panel { fill: #352d46; stroke: #665180; }
+      .qkd { fill: none; stroke: #ba99e5; stroke-width: 4; }
+      .qkd-text { fill: #d6b8ff; }
+      .pqc-panel { fill: #213d37; stroke: #417862; }
+      .pqc { fill: none; stroke: #6bd6ac; stroke-width: 4; }
+      .pqc-text { fill: #91e7c4; }
+      .ethernet { fill: none; stroke: #93a4bf; stroke-width: 3; }
+      .icon { fill: none; stroke: #85b4f4; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .rule { stroke: #3b4557; }
+    </style>
+    <symbol id="server" viewBox="0 0 40 40">
+      <rect x="4" y="4" width="32" height="13" rx="3"/>
+      <rect x="4" y="23" width="32" height="13" rx="3"/>
+      <path d="M10 10.5h1m6 0h12M10 29.5h1m6 0h12"/>
+    </symbol>
+    <symbol id="switch" viewBox="0 0 48 40">
+      <rect x="2" y="3" width="44" height="32" rx="7"/>
+      <path d="M10 13h24l-5-5m5 5-5 5M38 25H14l5-5m-5 5 5 5"/>
+    </symbol>
+    <symbol id="host" viewBox="0 0 40 40">
+      <rect x="4" y="4" width="32" height="23" rx="3"/>
+      <path d="M14 35h12m-6-8v8M11 13l5 4-5 4m10 0h7"/>
+    </symbol>
+    <symbol id="lock" viewBox="0 0 24 24">
+      <rect x="5" y="10" width="14" height="11" rx="2"/>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>
+    </symbol>
+  </defs>
+
+  <rect class="canvas" x="1" y="1" width="1278" height="1178" rx="22"/>
+  <text x="32" y="49" font-size="30" font-weight="700">Lab topology</text>
+  <text class="body muted" x="32" y="79">Grouped services · shared management · encrypted inter-switch links</text>
+  <rect class="inset" x="1040" y="28" width="208" height="39" rx="19"/>
+  <text class="body muted" x="1144" y="54" text-anchor="middle">EOS 4.37.0F</text>
+
+  <!-- Service groups. Security labels describe the application sessions over management. -->
+  <g aria-label="QKD ETSI 014 simulator group">
+    <rect class="card" x="32" y="104" width="360" height="240" rx="14"/>
+    <text class="heading" x="56" y="139">QKD / ETSI 014 simulator</text>
+    <rect class="inset" x="56" y="161" width="144" height="67" rx="8"/>
+    <rect class="inset" x="224" y="161" width="144" height="67" rx="8"/>
+    <path class="mgmt" d="M200 194h24"/>
+    <text class="node" x="128" y="189" text-anchor="middle">kme-a</text>
+    <text class="mono muted" x="128" y="214" text-anchor="middle">:8010</text>
+    <text class="node" x="296" y="189" text-anchor="middle">kme-b</text>
+    <text class="mono muted" x="296" y="214" text-anchor="middle">:8020</text>
+    <text class="body" x="56" y="260">HTTPS · mTLS · TLS 1.3</text>
+    <text class="small muted" x="56" y="289">QuaDRA → KMEs: hybrid (IPv4)</text>
+    <text class="small muted" x="56" y="317">Rotation needs QuaDRA extension¹</text>
+  </g>
+  <g aria-label="RadSec group">
+    <rect class="card" x="408" y="104" width="264" height="240" rx="14"/>
+    <text class="heading" x="432" y="139">RadSec / AAA</text>
+    <use class="icon" href="#server" x="432" y="172" width="40" height="40"/>
+    <text class="node" x="486" y="189">radius</text>
+    <text class="small muted" x="486" y="215">FreeRADIUS</text>
+    <text class="body" x="432" y="260">TLS 1.3 · TCP 2083</text>
+    <text class="small muted" x="432" y="289">Hybrid key establishment</text>
+    <text class="small muted" x="432" y="317">RadSec + EAP-TLS</text>
+  </g>
+  <g aria-label="Syslog group">
+    <rect class="card" x="688" y="104" width="264" height="240" rx="14"/>
+    <text class="heading" x="712" y="139">Syslog</text>
+    <use class="icon" href="#server" x="712" y="172" width="40" height="40"/>
+    <text class="node" x="766" y="189">syslog</text>
+    <text class="small muted" x="766" y="215">syslog-ng</text>
+    <text class="body" x="712" y="260">TLS 1.3 · TCP 6514</text>
+    <text class="small muted" x="712" y="289">Hybrid; classical fallback</text>
+    <text class="small muted" x="712" y="317">configured</text>
+  </g>
+  <g aria-label="Test client group">
+    <rect class="card" x="968" y="104" width="280" height="240" rx="14"/>
+    <text class="heading" x="992" y="139">Test client</text>
+    <use class="icon" href="#host" x="992" y="172" width="40" height="40"/>
+    <text class="node" x="1046" y="189">test-runner</text>
+    <text class="small muted" x="992" y="234">OpenSSL 3.5 + curl</text>
+    <text class="body" x="992" y="262">TLS 1.3 + SSH probes</text>
+    <text class="small muted" x="992" y="290">eAPI · gRPC · NETCONF</text>
+    <text class="small muted" x="992" y="318">RESTCONF · SSH</text>
+  </g>
+
+  <!-- Dashed lines represent shared Docker management connectivity, not data-plane links. -->
+  <path class="mgmt" d="M212 344v40m328-40v40m280-40v40m288-40v40"/>
+  <rect class="mgmt-panel" x="32" y="384" width="1216" height="104" rx="14"/>
+  <text class="mgmt-text" x="640" y="424" text-anchor="middle" font-size="24" font-weight="650">Shared management network · quantum-safe-mgmt</text>
+  <text class="body mgmt-text" x="640" y="458" text-anchor="middle">172.20.127.0/24 · 2001:db8:127::/64 · cEOS: VRF MGMT</text>
+  <path class="mgmt" d="M150 488v72m490-72v72m490-72v72"/>
+  <rect class="canvas" style="stroke: none" x="78" y="512" width="144" height="23"/>
+  <rect class="canvas" style="stroke: none" x="568" y="512" width="144" height="23"/>
+  <rect class="canvas" style="stroke: none" x="1058" y="512" width="144" height="23"/>
+  <g class="small mgmt-text" text-anchor="middle">
+    <text class="mgmt-text" x="150" y="530">Management0</text>
+    <text class="mgmt-text" x="640" y="530">Management0</text>
+    <text class="mgmt-text" x="1130" y="530">Management0</text>
+  </g>
+
+  <!-- Inter-switch links: static SAK on the left, dynamic 802.1X/MKA on the right. -->
+  <rect class="qkd-panel" x="270" y="552" width="250" height="132" rx="18"/>
+  <text class="body qkd-text" x="395" y="584" text-anchor="middle" font-weight="650">MACsec · static SAK</text>
+  <path class="qkd" d="M256 608H534"/>
+  <rect class="qkd-panel" x="377" y="590" width="36" height="36" rx="18"/>
+  <use class="icon" style="stroke: #d6b8ff" href="#lock" x="383" y="596" width="24" height="24"/>
+  <text class="mono qkd-text" x="282" y="637">Et1</text>
+  <text class="mono qkd-text" x="508" y="637" text-anchor="end">Et2</text>
+  <text class="small qkd-text" x="395" y="667" text-anchor="middle">QuaDRA / QKD keys¹</text>
+  <text class="mono muted" x="395" y="715" text-anchor="middle">10.255.0.4/30</text>
+  <text class="mono muted" x="395" y="743" text-anchor="middle">2001:db8:255:0::4/126</text>
+
+  <rect class="pqc-panel" x="760" y="552" width="250" height="132" rx="18"/>
+  <text class="body pqc-text" x="885" y="584" text-anchor="middle" font-weight="650">MACsec · 802.1X</text>
+  <path class="pqc" d="M746 608H1024"/>
+  <rect class="pqc-panel" x="867" y="590" width="36" height="36" rx="18"/>
+  <use class="icon" style="stroke: #91e7c4" href="#lock" x="873" y="596" width="24" height="24"/>
+  <text class="mono pqc-text" x="772" y="637">Et1</text>
+  <text class="mono pqc-text" x="998" y="637" text-anchor="end">Et1</text>
+  <text class="small pqc-text" x="885" y="667" text-anchor="middle">Hybrid EAP-TLS + MKA</text>
+  <text class="mono muted" x="885" y="715" text-anchor="middle">10.255.0.0/30</text>
+  <text class="mono muted" x="885" y="743" text-anchor="middle">2001:db8:255:0::/126</text>
+
+  <g aria-label="cEOS switches">
+    <rect class="card" x="44" y="560" width="212" height="148" rx="14"/>
+    <use class="icon" href="#switch" x="126" y="578" width="48" height="40"/>
+    <text class="node" x="150" y="642" text-anchor="middle">ceos3-qkd</text>
+    <text class="mono muted" x="150" y="668" text-anchor="middle">172.20.127.13</text>
+    <text class="mono muted" x="150" y="692" text-anchor="middle">2001:db8:127::13</text>
+    <rect class="card" x="534" y="560" width="212" height="148" rx="14"/>
+    <use class="icon" href="#switch" x="616" y="578" width="48" height="40"/>
+    <text class="node" x="640" y="642" text-anchor="middle">ceos1-both</text>
+    <text class="mono muted" x="640" y="668" text-anchor="middle">172.20.127.11</text>
+    <text class="mono muted" x="640" y="692" text-anchor="middle">2001:db8:127::11</text>
+    <rect class="card" x="1024" y="560" width="212" height="148" rx="14"/>
+    <use class="icon" href="#switch" x="1106" y="578" width="48" height="40"/>
+    <text class="node" x="1130" y="642" text-anchor="middle">ceos2-pqc</text>
+    <text class="mono muted" x="1130" y="668" text-anchor="middle">172.20.127.12</text>
+    <text class="mono muted" x="1130" y="692" text-anchor="middle">2001:db8:127::12</text>
+  </g>
+
+  <!-- Host links are routed Ethernet without MACsec. eth0 management links are omitted. -->
+  <path class="ethernet" d="M150 708v184m490-184v184m490-184v184"/>
+  <g class="mono muted">
+    <text class="muted" x="166" y="734">Et8</text>
+    <text class="muted" x="656" y="734">Et8</text>
+    <text class="muted" x="1146" y="734">Et8</text>
+    <text class="muted" x="166" y="879">eth1</text>
+    <text class="muted" x="656" y="879">eth1</text>
+    <text class="muted" x="1146" y="879">eth1</text>
+  </g>
+  <rect class="canvas" x="49" y="766" width="202" height="78" rx="8" stroke="none"/>
+  <rect class="canvas" x="539" y="766" width="202" height="78" rx="8" stroke="none"/>
+  <rect class="canvas" x="1029" y="766" width="202" height="78" rx="8" stroke="none"/>
+  <g text-anchor="middle">
+    <text class="mono muted" x="150" y="788">10.0.3.0/24</text>
+    <text class="mono muted" x="150" y="812">2001:db8:3::/64</text>
+    <text class="small muted" x="150" y="836">Routed · no MACsec</text>
+    <text class="mono muted" x="640" y="788">10.0.1.0/24</text>
+    <text class="mono muted" x="640" y="812">2001:db8:1::/64</text>
+    <text class="small muted" x="640" y="836">Routed · no MACsec</text>
+    <text class="mono muted" x="1130" y="788">10.0.2.0/24</text>
+    <text class="mono muted" x="1130" y="812">2001:db8:2::/64</text>
+    <text class="small muted" x="1130" y="836">Routed · no MACsec</text>
+  </g>
+  <g aria-label="Alpine data-plane hosts">
+    <rect class="card" x="44" y="892" width="212" height="132" rx="14"/>
+    <use class="icon" href="#host" x="64" y="910" width="36" height="36"/>
+    <text class="node" x="116" y="936">host3</text>
+    <text class="mono muted" x="150" y="975" text-anchor="middle">10.0.3.1 · Alpine</text>
+    <text class="mono muted" x="150" y="1001" text-anchor="middle">2001:db8:3::1</text>
+    <rect class="card" x="534" y="892" width="212" height="132" rx="14"/>
+    <use class="icon" href="#host" x="554" y="910" width="36" height="36"/>
+    <text class="node" x="606" y="936">host1</text>
+    <text class="mono muted" x="640" y="975" text-anchor="middle">10.0.1.1 · Alpine</text>
+    <text class="mono muted" x="640" y="1001" text-anchor="middle">2001:db8:1::1</text>
+    <rect class="card" x="1024" y="892" width="212" height="132" rx="14"/>
+    <use class="icon" href="#host" x="1044" y="910" width="36" height="36"/>
+    <text class="node" x="1096" y="936">host2</text>
+    <text class="mono muted" x="1130" y="975" text-anchor="middle">10.0.2.1 · Alpine</text>
+    <text class="mono muted" x="1130" y="1001" text-anchor="middle">2001:db8:2::1</text>
+  </g>
+
+  <path class="rule" d="M32 1050H1248"/>
+  <text class="small muted" x="32" y="1080">Dashed: shared management connectivity. Solid: data links. Host management connections are omitted.</text>
+  <text class="small muted" x="32" y="1108">¹ QKD is simulated; static keys are configured at startup. Rotation requires the optional QuaDRA extension.</text>
+  <text class="small muted" x="32" y="1136">Hybrid TLS: X25519MLKEM768. SSH: mlkem768x25519-sha256. Certificates remain classical.</text>
+  <text class="small muted" x="32" y="1164">Hybrid negotiation does not establish hybrid-only enforcement; see service guides and test results for limits.</text>
+</svg>

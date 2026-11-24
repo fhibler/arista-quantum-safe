@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1180" viewBox="0 0 1280 1180" role="img" aria-labelledby="title description">
-  <title id="title">Quantum Safe Lab topology — EOS 4.37.0F</title>
+  <title id="title">Quantum Safe Lab topology</title>
   <desc id="description">QKD simulator containers kme-a and kme-b, FreeRADIUS radius, syslog-ng syslog, and test-runner connect to all three cEOS instances over the shared Docker management network quantum-safe-mgmt. Dashed lines show management connectivity, with security provided per service. ceos3-qkd Ethernet1 connects to ceos1-both Ethernet2 using static MACsec; optional QuaDRA rotates keys from the QKD simulators over HTTPS mTLS. ceos1-both Ethernet1 connects to ceos2-pqc Ethernet1 using dynamic MACsec, with keys derived from hybrid EAP-TLS via FreeRADIUS and MKA. Each switch Ethernet8 connects to its corresponding Alpine host eth1 over routed Ethernet without MACsec. Host management connections are omitted. QKD is simulated; certificates remain classical.</desc>
   <!-- Keep layout and labels in sync with lab-topology-dark.svg; only the palette differs. -->
   <defs>
@@ -49,8 +49,6 @@
   <rect class="canvas" x="1" y="1" width="1278" height="1178" rx="22"/>
   <text x="32" y="49" font-size="30" font-weight="700">Lab topology</text>
   <text class="body muted" x="32" y="79">Grouped services · shared management · encrypted inter-switch links</text>
-  <rect class="inset" x="1040" y="28" width="208" height="39" rx="19"/>
-  <text class="body muted" x="1144" y="54" text-anchor="middle">EOS 4.37.0F</text>
 
   <!-- Service groups. Security labels describe the application sessions over management. -->
   <g aria-label="QKD ETSI 014 simulator group">
